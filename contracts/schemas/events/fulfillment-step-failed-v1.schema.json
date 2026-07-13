@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cellarbridge.dev/schemas/events/fulfillment-step-failed-v1.schema.json",
+  "title": "FulfillmentStepFailedV1",
+  "allOf": [
+    {
+      "$ref": "event-envelope.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "cellarbridge.fulfillment.step-failed.v1"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "planId",
+            "planNumber",
+            "orderId",
+            "orderNumber",
+            "stepId",
+            "stepCode",
+            "failureCode",
+            "safeMessage",
+            "failedAt",
+            "attempt"
+          ],
+          "properties": {
+            "planId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "planNumber": {
+              "type": "string"
+            },
+            "orderId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "orderNumber": {
+              "type": "string"
+            },
+            "stepId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "stepCode": {
+              "type": "string"
+            },
+            "failureCode": {
+              "type": "string"
+            },
+            "safeMessage": {
+              "type": "string"
+            },
+            "failedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "attempt": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "retryable": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

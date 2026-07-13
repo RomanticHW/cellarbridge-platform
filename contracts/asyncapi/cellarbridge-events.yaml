@@ -1,0 +1,310 @@
+asyncapi: 3.0.0
+info:
+  title: CellarBridge Integration Events
+  version: 1.0.0-design
+  description: |
+    Versioned integration-event contract for the CellarBridge full profile.
+    Delivery semantics are at-least-once; every consumer must deduplicate by event id.
+    All data and examples are synthetic.
+  license:
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+  tags:
+    - name: quotation
+    - name: order
+    - name: inventory
+    - name: fulfillment
+    - name: exception
+    - name: settlement
+defaultContentType: application/json
+servers:
+  localKafka:
+    host: localhost:9092
+    protocol: kafka
+    description: Local full-profile Kafka broker
+channels:
+  quotationAccepted:
+    address: cellarbridge.quotation.accepted.v1
+    description: A customer has accepted a frozen quotation revision.
+    messages:
+      quotationAccepted:
+        $ref: '#/components/messages/QuotationAcceptedV1'
+  tradeOrderCreated:
+    address: cellarbridge.order.created.v1
+    description: A unique trade order has been created from an accepted quotation.
+    messages:
+      tradeOrderCreated:
+        $ref: '#/components/messages/TradeOrderCreatedV1'
+  inventoryReservationConfirmed:
+    address: cellarbridge.inventory.reservation-confirmed.v1
+    description: All order lines were reserved atomically.
+    messages:
+      inventoryReservationConfirmed:
+        $ref: '#/components/messages/InventoryReservationConfirmedV1'
+  inventoryReservationFailed:
+    address: cellarbridge.inventory.reservation-failed.v1
+    description: The all-or-nothing reservation failed without retaining new allocations.
+    messages:
+      inventoryReservationFailed:
+        $ref: '#/components/messages/InventoryReservationFailedV1'
+  fulfillmentStepFailed:
+    address: cellarbridge.fulfillment.step-failed.v1
+    description: A fulfillment step failed and may require an exception case.
+    messages:
+      fulfillmentStepFailed:
+        $ref: '#/components/messages/FulfillmentStepFailedV1'
+  fulfillmentCompleted:
+    address: cellarbridge.fulfillment.completed.v1
+    description: All required fulfillment steps completed.
+    messages:
+      fulfillmentCompleted:
+        $ref: '#/components/messages/FulfillmentCompletedV1'
+  exceptionOpened:
+    address: cellarbridge.exception.opened.v1
+    description: A deduplicated exception case was opened.
+    messages:
+      exceptionOpened:
+        $ref: '#/components/messages/ExceptionOpenedV1'
+  receivableCreated:
+    address: cellarbridge.settlement.receivable-created.v1
+    description: A unique receivable was created for a configured business trigger.
+    messages:
+      receivableCreated:
+        $ref: '#/components/messages/ReceivableCreatedV1'
+operations:
+  sendQuotationAccepted:
+    action: send
+    channel:
+      $ref: '#/channels/quotationAccepted'
+    summary: Quotation publishes an accepted commercial snapshot.
+    messages:
+      - $ref: '#/channels/quotationAccepted/messages/quotationAccepted'
+  receiveQuotationAccepted:
+    action: receive
+    channel:
+      $ref: '#/channels/quotationAccepted'
+    summary: Trade Order consumes the event idempotently.
+    messages:
+      - $ref: '#/channels/quotationAccepted/messages/quotationAccepted'
+  sendTradeOrderCreated:
+    action: send
+    channel:
+      $ref: '#/channels/tradeOrderCreated'
+    messages:
+      - $ref: '#/channels/tradeOrderCreated/messages/tradeOrderCreated'
+  receiveTradeOrderCreated:
+    action: receive
+    channel:
+      $ref: '#/channels/tradeOrderCreated'
+    summary: Inventory and reporting consume the event.
+    messages:
+      - $ref: '#/channels/tradeOrderCreated/messages/tradeOrderCreated'
+  sendReservationConfirmed:
+    action: send
+    channel:
+      $ref: '#/channels/inventoryReservationConfirmed'
+    messages:
+      - $ref: '#/channels/inventoryReservationConfirmed/messages/inventoryReservationConfirmed'
+  receiveReservationConfirmed:
+    action: receive
+    channel:
+      $ref: '#/channels/inventoryReservationConfirmed'
+    summary: Order, fulfillment and reporting consume the event.
+    messages:
+      - $ref: '#/channels/inventoryReservationConfirmed/messages/inventoryReservationConfirmed'
+  sendReservationFailed:
+    action: send
+    channel:
+      $ref: '#/channels/inventoryReservationFailed'
+    messages:
+      - $ref: '#/channels/inventoryReservationFailed/messages/inventoryReservationFailed'
+  receiveReservationFailed:
+    action: receive
+    channel:
+      $ref: '#/channels/inventoryReservationFailed'
+    summary: Order, exception and reporting consume the event.
+    messages:
+      - $ref: '#/channels/inventoryReservationFailed/messages/inventoryReservationFailed'
+  sendFulfillmentStepFailed:
+    action: send
+    channel:
+      $ref: '#/channels/fulfillmentStepFailed'
+    messages:
+      - $ref: '#/channels/fulfillmentStepFailed/messages/fulfillmentStepFailed'
+  receiveFulfillmentStepFailed:
+    action: receive
+    channel:
+      $ref: '#/channels/fulfillmentStepFailed'
+    summary: Exception Center consumes the event idempotently.
+    messages:
+      - $ref: '#/channels/fulfillmentStepFailed/messages/fulfillmentStepFailed'
+  sendFulfillmentCompleted:
+    action: send
+    channel:
+      $ref: '#/channels/fulfillmentCompleted'
+    messages:
+      - $ref: '#/channels/fulfillmentCompleted/messages/fulfillmentCompleted'
+  receiveFulfillmentCompleted:
+    action: receive
+    channel:
+      $ref: '#/channels/fulfillmentCompleted'
+    summary: Order, settlement and reporting consume the event.
+    messages:
+      - $ref: '#/channels/fulfillmentCompleted/messages/fulfillmentCompleted'
+  sendExceptionOpened:
+    action: send
+    channel:
+      $ref: '#/channels/exceptionOpened'
+    messages:
+      - $ref: '#/channels/exceptionOpened/messages/exceptionOpened'
+  receiveExceptionOpened:
+    action: receive
+    channel:
+      $ref: '#/channels/exceptionOpened'
+    summary: Notification and reporting consume the event.
+    messages:
+      - $ref: '#/channels/exceptionOpened/messages/exceptionOpened'
+  sendReceivableCreated:
+    action: send
+    channel:
+      $ref: '#/channels/receivableCreated'
+    messages:
+      - $ref: '#/channels/receivableCreated/messages/receivableCreated'
+  receiveReceivableCreated:
+    action: receive
+    channel:
+      $ref: '#/channels/receivableCreated'
+    summary: Notification and reporting consume the event.
+    messages:
+      - $ref: '#/channels/receivableCreated/messages/receivableCreated'
+components:
+  messages:
+    QuotationAcceptedV1:
+      name: QuotationAcceptedV1
+      title: Quotation accepted
+      summary: Frozen commercial terms accepted by the customer.
+      correlationId:
+        location: $message.payload#/correlationId
+      headers:
+        $ref: '#/components/schemas/EventHeaders'
+      payload:
+        $ref: '../schemas/events/quotation-accepted-v1.schema.json'
+      examples:
+        - name: acceptedQuotation
+          payload:
+            id: 11000000-0000-4000-8000-000000000001
+            type: cellarbridge.quotation.accepted.v1
+            specVersion: '1.0'
+            occurredAt: '2026-07-20T10:15:30Z'
+            tenantId: 10000000-0000-4000-8000-000000000001
+            producer: quotation
+            subject:
+              type: QUOTATION
+              id: 21000000-0000-4000-8000-000000000001
+              number: QUO-202607-000001
+            correlationId: 31000000-0000-4000-8000-000000000001
+            causationId: 41000000-0000-4000-8000-000000000001
+            payload:
+              quotationId: 21000000-0000-4000-8000-000000000001
+              revisionId: 22000000-0000-4000-8000-000000000001
+              quotationNumber: QUO-202607-000001
+              revision: 1
+              acceptanceId: 23000000-0000-4000-8000-000000000001
+              acceptedAt: '2026-07-20T10:15:30Z'
+              customer:
+                partnerId: 24000000-0000-4000-8000-000000000001
+                partnerNumber: PAR-202607-000001
+                displayName: Jincheng Hospitality Group (synthetic)
+                sourceVersion: 3
+              currency: CNY
+              totalAmount: '128400.00'
+              paymentTermDays: 30
+              route:
+                code: NB_BONDED_B2B
+                policyVersion: TRP-2026-01
+                estimatedDeliveryDate: '2026-08-15'
+              snapshotHash: sha256:synthetic-example
+              lines:
+                - quotationLineId: 25000000-0000-4000-8000-000000000001
+                  skuId: 26000000-0000-4000-8000-000000000001
+                  skuCode: CB-BDX-2019-750X6
+                  description: Bordeaux Blend 2019 750ml x 6 (synthetic)
+                  quantity: '20'
+                  unit: CASE
+                  netUnitPrice: '6420.00'
+                  lineTotal: '128400.00'
+                  supplyPoolId: 27000000-0000-4000-8000-000000000001
+                  supplyType: BONDED_ON_HAND
+    TradeOrderCreatedV1:
+      name: TradeOrderCreatedV1
+      title: Trade order created
+      correlationId:
+        location: $message.payload#/correlationId
+      headers:
+        $ref: '#/components/schemas/EventHeaders'
+      payload:
+        $ref: '../schemas/events/trade-order-created-v1.schema.json'
+    InventoryReservationConfirmedV1:
+      name: InventoryReservationConfirmedV1
+      title: Inventory reservation confirmed
+      correlationId:
+        location: $message.payload#/correlationId
+      headers:
+        $ref: '#/components/schemas/EventHeaders'
+      payload:
+        $ref: '../schemas/events/inventory-reservation-confirmed-v1.schema.json'
+    InventoryReservationFailedV1:
+      name: InventoryReservationFailedV1
+      title: Inventory reservation failed
+      correlationId:
+        location: $message.payload#/correlationId
+      headers:
+        $ref: '#/components/schemas/EventHeaders'
+      payload:
+        $ref: '../schemas/events/inventory-reservation-failed-v1.schema.json'
+    FulfillmentStepFailedV1:
+      name: FulfillmentStepFailedV1
+      title: Fulfillment step failed
+      correlationId:
+        location: $message.payload#/correlationId
+      headers:
+        $ref: '#/components/schemas/EventHeaders'
+      payload:
+        $ref: '../schemas/events/fulfillment-step-failed-v1.schema.json'
+    FulfillmentCompletedV1:
+      name: FulfillmentCompletedV1
+      title: Fulfillment completed
+      correlationId:
+        location: $message.payload#/correlationId
+      headers:
+        $ref: '#/components/schemas/EventHeaders'
+      payload:
+        $ref: '../schemas/events/fulfillment-completed-v1.schema.json'
+    ExceptionOpenedV1:
+      name: ExceptionOpenedV1
+      title: Exception opened
+      correlationId:
+        location: $message.payload#/correlationId
+      headers:
+        $ref: '#/components/schemas/EventHeaders'
+      payload:
+        $ref: '../schemas/events/exception-opened-v1.schema.json'
+    ReceivableCreatedV1:
+      name: ReceivableCreatedV1
+      title: Receivable created
+      correlationId:
+        location: $message.payload#/correlationId
+      headers:
+        $ref: '#/components/schemas/EventHeaders'
+      payload:
+        $ref: '../schemas/events/receivable-created-v1.schema.json'
+  schemas:
+    EventHeaders:
+      type: object
+      additionalProperties: false
+      properties:
+        eventId: { type: string, format: uuid }
+        eventType: { type: string }
+        schemaRef: { type: string }
+        traceparent: { type: string }
+      required: [eventId, eventType, schemaRef]

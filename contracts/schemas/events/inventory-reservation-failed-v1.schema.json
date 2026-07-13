@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cellarbridge.dev/schemas/events/inventory-reservation-failed-v1.schema.json",
+  "title": "InventoryReservationFailedV1",
+  "allOf": [
+    {
+      "$ref": "event-envelope.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "cellarbridge.inventory.reservation-failed.v1"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "reservationId",
+            "reservationNumber",
+            "orderId",
+            "orderNumber",
+            "failedAt",
+            "reasonCode",
+            "shortages"
+          ],
+          "properties": {
+            "reservationId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "reservationNumber": {
+              "type": "string"
+            },
+            "orderId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "orderNumber": {
+              "type": "string"
+            },
+            "failedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "reasonCode": {
+              "type": "string",
+              "enum": [
+                "INVENTORY_INSUFFICIENT",
+                "SUPPLY_NOT_AUTOMATICALLY_RESERVABLE",
+                "ALLOCATION_CONFLICT",
+                "INTERNAL_FAILURE"
+              ]
+            },
+            "shortages": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "orderLineId",
+                  "skuId",
+                  "skuCode",
+                  "requestedQuantity",
+                  "observedAvailableQuantity",
+                  "shortageQuantity",
+                  "unit"
+                ],
+                "properties": {
+                  "orderLineId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "skuId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "skuCode": {
+                    "type": "string"
+                  },
+                  "requestedQuantity": {
+                    "type": "string"
+                  },
+                  "observedAvailableQuantity": {
+                    "type": "string"
+                  },
+                  "shortageQuantity": {
+                    "type": "string"
+                  },
+                  "unit": {
+                    "type": "string",
+                    "enum": [
+                      "CASE",
+                      "BOTTLE"
+                    ]
+                  }
+                }
+              }
+            },
+            "retryable": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

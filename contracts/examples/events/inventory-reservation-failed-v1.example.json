@@ -1,0 +1,35 @@
+{
+  "id": "11000000-0000-4000-8000-000000000004",
+  "type": "cellarbridge.inventory.reservation-failed.v1",
+  "specVersion": "1.0",
+  "occurredAt": "2026-07-20T10:16:00Z",
+  "tenantId": "10000000-0000-4000-8000-000000000001",
+  "producer": "inventory",
+  "subject": {
+    "type": "INVENTORY_RESERVATION",
+    "id": "61000000-0000-4000-8000-000000000002",
+    "number": "RES-202607-000002"
+  },
+  "correlationId": "31000000-0000-4000-8000-000000000001",
+  "causationId": "11000000-0000-4000-8000-000000000001",
+  "payload": {
+    "reservationId": "61000000-0000-4000-8000-000000000002",
+    "reservationNumber": "RES-202607-000002",
+    "orderId": "51000000-0000-4000-8000-000000000002",
+    "orderNumber": "ORD-202607-000002",
+    "failedAt": "2026-07-20T10:16:10Z",
+    "reasonCode": "INVENTORY_INSUFFICIENT",
+    "shortages": [
+      {
+        "orderLineId": "52000000-0000-4000-8000-000000000001",
+        "skuId": "26000000-0000-4000-8000-000000000001",
+        "skuCode": "CB-BDX-2019-750X6",
+        "requestedQuantity": "20",
+        "observedAvailableQuantity": "8",
+        "shortageQuantity": "12",
+        "unit": "CASE"
+      }
+    ],
+    "retryable": false
+  }
+}

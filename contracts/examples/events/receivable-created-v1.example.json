@@ -1,0 +1,27 @@
+{
+  "id": "11000000-0000-4000-8000-000000000008",
+  "type": "cellarbridge.settlement.receivable-created.v1",
+  "specVersion": "1.0",
+  "occurredAt": "2026-07-20T10:16:00Z",
+  "tenantId": "10000000-0000-4000-8000-000000000001",
+  "producer": "settlement",
+  "subject": {
+    "type": "RECEIVABLE",
+    "id": "91000000-0000-4000-8000-000000000001",
+    "number": "REC-202607-000001"
+  },
+  "correlationId": "31000000-0000-4000-8000-000000000001",
+  "causationId": "11000000-0000-4000-8000-000000000001",
+  "payload": {
+    "receivableId": "91000000-0000-4000-8000-000000000001",
+    "receivableNumber": "REC-202607-000001",
+    "orderId": "51000000-0000-4000-8000-000000000001",
+    "orderNumber": "ORD-202607-000001",
+    "originalAmount": "128400.00",
+    "currency": "CNY",
+    "dueDate": "2026-09-13",
+    "createdAt": "2026-08-14T09:00:01Z",
+    "triggerType": "FULFILLMENT_COMPLETED",
+    "triggerId": "71000000-0000-4000-8000-000000000001"
+  }
+}

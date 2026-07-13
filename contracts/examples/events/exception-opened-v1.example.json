@@ -1,0 +1,27 @@
+{
+  "id": "11000000-0000-4000-8000-000000000007",
+  "type": "cellarbridge.exception.opened.v1",
+  "specVersion": "1.0",
+  "occurredAt": "2026-07-20T10:16:00Z",
+  "tenantId": "10000000-0000-4000-8000-000000000001",
+  "producer": "exception-center",
+  "subject": {
+    "type": "EXCEPTION_CASE",
+    "id": "81000000-0000-4000-8000-000000000001",
+    "number": "EXC-202607-000001"
+  },
+  "correlationId": "31000000-0000-4000-8000-000000000001",
+  "causationId": "11000000-0000-4000-8000-000000000001",
+  "payload": {
+    "exceptionId": "81000000-0000-4000-8000-000000000001",
+    "exceptionNumber": "EXC-202607-000001",
+    "exceptionType": "FULFILLMENT_ADAPTER_FAILURE",
+    "severity": "HIGH",
+    "sourceType": "FULFILLMENT_STEP",
+    "sourceId": "72000000-0000-4000-8000-000000000001",
+    "sourceNumber": "FUL-202607-000001/BOOK_TRANSPORT",
+    "title": "Transport booking requires recovery",
+    "openedAt": "2026-07-20T10:30:01Z",
+    "dueAt": "2026-07-20T12:30:01Z"
+  }
+}

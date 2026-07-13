@@ -1,0 +1,189 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cellarbridge.dev/schemas/events/trade-order-created-v1.schema.json",
+  "title": "TradeOrderCreatedV1",
+  "allOf": [
+    {
+      "$ref": "event-envelope.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "cellarbridge.order.created.v1"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "orderId",
+            "orderNumber",
+            "sourceQuotationId",
+            "sourceRevisionId",
+            "customer",
+            "currency",
+            "totalAmount",
+            "paymentTermDays",
+            "route",
+            "snapshotHash",
+            "lines",
+            "createdAt"
+          ],
+          "properties": {
+            "orderId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "orderNumber": {
+              "type": "string"
+            },
+            "sourceQuotationId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "sourceRevisionId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "customer": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "partnerId",
+                "partnerNumber",
+                "displayName",
+                "sourceVersion"
+              ],
+              "properties": {
+                "partnerId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "partnerNumber": {
+                  "type": "string"
+                },
+                "displayName": {
+                  "type": "string"
+                },
+                "sourceVersion": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            },
+            "totalAmount": {
+              "type": "string"
+            },
+            "paymentTermDays": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "route": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "code",
+                "policyVersion",
+                "estimatedDeliveryDate"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "enum": [
+                    "SH_GENERAL_TRADE",
+                    "NB_BONDED_B2B",
+                    "HK_FREE_TRADE"
+                  ]
+                },
+                "policyVersion": {
+                  "type": "string"
+                },
+                "estimatedDeliveryDate": {
+                  "type": "string",
+                  "format": "date"
+                }
+              }
+            },
+            "snapshotHash": {
+              "type": "string"
+            },
+            "lines": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "orderLineId",
+                  "sourceQuotationLineId",
+                  "skuId",
+                  "skuCode",
+                  "description",
+                  "quantity",
+                  "unit",
+                  "netUnitPrice",
+                  "lineTotal",
+                  "supplyType"
+                ],
+                "properties": {
+                  "orderLineId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "sourceQuotationLineId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "skuId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "skuCode": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "quantity": {
+                    "type": "string"
+                  },
+                  "unit": {
+                    "type": "string",
+                    "enum": [
+                      "CASE",
+                      "BOTTLE"
+                    ]
+                  },
+                  "netUnitPrice": {
+                    "type": "string"
+                  },
+                  "lineTotal": {
+                    "type": "string"
+                  },
+                  "supplyPoolId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid"
+                  },
+                  "supplyType": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

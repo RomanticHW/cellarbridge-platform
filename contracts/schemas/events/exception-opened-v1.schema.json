@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cellarbridge.dev/schemas/events/exception-opened-v1.schema.json",
+  "title": "ExceptionOpenedV1",
+  "allOf": [
+    {
+      "$ref": "event-envelope.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "cellarbridge.exception.opened.v1"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "exceptionId",
+            "exceptionNumber",
+            "exceptionType",
+            "severity",
+            "sourceType",
+            "sourceId",
+            "sourceNumber",
+            "title",
+            "openedAt"
+          ],
+          "properties": {
+            "exceptionId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "exceptionNumber": {
+              "type": "string"
+            },
+            "exceptionType": {
+              "type": "string"
+            },
+            "severity": {
+              "type": "string",
+              "enum": [
+                "LOW",
+                "MEDIUM",
+                "HIGH",
+                "CRITICAL"
+              ]
+            },
+            "sourceType": {
+              "type": "string"
+            },
+            "sourceId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "sourceNumber": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "openedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "dueAt": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

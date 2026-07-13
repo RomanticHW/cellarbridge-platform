@@ -1,0 +1,31 @@
+{
+  "id": "11000000-0000-4000-8000-000000000003",
+  "type": "cellarbridge.inventory.reservation-confirmed.v1",
+  "specVersion": "1.0",
+  "occurredAt": "2026-07-20T10:16:00Z",
+  "tenantId": "10000000-0000-4000-8000-000000000001",
+  "producer": "inventory",
+  "subject": {
+    "type": "INVENTORY_RESERVATION",
+    "id": "61000000-0000-4000-8000-000000000001",
+    "number": "RES-202607-000001"
+  },
+  "correlationId": "31000000-0000-4000-8000-000000000001",
+  "causationId": "11000000-0000-4000-8000-000000000001",
+  "payload": {
+    "reservationId": "61000000-0000-4000-8000-000000000001",
+    "reservationNumber": "RES-202607-000001",
+    "orderId": "51000000-0000-4000-8000-000000000001",
+    "orderNumber": "ORD-202607-000001",
+    "confirmedAt": "2026-07-20T10:16:10Z",
+    "allocations": [
+      {
+        "orderLineId": "52000000-0000-4000-8000-000000000001",
+        "lotId": "62000000-0000-4000-8000-000000000001",
+        "lotCode": "LOT-SYN-001",
+        "quantity": "20",
+        "unit": "CASE"
+      }
+    ]
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "id": "11000000-0000-4000-8000-000000000001",
+  "specVersion": "1.0",
+  "occurredAt": "2026-07-20T10:15:30Z",
+  "tenantId": "10000000-0000-4000-8000-000000000001",
+  "producer": "quotation",
+  "subject": {
+    "type": "QUOTATION",
+    "id": "21000000-0000-4000-8000-000000000001",
+    "number": "QUO-202607-000001"
+  },
+  "correlationId": "31000000-0000-4000-8000-000000000001",
+  "causationId": "41000000-0000-4000-8000-000000000001",
+  "type": "cellarbridge.quotation.accepted.v1",
+  "payload": {
+    "quotationId": "21000000-0000-4000-8000-000000000001",
+    "revisionId": "22000000-0000-4000-8000-000000000001",
+    "quotationNumber": "QUO-202607-000001",
+    "revision": 1,
+    "acceptanceId": "23000000-0000-4000-8000-000000000001",
+    "acceptedAt": "2026-07-20T10:15:30Z",
+    "customer": {
+      "partnerId": "24000000-0000-4000-8000-000000000001",
+      "partnerNumber": "PAR-202607-000001",
+      "displayName": "Jincheng Hospitality Group (synthetic)",
+      "sourceVersion": 3
+    },
+    "currency": "CNY",
+    "totalAmount": "128400.00",
+    "paymentTermDays": 30,
+    "route": {
+      "code": "NB_BONDED_B2B",
+      "policyVersion": "TRP-2026-01",
+      "estimatedDeliveryDate": "2026-08-15"
+    },
+    "snapshotHash": "sha256:synthetic-example",
+    "lines": [
+      {
+        "quotationLineId": "25000000-0000-4000-8000-000000000001",
+        "skuId": "26000000-0000-4000-8000-000000000001",
+        "skuCode": "CB-BDX-2019-750X6",
+        "description": "Bordeaux Blend 2019 750ml x 6 (synthetic)",
+        "quantity": "20",
+        "unit": "CASE",
+        "netUnitPrice": "6420.00",
+        "lineTotal": "128400.00",
+        "supplyPoolId": "27000000-0000-4000-8000-000000000001",
+        "supplyType": "BONDED_ON_HAND"
+      }
+    ]
+  }
+}

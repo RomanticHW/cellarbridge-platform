@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cellarbridge.dev/schemas/events/inventory-reservation-confirmed-v1.schema.json",
+  "title": "InventoryReservationConfirmedV1",
+  "allOf": [
+    {
+      "$ref": "event-envelope.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "cellarbridge.inventory.reservation-confirmed.v1"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "reservationId",
+            "reservationNumber",
+            "orderId",
+            "orderNumber",
+            "confirmedAt",
+            "allocations"
+          ],
+          "properties": {
+            "reservationId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "reservationNumber": {
+              "type": "string"
+            },
+            "orderId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "orderNumber": {
+              "type": "string"
+            },
+            "confirmedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "allocations": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "orderLineId",
+                  "lotId",
+                  "lotCode",
+                  "quantity",
+                  "unit"
+                ],
+                "properties": {
+                  "orderLineId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "lotId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "lotCode": {
+                    "type": "string"
+                  },
+                  "quantity": {
+                    "type": "string"
+                  },
+                  "unit": {
+                    "type": "string",
+                    "enum": [
+                      "CASE",
+                      "BOTTLE"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

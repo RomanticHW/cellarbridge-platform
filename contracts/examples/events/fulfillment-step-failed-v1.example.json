@@ -1,0 +1,28 @@
+{
+  "id": "11000000-0000-4000-8000-000000000005",
+  "type": "cellarbridge.fulfillment.step-failed.v1",
+  "specVersion": "1.0",
+  "occurredAt": "2026-07-20T10:16:00Z",
+  "tenantId": "10000000-0000-4000-8000-000000000001",
+  "producer": "fulfillment",
+  "subject": {
+    "type": "FULFILLMENT_PLAN",
+    "id": "71000000-0000-4000-8000-000000000001",
+    "number": "FUL-202607-000001"
+  },
+  "correlationId": "31000000-0000-4000-8000-000000000001",
+  "causationId": "11000000-0000-4000-8000-000000000001",
+  "payload": {
+    "planId": "71000000-0000-4000-8000-000000000001",
+    "planNumber": "FUL-202607-000001",
+    "orderId": "51000000-0000-4000-8000-000000000001",
+    "orderNumber": "ORD-202607-000001",
+    "stepId": "72000000-0000-4000-8000-000000000001",
+    "stepCode": "BOOK_TRANSPORT",
+    "failureCode": "SIMULATED_ADAPTER_TIMEOUT",
+    "safeMessage": "The transport booking simulator did not confirm the request.",
+    "failedAt": "2026-07-20T10:30:00Z",
+    "attempt": 1,
+    "retryable": true
+  }
+}

@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cellarbridge.dev/schemas/events/fulfillment-completed-v1.schema.json",
+  "title": "FulfillmentCompletedV1",
+  "allOf": [
+    {
+      "$ref": "event-envelope.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "cellarbridge.fulfillment.completed.v1"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "planId",
+            "planNumber",
+            "orderId",
+            "orderNumber",
+            "routeCode",
+            "completedAt",
+            "publicMilestones"
+          ],
+          "properties": {
+            "planId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "planNumber": {
+              "type": "string"
+            },
+            "orderId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "orderNumber": {
+              "type": "string"
+            },
+            "routeCode": {
+              "type": "string"
+            },
+            "completedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "publicMilestones": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "code",
+                  "label",
+                  "occurredAt"
+                ],
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "occurredAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

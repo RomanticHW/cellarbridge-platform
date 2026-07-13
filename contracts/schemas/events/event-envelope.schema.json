@@ -1,0 +1,201 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cellarbridge.dev/schemas/events/event-envelope.schema.json",
+  "title": "CellarBridge event envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "specVersion",
+    "occurredAt",
+    "tenantId",
+    "producer",
+    "subject",
+    "correlationId",
+    "causationId",
+    "payload"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "type": {
+      "type": "string",
+      "pattern": "^cellarbridge\\.[a-z0-9.-]+\\.v[0-9]+$"
+    },
+    "specVersion": {
+      "const": "1.0"
+    },
+    "occurredAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "tenantId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "producer": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "subject": {
+      "$ref": "#/$defs/Subject"
+    },
+    "correlationId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "causationId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "payload": {
+      "type": "object"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": {
+        "type": [
+          "string",
+          "number",
+          "boolean",
+          "null"
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "Money": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "amount",
+        "currency"
+      ],
+      "properties": {
+        "amount": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(\\.[0-9]{1,4})?$"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      }
+    },
+    "Quantity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value",
+        "unit"
+      ],
+      "properties": {
+        "value": {
+          "type": "string",
+          "pattern": "^[0-9]+(\\.[0-9]{1,6})?$"
+        },
+        "unit": {
+          "type": "string",
+          "enum": [
+            "CASE",
+            "BOTTLE"
+          ]
+        }
+      }
+    },
+    "Subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "id",
+        "number"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "number": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "SkuLineSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "orderLineId",
+        "skuId",
+        "skuCode",
+        "description",
+        "quantity",
+        "unit",
+        "netUnitPrice",
+        "lineTotal",
+        "supplyType"
+      ],
+      "properties": {
+        "orderLineId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "skuId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "skuCode": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "quantity": {
+          "type": "string",
+          "pattern": "^[0-9]+(\\.[0-9]{1,6})?$"
+        },
+        "unit": {
+          "type": "string",
+          "enum": [
+            "CASE",
+            "BOTTLE"
+          ]
+        },
+        "netUnitPrice": {
+          "type": "string",
+          "pattern": "^[0-9]+(\\.[0-9]{1,4})?$"
+        },
+        "lineTotal": {
+          "type": "string",
+          "pattern": "^[0-9]+(\\.[0-9]{1,4})?$"
+        },
+        "supplyPoolId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid"
+        },
+        "supplyType": {
+          "type": "string",
+          "enum": [
+            "DOMESTIC_ON_HAND",
+            "BONDED_ON_HAND",
+            "HONG_KONG_ON_HAND",
+            "IN_TRANSIT_PRESALE",
+            "OVERSEAS_SOURCING"
+          ]
+        }
+      }
+    }
+  }
+}
