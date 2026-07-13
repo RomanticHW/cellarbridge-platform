@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PartnerDetail } from '../../api/partners';
@@ -144,18 +144,18 @@ describe('partner workspace', () => {
     renderApplication();
     expect(await screen.findByRole('heading', { name: 'Create partner draft' })).toBeVisible();
 
-    const type = async (name: string, value: string) => {
+    const fill = (name: string, value: string) => {
       const input = document.querySelector<HTMLInputElement>(`input[name="${name}"]`);
       expect(input).not.toBeNull();
-      await user.type(input as HTMLInputElement, value);
+      fireEvent.change(input as HTMLInputElement, { target: { value } });
     };
-    await type('legalName', 'Cedar Dining Group');
-    await type('displayName', 'Cedar Dining');
-    await type('contactName', 'Lin Wen');
-    await type('contactEmail', 'lin.wen@example.test');
-    await type('province', 'Shanghai');
-    await type('city', 'Shanghai');
-    await type('line1', '301 Huaihai Road');
+    fill('legalName', 'Cedar Dining Group');
+    fill('displayName', 'Cedar Dining');
+    fill('contactName', 'Lin Wen');
+    fill('contactEmail', 'lin.wen@example.test');
+    fill('province', 'Shanghai');
+    fill('city', 'Shanghai');
+    fill('line1', '301 Huaihai Road');
     await user.click(screen.getByRole('button', { name: 'Save partner draft' }));
 
     await vi.waitFor(() => expect(created).toBe(true));
