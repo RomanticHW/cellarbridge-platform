@@ -80,6 +80,66 @@ body {
   width: 100%;
 }
 
+.quotation-page-stack,
+.public-quotation-stack {
+  width: 100%;
+}
+
+.quotation-page-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.quotation-page-heading h2 {
+  margin-bottom: 4px;
+}
+
+.quotation-filters {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.quotation-line-editor {
+  display: grid;
+  grid-template-columns: minmax(260px, 2fr) repeat(4, minmax(130px, 1fr)) auto;
+  align-items: end;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #dce4e8;
+  border-radius: 8px;
+  background: #fafcfc;
+}
+
+.route-candidate-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.public-quotation-page {
+  min-height: 100vh;
+  padding: 48px 24px;
+  background: #f3f6f7;
+}
+
+.public-quotation-stack {
+  max-width: 1080px;
+  margin: 0 auto;
+}
+
+.public-quotation-header h1 {
+  margin-block: 8px 0;
+}
+
+.public-quotation-total {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 20px;
+}
+
 .catalog-page-stack,
 .catalog-supply-list,
 .quote-selection-list {
@@ -249,6 +309,15 @@ body {
     flex-direction: column;
   }
 
+  .quotation-page-heading {
+    flex-direction: column;
+  }
+
+  .quotation-line-editor,
+  .route-candidate-grid {
+    grid-template-columns: 1fr;
+  }
+
   .partner-filters {
     grid-template-columns: 1fr;
     width: 100%;
@@ -272,6 +341,11 @@ body {
 
   .catalog-workspace {
     grid-template-columns: 1fr;
+  }
+
+  .quotation-line-editor,
+  .route-candidate-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .quote-selection {

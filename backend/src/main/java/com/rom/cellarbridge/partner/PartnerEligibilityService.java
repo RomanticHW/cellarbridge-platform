@@ -18,6 +18,7 @@ public interface PartnerEligibilityService {
       Set<String> serviceRegions,
       Set<String> currencies,
       int paymentTermDays,
+      AddressSnapshot billingAddress,
       Instant capturedAt) {
 
     public EligibilitySnapshot {
@@ -26,4 +27,12 @@ public interface PartnerEligibilityService {
       currencies = Set.copyOf(currencies);
     }
   }
+
+  record AddressSnapshot(
+      String countryCode,
+      String province,
+      String city,
+      String district,
+      String line1,
+      String postalCode) {}
 }

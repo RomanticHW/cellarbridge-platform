@@ -1551,6 +1551,7 @@ components:
             reason: { type: string }
             actorId: { type: string, format: uuid }
             occurredAt: { type: string, format: date-time }
+            originalRecommendation: { $ref: '#/components/schemas/TradeRouteCode' }
     ApprovalRequirement:
       type: object
       required: [ruleId, code, actualValue, threshold, message]
@@ -1588,7 +1589,7 @@ components:
       allOf:
         - $ref: '#/components/schemas/QuotationSummary'
         - type: object
-          required: [partnerSnapshot, lines, subtotal, total, approvalRequirements, allowedActions]
+          required: [partnerSnapshot, requestedDeliveryDate, paymentTermDays, deliveryAddress, lines, subtotal, total, approvalRequirements, allowedActions, timeline]
           properties:
             partnerSnapshot:
               type: object
@@ -1599,6 +1600,10 @@ components:
                 displayName: { type: string }
                 paymentTermDays: { type: integer }
                 sourceVersion: { type: integer, format: int64 }
+                capturedAt: { type: string, format: date-time }
+            requestedDeliveryDate: { type: string, format: date }
+            paymentTermDays: { type: integer, minimum: 0, maximum: 180 }
+            deliveryAddress: { $ref: '#/components/schemas/Address' }
             lines:
               type: array
               items: { $ref: '#/components/schemas/PriceLine' }
@@ -1623,6 +1628,18 @@ components:
             allowedActions:
               type: array
               items: { type: string }
+            timeline:
+              type: array
+              items:
+                type: object
+                required: [id, occurredAt, action]
+                properties:
+                  id: { type: string, format: uuid }
+                  occurredAt: { type: string, format: date-time }
+                  action: { type: string }
+                  previousState: { type: [string, 'null'] }
+                  newState: { type: [string, 'null'] }
+                  safeReason: { type: [string, 'null'] }
     QuotationApprovalRequest:
       type: object
       required: [decision, reason]

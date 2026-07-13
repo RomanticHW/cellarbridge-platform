@@ -917,6 +917,7 @@ export interface components {
                 actorId?: string;
                 /** Format: date-time */
                 occurredAt?: string;
+                originalRecommendation?: components["schemas"]["TradeRouteCode"];
             } | null;
         };
         ApprovalRequirement: {
@@ -959,7 +960,13 @@ export interface components {
                 paymentTermDays: number;
                 /** Format: int64 */
                 sourceVersion: number;
+                /** Format: date-time */
+                capturedAt?: string;
             };
+            /** Format: date */
+            requestedDeliveryDate: string;
+            paymentTermDays: number;
+            deliveryAddress: components["schemas"]["Address"];
             lines: components["schemas"]["PriceLine"][];
             subtotal: components["schemas"]["Money"];
             total: components["schemas"]["Money"];
@@ -976,6 +983,16 @@ export interface components {
                 occurredAt?: string;
             }[];
             allowedActions: string[];
+            timeline: {
+                /** Format: uuid */
+                id: string;
+                /** Format: date-time */
+                occurredAt: string;
+                action: string;
+                previousState?: string | null;
+                newState?: string | null;
+                safeReason?: string | null;
+            }[];
         };
         QuotationApprovalRequest: {
             /** @enum {string} */

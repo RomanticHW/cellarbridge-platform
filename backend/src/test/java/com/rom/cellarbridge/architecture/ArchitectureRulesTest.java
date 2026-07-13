@@ -70,6 +70,24 @@ class ArchitectureRulesTest {
   }
 
   @Test
+  void keepsQuotationBehindTradePlanningForInventoryCollaboration() {
+    noClasses()
+        .that()
+        .resideInAPackage("..quotation..")
+        .should()
+        .dependOnClassesThat()
+        .resideInAPackage("..inventory..")
+        .check(productionClasses);
+    noClasses()
+        .that()
+        .resideInAPackage("..tradeplanning..")
+        .should()
+        .dependOnClassesThat()
+        .resideInAPackage("..quotation..")
+        .check(productionClasses);
+  }
+
+  @Test
   void forbidsGenericDomainDumpingGroundPackages() {
     assertThat(productionClasses.stream())
         .noneMatch(

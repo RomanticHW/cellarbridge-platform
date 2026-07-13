@@ -109,6 +109,7 @@ The documentation is organized from evidence to delivery. Each layer narrows the
 - [Identity and access runbook](05-delivery/13-identity-access-runbook.md)
 - [Partner onboarding runbook](05-delivery/14-partner-onboarding-runbook.md)
 - [Catalog supply search runbook](05-delivery/15-catalog-supply-search-runbook.md)
+- [Quotation and trade-planning runbook](05-delivery/16-quotation-trade-planning-runbook.md)
 
 ## Change control
 
