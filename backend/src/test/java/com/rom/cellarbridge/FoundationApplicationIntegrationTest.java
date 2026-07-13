@@ -30,10 +30,10 @@ class FoundationApplicationIntegrationTest extends PostgresIntegrationTestSuppor
   private final HttpClient httpClient = HttpClient.newHttpClient();
 
   @Test
-  void startsAgainstPostgresAndAppliesIdentityAccessMigration() {
+  void startsAgainstPostgresAndAppliesAllCurrentMigrations() {
     assertThat(flyway.info().applied())
         .extracting(migration -> migration.getVersion().getVersion())
-        .containsExactly("2");
+        .containsExactly("2", "3");
   }
 
   @Test
