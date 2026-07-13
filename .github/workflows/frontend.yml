@@ -1,0 +1,58 @@
+name: Frontend quality
+
+on:
+  workflow_call:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - 'contracts/openapi/**'
+      - '.github/workflows/frontend.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.12.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.18.0'
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify generated API types
+        run: pnpm check:generated
+
+      - name: Typecheck, lint, and format check
+        run: pnpm typecheck && pnpm lint && pnpm format:check
+
+      - name: Unit tests and coverage
+        run: pnpm test:coverage
+
+      - name: Build production assets
+        run: pnpm build
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Browser smoke and accessibility
+        run: pnpm test:e2e

@@ -1,0 +1,81 @@
+name: cellarbridge-core
+
+services:
+  postgres:
+    image: postgres:18.4-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-cellarbridge}
+      POSTGRES_USER: ${POSTGRES_USER:-cellarbridge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cellarbridge_local}
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.7.0
+    command: ['start-dev']
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:-local-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-local-admin-change-me}
+      KC_HEALTH_ENABLED: 'true'
+    ports:
+      - '${KEYCLOAK_PORT:-8081}:8080'
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'exec 3<>/dev/tcp/127.0.0.1/9000; printf "GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3; grep -q "200 OK" <&3',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ../..
+      dockerfile: backend/Dockerfile
+    environment:
+      CELLARBRIDGE_DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-cellarbridge}
+      CELLARBRIDGE_DB_USERNAME: ${POSTGRES_USER:-cellarbridge}
+      CELLARBRIDGE_DB_PASSWORD: ${POSTGRES_PASSWORD:-cellarbridge_local}
+      CELLARBRIDGE_COMMIT: ${CELLARBRIDGE_COMMIT:-local}
+    ports:
+      - '${BACKEND_PORT:-8080}:8080'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:8080/actuator/health/readiness | grep -q UP']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 15s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ../..
+      dockerfile: frontend/Dockerfile
+    ports:
+      - '${FRONTEND_PORT:-5173}:80'
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1/ | grep -q "CellarBridge Operations"']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+volumes:
+  postgres-data:

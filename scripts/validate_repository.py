@@ -43,11 +43,23 @@ FORBIDDEN_FILE_NAMES = {
     "IMG_9944.png",
 }
 TEXT_SUFFIXES = {".md", ".yaml", ".yml", ".json", ".csv", ".txt", ".py", ".xml"}
+IGNORED_PATH_PARTS = {
+    ".git",
+    ".pnpm-store",
+    "coverage",
+    "dist",
+    "node_modules",
+    "playwright-report",
+    "target",
+    "test-results",
+}
 
 
 def repository_files() -> list[Path]:
     return sorted(
-        path for path in ROOT.rglob("*") if path.is_file() and ".git" not in path.parts
+        path
+        for path in ROOT.rglob("*")
+        if path.is_file() and not any(part in IGNORED_PATH_PARTS for part in path.parts)
     )
 
 

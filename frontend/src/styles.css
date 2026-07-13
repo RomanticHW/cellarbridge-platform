@@ -1,0 +1,120 @@
+:root {
+  color: #172b3a;
+  background: #f3f6f7;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+.app-shell {
+  min-height: 100vh;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-inline: 28px;
+  background: #17324d;
+}
+
+.brand {
+  color: #fff;
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.brand-subtitle {
+  margin-left: 12px;
+  color: #a9becf;
+}
+
+.app-sidebar {
+  padding-top: 18px;
+  background: #fff;
+  border-right: 1px solid #dde5e8;
+}
+
+.app-content {
+  padding: 32px;
+  background: #f3f6f7;
+}
+
+.app-footer {
+  color: #62717b;
+  text-align: center;
+  background: #f3f6f7;
+}
+
+.page-introduction {
+  max-width: 760px;
+}
+
+.status-card {
+  height: 100%;
+}
+
+.planned-navigation-item,
+.module-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.health-status-up {
+  color: #0c4f3e;
+  background: #e1f2eb;
+  border-color: #8fc6b5;
+}
+
+.health-status-warning {
+  color: #5c4600;
+  background: #fff3c4;
+  border-color: #d8bb50;
+}
+
+.module-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.module-item {
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid #dce4e8;
+  border-radius: 6px;
+  background: #fafcfc;
+}
+
+.fatal-error,
+.not-found-page {
+  max-width: 760px;
+  margin: 72px auto;
+  padding: 24px;
+}
+
+@media (max-width: 576px) {
+  .app-header {
+    padding-inline: 16px;
+  }
+
+  .brand-subtitle {
+    display: none;
+  }
+
+  .app-content {
+    padding: 20px 16px;
+  }
+}
