@@ -6,7 +6,7 @@ ENV_FILE ?= $(if $(wildcard .env),.env,.env.example)
 
 .PHONY: help validate validate-docs validate-contracts validate-public validate-backend \
 	validate-frontend validate-compose test test-backend test-frontend dev-core stop-core smoke-core \
-	identity-e2e partner-e2e generate-api-client
+	identity-e2e partner-e2e catalog-e2e catalog-benchmark generate-api-client
 
 help:
 	@printf '%s\n' \
@@ -18,6 +18,8 @@ help:
 	  '  make smoke-core          Build, verify, and clean an isolated core profile' \
 	  '  make identity-e2e        Verify real OIDC login and two-tenant isolation' \
 	  '  make partner-e2e         Verify partner onboarding and independent review' \
+	  '  make catalog-e2e         Verify catalog search and local quote selection' \
+	  '  make catalog-benchmark   Seed and benchmark PostgreSQL catalog search' \
 	  '  make generate-api-client Regenerate TypeScript API types from OpenAPI'
 
 validate: validate-docs validate-contracts validate-public validate-backend validate-frontend validate-compose
@@ -63,6 +65,12 @@ identity-e2e:
 
 partner-e2e:
 	./scripts/partner_onboarding_e2e.sh
+
+catalog-e2e:
+	./scripts/catalog_supply_e2e.sh
+
+catalog-benchmark:
+	./scripts/catalog_search_benchmark.sh
 
 generate-api-client:
 	cd frontend && $(PNPM) generate:api

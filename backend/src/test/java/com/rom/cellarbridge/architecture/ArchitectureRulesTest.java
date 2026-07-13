@@ -59,6 +59,17 @@ class ArchitectureRulesTest {
   }
 
   @Test
+  void keepsCatalogIndependentFromInventoryPerApprovedDependencyDirection() {
+    noClasses()
+        .that()
+        .resideInAPackage("..catalog..")
+        .should()
+        .dependOnClassesThat()
+        .resideInAPackage("..inventory..")
+        .check(productionClasses);
+  }
+
+  @Test
   void forbidsGenericDomainDumpingGroundPackages() {
     assertThat(productionClasses.stream())
         .noneMatch(

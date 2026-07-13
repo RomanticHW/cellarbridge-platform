@@ -144,6 +144,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/catalog/skus/{skuId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a current or inactive SKU and its visible supply summaries */
+        get: operations["getSku"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/quotations": {
         parameters: {
             query?: never;
@@ -622,6 +639,8 @@ export interface components {
         TradeRouteCode: "SH_GENERAL_TRADE" | "NB_BONDED_B2B" | "HK_FREE_TRADE";
         /** @enum {string} */
         SupplyType: "DOMESTIC_ON_HAND" | "BONDED_ON_HAND" | "HONG_KONG_ON_HAND" | "IN_TRANSIT_PRESALE" | "OVERSEAS_SOURCING";
+        /** @enum {string} */
+        AvailabilityClass: "AVAILABLE" | "LIMITED" | "UNAVAILABLE" | "REQUIRES_CONFIRMATION";
         PartnerSummary: {
             /** Format: uuid */
             id: string;
@@ -760,21 +779,46 @@ export interface components {
             displayName: string;
             producerName?: string;
             regionName?: string;
+            countryCode?: string;
+            /** @enum {string} */
+            category?: "RED" | "WHITE" | "ROSE" | "SPARKLING" | "FORTIFIED" | "DESSERT" | "OTHER";
             vintage: string;
             volumeMl: number;
             unitsPerCase: number;
+            /** @enum {string} */
+            packageType?: "CASE" | "WOODEN_CASE" | "GIFT_BOX" | "BOTTLE";
+            /** @enum {string} */
+            status?: "DRAFT" | "ACTIVE" | "INACTIVE";
             /** Format: int64 */
             sourceVersion: number;
+            /** Format: date-time */
+            updatedAt?: string;
+        };
+        ExactLotAvailability: {
+            /** Format: uuid */
+            lotId: string;
+            lotCode: string;
+            warehouseLabel: string;
+            onHandQuantity: components["schemas"]["Quantity"];
+            reservedQuantity: components["schemas"]["Quantity"];
+            availableQuantity: components["schemas"]["Quantity"];
+            /** Format: date-time */
+            availableFrom?: string | null;
+            /** Format: date-time */
+            dataAsOf: string;
         };
         SupplySummary: {
             /** Format: uuid */
             supplyPoolId: string;
             supplyType: components["schemas"]["SupplyType"];
             locationLabel: string;
-            displayedAvailableQuantity?: components["schemas"]["Quantity"];
+            displayedAvailableQuantity?: components["schemas"]["Quantity"] | null;
+            availabilityLevel: components["schemas"]["AvailabilityClass"];
             /** @enum {string} */
-            availabilityLevel: "AVAILABLE" | "LIMITED" | "UNAVAILABLE" | "REQUIRES_CONFIRMATION";
+            displayQuantityBand: "NONE" | "LOW" | "MEDIUM" | "HIGH" | "CONFIRMATION_REQUIRED";
             automaticallyReservable: boolean;
+            /** @description Empty unless the actor has exact-stock permission and warehouse scope. */
+            exactLots: components["schemas"]["ExactLotAvailability"][];
             /** Format: date-time */
             estimatedAvailableAt?: string | null;
             /** Format: date-time */
@@ -787,6 +831,8 @@ export interface components {
         SkuSearchPage: {
             items: components["schemas"]["SkuSearchItem"][];
             pageInfo: components["schemas"]["PageInfo"];
+            /** Format: date-time */
+            dataAsOf: string;
             availabilityDisclaimer: string;
         };
         /** @enum {string} */
@@ -1696,9 +1742,18 @@ export interface operations {
                 pageSize?: components["parameters"]["PageSize"];
                 cursor?: components["parameters"]["Cursor"];
                 keyword?: string;
+                producer?: string;
+                region?: string;
+                countryCode?: string;
+                category?: "RED" | "WHITE" | "ROSE" | "SPARKLING" | "FORTIFIED" | "DESSERT" | "OTHER";
                 vintage?: string;
+                volumeMl?: number;
                 supplyType?: components["schemas"]["SupplyType"][];
+                availabilityClass?: components["schemas"]["AvailabilityClass"][];
                 automaticallyReservable?: boolean;
+                availableFrom?: string;
+                availableTo?: string;
+                sort?: "relevance" | "name" | "-updatedAt" | "vintage";
             };
             header?: never;
             path?: never;
@@ -1716,6 +1771,34 @@ export interface operations {
                 };
             };
             400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
+        };
+    };
+    getSku: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                skuId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description SKU detail */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkuSearchItem"];
+                };
+            };
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
+            404: components["responses"]["NotFound"];
         };
     };
     listQuotations: {

@@ -19,7 +19,7 @@
 |---:|---|---|---|---|---|---|
 | 02 | UC-IAM-001 | FR-IAM-001~005 | security/tenancy、permission matrix、ADR-006/010 | `GET /me` | JWT negative matrix、双租户隔离、React protected route | Verified |
 | 03 | UC-PAR-001/002 | FR-PAR-001~006 | `partner` aggregate/state machine, `V3__partner_onboarding.sql` | `/partners*`; persisted Partner lifecycle events | `PartnerTest`、`PartnerApiIntegrationTest`、`PartnerWorkspace.test.tsx`、真实 OIDC Playwright | Verified |
-| 04 | UC-CAT-001, UC-INV-001 | FR-CAT-001~004, FR-INV-001~003 | Catalog/Inventory boundaries、ADR-009 | `GET /catalog/skus` | PostgreSQL query plan、search/permission/UI tests | Designed |
+| 04 | UC-CAT-001, UC-INV-001 | FR-CAT-001~004, FR-INV-001~003 | Catalog/Inventory boundaries、`V4__catalog_products_and_search_projection.sql`、`V5__inventory_supply_model.sql`、ADR-009 | `GET /catalog/skus`、`GET /catalog/skus/{skuId}` | domain/API/UI tests、真实 OIDC Playwright、12k/36k/36k PostgreSQL query plan | Verified |
 | 05 | UC-QUO-001~003, UC-TRD-001 | FR-QUO-001~009, FR-TRD-001~006 | Quotation/Trade Planning aggregates, policies, snapshots | quotation create/update/evaluate/submit/approve/issue | money properties、route golden cases、approval/field/E2E | Designed |
 | 06 | UC-QUO-004 | FR-QUO-009~011 | quotation acceptance state/idempotency/security | portal quotation + acceptance; `QuotationAcceptedV1` | safe DTO allow-list、expiry race、concurrent acceptance | Designed |
 | 07 | UC-ORD-001 | FR-ORD-001~004 | TradeOrder aggregate、reliable publication、Inbox | orders query; `QuotationAcceptedV1` → `TradeOrderCreatedV1` | unique order、duplicate event、crash-point recovery | Designed |

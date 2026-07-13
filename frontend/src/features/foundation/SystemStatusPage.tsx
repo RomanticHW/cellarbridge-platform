@@ -20,8 +20,9 @@ export function SystemStatusPage() {
             System status
           </Typography.Title>
           <Typography.Paragraph type="secondary" className="page-introduction">
-            Identity, tenant resolution, and permission-aware access are available. Remaining
-            business workflows stay planned until their complete vertical slices are verified.
+            Identity, partner onboarding, catalog search, and permission-aware supply visibility are
+            available. Remaining business workflows stay planned until their complete vertical
+            slices are verified.
           </Typography.Paragraph>
         </div>
 
@@ -35,7 +36,11 @@ export function SystemStatusPage() {
                 <Descriptions.Item label="Backend">Java 21 · Spring Boot 4.1</Descriptions.Item>
                 <Descriptions.Item label="Frontend">React 19.2 · TypeScript</Descriptions.Item>
                 <Descriptions.Item label="Delivery stage">
-                  <Tag color="green">Identity access available</Tag>
+                  <Space wrap>
+                    <Tag color="green">Identity access available</Tag>
+                    <Tag color="green">Partner onboarding available</Tag>
+                    <Tag color="green">Catalog supply search available</Tag>
+                  </Space>
                 </Descriptions.Item>
               </Descriptions>
             </Card>
@@ -64,8 +69,8 @@ export function SystemStatusPage() {
 
         <Card title="Business modules">
           <Typography.Paragraph type="secondary">
-            Identity and access is available from the navigation. Each module below remains planned
-            until its complete vertical slice is implemented and verified.
+            Available modules are linked in the navigation. Each module below remains planned until
+            its complete vertical slice is implemented and verified.
           </Typography.Paragraph>
           <div className="module-grid" aria-label="Planned business modules">
             {plannedModules.map((module) => (

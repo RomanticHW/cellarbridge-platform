@@ -40,18 +40,19 @@
 
 ## 5. 商品
 
-合成 producer/region/category，5,000 Product/15,000 SKU benchmark；主演示至少：
+合成 producer/region/category。独立 benchmark 使用 4,000 Product / 12,000 SKU / 36,000 供给投影 / 36,000 lot；主演示包含：
 
-- CB-BDX-2019-750X6；
-- CB-BGN-2020-750X6；
-- CB-ALS-NV-750X6；
+- CB-MTV-2019-750X6 与 2021 年 1.5L 变体；
+- CB-ETB-2022-750X6；
+- CB-YL-2020-750X6（中文检索）；
+- CB-NFS-NV-750X6；
 - 包含 NV、不同容量/箱规、停用 SKU、模糊检索词。
 
 ## 6. 供给
 
-- 成都国内仓 DOMESTIC_ON_HAND；
-- 宁波演示保税池 BONDED_ON_HAND；
-- 香港演示仓 HONG_KONG_ON_HAND；
+- Eastbank 国内仓 DOMESTIC_ON_HAND；
+- Harborlight 保税池 BONDED_ON_HAND；
+- Harbor Quay 香港仓 HONG_KONG_ON_HAND；
 - 在途预售/海外代采 reference pools；
 - 热点批次总量不足以满足两个并发订单；
 - 多批次相同 SKU 用于稳定分配；

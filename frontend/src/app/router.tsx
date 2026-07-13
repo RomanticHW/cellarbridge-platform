@@ -32,6 +32,11 @@ const PartnerDetailPage = lazy(() =>
     default: module.PartnerDetailPage,
   })),
 );
+const CatalogSearchPage = lazy(() =>
+  import('../features/catalog/CatalogSearchPage').then((module) => ({
+    default: module.CatalogSearchPage,
+  })),
+);
 
 function FoundationRoute() {
   return (
@@ -77,6 +82,20 @@ function PartnerRoute({ page }: { page: 'list' | 'editor' | 'detail' }) {
   );
 }
 
+function CatalogRoute() {
+  return (
+    <Suspense
+      fallback={
+        <Flex role="status" aria-label="Loading catalog and supply" justify="center">
+          <Spin size="large" />
+        </Flex>
+      }
+    >
+      <CatalogSearchPage />
+    </Suspense>
+  );
+}
+
 export const router = createBrowserRouter([
   { path: '/', element: <Navigate to="/app" replace /> },
   { path: '/login', element: <LoginPage /> },
@@ -94,6 +113,7 @@ export const router = createBrowserRouter([
           { path: 'partners/new', element: <PartnerRoute page="editor" /> },
           { path: 'partners/:partnerId/edit', element: <PartnerRoute page="editor" /> },
           { path: 'partners/:partnerId', element: <PartnerRoute page="detail" /> },
+          { path: 'catalog', element: <CatalogRoute /> },
         ],
       },
     ],

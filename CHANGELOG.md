@@ -4,10 +4,14 @@ All notable changes to this project are documented in this file. The project fol
 
 ## [Unreleased]
 
+### Added
+
+- runnable identity/access and partner-onboarding vertical slices;
+- tenant-scoped wine/SKU and five-mode supply model with PostgreSQL FTS/trigram search;
+- permission-aware catalog workspace, local quote selection, OIDC browser verification, and reproducible query benchmark.
+
 ### Planned
 
-- Java and React workspace bootstrap
-- Identity, tenant, and permission baseline
 - End-to-end quotation, order, inventory, and fulfillment slices
 - Operational dashboards and public demo release
 
