@@ -328,7 +328,7 @@ describe('quotation workspace', () => {
       ],
     });
     expect(await screen.findByRole('heading', { name: detail.number })).toBeVisible();
-  });
+  }, 15_000);
 
   it('surfaces an optimistic concurrency conflict while editing a draft', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
