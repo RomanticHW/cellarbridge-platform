@@ -1,11 +1,12 @@
 openapi: 3.1.0
 info:
   title: CellarBridge API
-  version: 1.0.0-design
+  version: 1.1.0
   summary: Contract baseline for B2B wine quotation, order, inventory and fulfillment
   description: |
-    This is the design-first API contract for CellarBridge. All examples are synthetic.
-    The implementation status is Design Baseline v1.0; endpoints are not yet implemented.
+    This contract remains the design-first integration baseline for CellarBridge. All examples are synthetic.
+    The authenticated `/me` endpoint is implemented by the identity and tenant-access slice;
+    remaining business endpoints are delivered incrementally and retain their approved contracts.
     Internal commercial fields and customer-portal fields intentionally use separate schemas.
   license:
     name: Apache-2.0
@@ -44,6 +45,8 @@ paths:
                 $ref: '#/components/schemas/CurrentUser'
         '401':
           $ref: '#/components/responses/AuthenticationRequired'
+        '403':
+          $ref: '#/components/responses/AccessDenied'
   /partners:
     get:
       tags: [Partners]

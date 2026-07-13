@@ -18,7 +18,7 @@ class PlatformExceptionHandlerTest {
 
   private final MockMvc mockMvc =
       MockMvcBuilders.standaloneSetup(new FailingController())
-          .setControllerAdvice(new PlatformExceptionHandler())
+          .setControllerAdvice(new PlatformExceptionHandler(new ProblemDetailsFactory()))
           .build();
 
   @Test
@@ -29,7 +29,9 @@ class PlatformExceptionHandlerTest {
         .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
         .andExpect(jsonPath("$.title").value("Internal server error"))
         .andExpect(jsonPath("$.detail").value("The request could not be completed."))
-        .andExpect(jsonPath("$.errorCode").value("INTERNAL_ERROR"))
+        .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"))
+        .andExpect(jsonPath("$.traceId").isNotEmpty())
+        .andExpect(jsonPath("$.retryable").value(true))
         .andExpect(content().string(not(containsString("sensitive-marker"))))
         .andExpect(content().string(not(containsString("stackTrace"))));
   }
