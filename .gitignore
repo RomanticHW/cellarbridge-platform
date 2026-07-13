@@ -23,6 +23,7 @@ target/
 .mvn/timing.properties
 *.class
 hs_err_pid*
+*.tsbuildinfo
 
 # Node and frontend
 node_modules/
@@ -40,6 +41,8 @@ volumes/
 
 # Generated contracts and reports
 generated/
+!frontend/src/api/generated/
+!frontend/src/api/generated/**
 build/
 reports/
 
