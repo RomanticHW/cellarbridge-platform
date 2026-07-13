@@ -10,6 +10,11 @@ export type QuotationApprovalRequest = components['schemas']['QuotationApprovalR
 export type QuotationCommandResult = components['schemas']['QuotationCommandResult'];
 export type RouteEvaluation = components['schemas']['RouteEvaluation'];
 export type PublicQuotation = components['schemas']['PublicQuotation'];
+export type QuotationAcceptanceRequest = components['schemas']['QuotationAcceptanceRequest'];
+export type QuotationAcceptanceResult = components['schemas']['QuotationAcceptanceResult'];
+export type QuotationRejectionRequest = components['schemas']['QuotationRejectionRequest'];
+export type QuotationRejectionResult = components['schemas']['QuotationRejectionResult'];
+export type QuotationRejectionReason = components['schemas']['QuotationRejectionReason'];
 export type TradeRouteCode = components['schemas']['TradeRouteCode'];
 export type QuotationListQuery = NonNullable<operations['listQuotations']['parameters']['query']>;
 export type IssueQuotationResult =
@@ -172,8 +177,52 @@ export async function getPublicQuotation(
 ): Promise<PublicQuotation> {
   const { data, error, response } = await apiClient.GET('/portal/quotations/{publicToken}', {
     params: { path: { publicToken } },
+    cache: 'no-store',
+    referrerPolicy: 'no-referrer',
     signal,
   });
+  if (data !== undefined) return data;
+  throw apiError(response, error);
+}
+
+export async function acceptPublicQuotation(
+  publicToken: string,
+  idempotencyKey: string,
+  request: QuotationAcceptanceRequest,
+): Promise<QuotationAcceptanceResult> {
+  const { data, error, response } = await apiClient.POST(
+    '/portal/quotations/{publicToken}/acceptance',
+    {
+      params: {
+        path: { publicToken },
+        header: { 'Idempotency-Key': idempotencyKey },
+      },
+      body: request,
+      cache: 'no-store',
+      referrerPolicy: 'no-referrer',
+    },
+  );
+  if (data !== undefined) return data;
+  throw apiError(response, error);
+}
+
+export async function rejectPublicQuotation(
+  publicToken: string,
+  idempotencyKey: string,
+  request: QuotationRejectionRequest,
+): Promise<QuotationRejectionResult> {
+  const { data, error, response } = await apiClient.POST(
+    '/portal/quotations/{publicToken}/rejection',
+    {
+      params: {
+        path: { publicToken },
+        header: { 'Idempotency-Key': idempotencyKey },
+      },
+      body: request,
+      cache: 'no-store',
+      referrerPolicy: 'no-referrer',
+    },
+  );
   if (data !== undefined) return data;
   throw apiError(response, error);
 }

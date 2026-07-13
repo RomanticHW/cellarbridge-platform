@@ -301,6 +301,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/portal/quotations/{publicToken}/rejection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject a valid quotation idempotently */
+        post: operations["rejectPublicQuotation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/orders": {
         parameters: {
             query?: never;
@@ -1012,29 +1029,60 @@ export interface components {
         PublicQuotation: {
             number: string;
             revision: number;
+            supplierPublicId?: string;
             supplierDisplayName: string;
+            customerPublicId?: string;
             customerDisplayName: string;
             /** @enum {string} */
             status: "SENT" | "ACCEPTED" | "REJECTED_BY_CUSTOMER" | "WITHDRAWN" | "EXPIRED" | "CONVERTED";
             /** Format: date-time */
             expiresAt: string;
-            lines: {
-                description: string;
-                vintage?: string;
-                package?: string;
-                quantity: components["schemas"]["Quantity"];
-                unitPrice: components["schemas"]["Money"];
-                lineTotal: components["schemas"]["Money"];
-            }[];
-            total: components["schemas"]["Money"];
-            deliveryOption: {
-                label: string;
-                estimatedWindow: string;
-            };
+            lines: components["schemas"]["PublicQuotationLine"][];
+            subtotal: components["schemas"]["PublicMoney"];
+            fees: components["schemas"]["PublicMoney"];
+            total: components["schemas"]["PublicMoney"];
+            deliveryOption: components["schemas"]["PublicDeliveryOption"];
             paymentTermDays: number;
             termsVersion: string;
+            termsSummary: string[];
             allowedActions: ("ACCEPT" | "REJECT" | "VIEW_ORDER")[];
+            decisionReceipt: components["schemas"]["PublicQuotationDecisionReceipt"] | null;
             orderNumber?: string | null;
+        };
+        PublicMoney: {
+            amount: string;
+            currency: string;
+        };
+        PublicQuantity: {
+            value: string;
+            /** @enum {string} */
+            unit: "CASE" | "BOTTLE";
+        };
+        PublicQuotationLine: {
+            skuCode: string;
+            description: string;
+            vintage?: string;
+            package?: string;
+            quantity: components["schemas"]["PublicQuantity"];
+            unitPrice: components["schemas"]["PublicMoney"];
+            lineTotal: components["schemas"]["PublicMoney"];
+        };
+        PublicDeliveryOption: {
+            label: string;
+            estimatedWindow: string;
+        };
+        PublicQuotationDecisionReceipt: {
+            /** Format: uuid */
+            decisionId: string;
+            /** @enum {string} */
+            decision: "ACCEPTED" | "REJECTED_BY_CUSTOMER";
+            /** Format: date-time */
+            decidedAt: string;
+            reference?: string;
+        };
+        QuotationAcceptanceRequest: {
+            acceptedTermsVersion: string;
+            buyerReference?: string;
         };
         QuotationAcceptanceResult: {
             /** Format: uuid */
@@ -1049,6 +1097,22 @@ export interface components {
             /** Format: uuid */
             orderId?: string | null;
             orderNumber?: string | null;
+            replayed: boolean;
+        };
+        /** @enum {string} */
+        QuotationRejectionReason: "PRICE" | "DELIVERY_TIMING" | "PAYMENT_TERMS" | "PRODUCT_SELECTION" | "OTHER";
+        QuotationRejectionRequest: {
+            reasonCategory?: components["schemas"]["QuotationRejectionReason"];
+        };
+        QuotationRejectionResult: {
+            /** Format: uuid */
+            rejectionId: string;
+            quotationNumber: string;
+            /** @constant */
+            status: "REJECTED_BY_CUSTOMER";
+            /** Format: date-time */
+            rejectedAt: string;
+            reasonCategory?: components["schemas"]["QuotationRejectionReason"] | null;
             replayed: boolean;
         };
         /** @enum {string} */
@@ -1434,6 +1498,24 @@ export interface components {
         };
         /** @description Syntactically valid request cannot satisfy the business preconditions */
         BusinessUnprocessable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description The public portal request rate has been exceeded */
+        RateLimited: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description A required dependency is temporarily unavailable */
+        DependencyUnavailable: {
             headers: {
                 [name: string]: unknown;
             };
@@ -2082,6 +2164,7 @@ export interface operations {
             };
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
         };
     };
     acceptPublicQuotation: {
@@ -2097,10 +2180,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    acceptedTermsVersion: string;
-                    buyerReference?: string;
-                };
+                "application/json": components["schemas"]["QuotationAcceptanceRequest"];
             };
         };
         responses: {
@@ -2108,6 +2188,7 @@ export interface operations {
             200: {
                 headers: {
                     "Idempotency-Replayed": components["headers"]["IdempotencyReplayed"];
+                    "Cache-Control"?: "no-store";
                     [name: string]: unknown;
                 };
                 content: {
@@ -2117,13 +2198,65 @@ export interface operations {
             /** @description Quotation accepted */
             201: {
                 headers: {
+                    "Idempotency-Replayed": components["headers"]["IdempotencyReplayed"];
+                    "Cache-Control"?: "no-store";
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["QuotationAcceptanceResult"];
                 };
             };
+            400: components["responses"]["ValidationFailed"];
+            404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+            503: components["responses"]["DependencyUnavailable"];
+        };
+    };
+    rejectPublicQuotation: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                publicToken: components["parameters"]["PublicToken"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuotationRejectionRequest"];
+            };
+        };
+        responses: {
+            /** @description Existing rejection replayed */
+            200: {
+                headers: {
+                    "Idempotency-Replayed": components["headers"]["IdempotencyReplayed"];
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuotationRejectionResult"];
+                };
+            };
+            /** @description Quotation rejected by the customer */
+            201: {
+                headers: {
+                    "Idempotency-Replayed": components["headers"]["IdempotencyReplayed"];
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuotationRejectionResult"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+            503: components["responses"]["DependencyUnavailable"];
         };
     };
     listOrders: {

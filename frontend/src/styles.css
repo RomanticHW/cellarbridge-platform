@@ -140,6 +140,32 @@ body {
   padding-top: 20px;
 }
 
+.public-quotation-totals {
+  max-width: 420px;
+  margin-top: 20px;
+  margin-left: auto;
+}
+
+.public-terms-list {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.public-terms-list li + li {
+  margin-top: 8px;
+}
+
+.public-decision-form,
+.public-rejection-reason {
+  width: 100%;
+}
+
+.public-rejection-reason {
+  display: grid;
+  max-width: 420px;
+  gap: 8px;
+}
+
 .catalog-page-stack,
 .catalog-supply-list,
 .quote-selection-list {
