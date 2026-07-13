@@ -33,11 +33,14 @@ jobs:
   quotation-trade-planning:
     uses: ./.github/workflows/quotation-trade-planning.yml
 
+  customer-quotation-acceptance:
+    uses: ./.github/workflows/customer-quotation-acceptance.yml
+
   required:
     name: Required quality gate
     runs-on: ubuntu-latest
     if: always()
-    needs: [docs-contracts, backend, frontend, security, identity-access, partner-onboarding, catalog-supply-search, quotation-trade-planning]
+    needs: [docs-contracts, backend, frontend, security, identity-access, partner-onboarding, catalog-supply-search, quotation-trade-planning, customer-quotation-acceptance]
     steps:
       - name: Require every quality workflow
         env:
@@ -49,6 +52,7 @@ jobs:
           PARTNER_RESULT: ${{ needs['partner-onboarding'].result }}
           CATALOG_RESULT: ${{ needs['catalog-supply-search'].result }}
           QUOTATION_RESULT: ${{ needs['quotation-trade-planning'].result }}
+          ACCEPTANCE_RESULT: ${{ needs['customer-quotation-acceptance'].result }}
         run: |
           test "${DOCS_RESULT}" = "success"
           test "${BACKEND_RESULT}" = "success"
@@ -58,3 +62,4 @@ jobs:
           test "${PARTNER_RESULT}" = "success"
           test "${CATALOG_RESULT}" = "success"
           test "${QUOTATION_RESULT}" = "success"
+          test "${ACCEPTANCE_RESULT}" = "success"

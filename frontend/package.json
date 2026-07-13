@@ -19,7 +19,8 @@
     "test:e2e:identity": "playwright test --config playwright.live.config.ts",
     "test:e2e:partner": "playwright test --config playwright.partner.config.ts",
     "test:e2e:catalog": "playwright test --config playwright.catalog.config.ts",
-    "test:e2e:quotation": "playwright test --config playwright.quotation.config.ts"
+    "test:e2e:quotation": "playwright test --config playwright.quotation.config.ts",
+    "test:e2e:acceptance": "playwright test --config playwright.acceptance.config.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "5.4.0",
