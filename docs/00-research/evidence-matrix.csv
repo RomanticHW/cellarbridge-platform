@@ -1,0 +1,21 @@
+id,claim,classification,confidence,source,design_impact
+E-001,Company founded in Chengdu in 2014,CONFIRMED,high,S-001,Historical context
+E-002,Company positions itself as an international alcoholic beverage trading service,CONFIRMED,high,S-001,Choose trade and supply-chain scenario
+E-003,WineMatcher is a named product or service,CONFIRMED,high,S-001,Catalog and B2B transaction entry
+E-004,Company states it built supply-chain software covering goods logistics customs and customers,CONFIRMED,high,S-001,End-to-end operations platform
+E-005,Supply focus includes Bordeaux Burgundy and French fine wine,CONFIRMED,high,S-001,Rich wine catalog model
+E-006,Delivery modes include Shanghai Ningbo and Hong Kong,CONFIRMED,high,S-001,Trade-route model
+E-007,Company states more than 2500 wines procured internationally in 2023,CONFIRMED,medium-high,S-001,PostgreSQL search sufficient
+E-008,Company states more than 2000 domestic commercial customers,CONFIRMED,medium-high,S-001,Enterprise pagination tenancy and permissions
+E-009,In-transit presale and overseas sourcing are supported,CONFIRMED,high,S-001,Supply types beyond on-hand stock
+E-010,ShunShip offered France-to-Shanghai consolidated logistics,CONFIRMED,high,S-001,Multi-step fulfillment
+E-011,WineMatcher is described as content-driven B2B trading,CONFIRMED,high,S-001,Catalog content serves transactions
+E-012,Operating model combines platform capability with trade fulfillment,INFERRED,high,E-002..E-011,Product positioning
+E-013,Customer-specific pricing is likely,INFERRED,medium-high,B2B pattern,Quotation aggregate
+E-014,Discount margin or terms may require approval,INFERRED,medium,B2B control pattern,Configurable approval policy
+E-015,Automated explainable trade-route comparison,DEMO_ENHANCEMENT,high-product-value,E-006,Trade-planning engine
+E-016,Idempotent quote-to-order conversion,DEMO_ENHANCEMENT,high-engineering-value,Transaction correctness,Idempotency and unique constraint
+E-017,Atomic inventory reservation,DEMO_ENHANCEMENT,high-engineering-value,Supply and order closure,Concurrency proof
+E-018,Reliable event-driven module collaboration,DEMO_ENHANCEMENT,high-engineering-value,Long-running workflow,At-least-once and inbox
+E-019,Simplified customer credit policy,DEMO_ENHANCEMENT,medium,B2B terms,Controlled credit scenario
+E-020,Receivable and payment records,DEMO_ENHANCEMENT,high,Order-to-cash,Commercial closure
