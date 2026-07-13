@@ -1,7 +1,7 @@
 # 实现状态
 
 Baseline version: **Design Baseline v1.0**  
-Status date: **2026-07-13**
+Status date: **2026-07-14**
 
 ## 1. 状态定义
 
@@ -27,13 +27,14 @@ Status date: **2026-07-13**
 | Identity, tenant and permission access | Available | OIDC Code + PKCE, JWT validation, `/me`, two-tenant mapping/isolation and protected permission-aware navigation |
 | Broader application security controls | Partial | Task 02 delivers identity boundary, safe audit logging, CORS and response headers; later threat, dependency and release evidence remains planned |
 | Partner onboarding and eligibility | Available | tenant-scoped draft/review lifecycle, duplicate controls, immutable eligibility, React workspace and real OIDC Playwright flow |
-| Catalog/quotation/order/inventory | Designed | implementation not started |
+| Catalog and supply search | Available | Catalog/Inventory model, FTS + trigram search, field/warehouse permissions, React workspace, real OIDC E2E and reproducible benchmark |
+| Quotation/order/inventory reservation | Designed | implementation not started; Task 04 inventory behavior is read-only and non-committing |
 | Fulfillment/exception/settlement/reporting | Designed | implementation not started |
 | Performance/security/release evidence | Planned | tasks 13–15 |
 
 ## 3. 声明
 
-当前可运行范围包括 Task 01 工程骨架、Task 02 身份访问纵向切片与 Task 03 商业客户准入纵向切片：本地 Keycloak realm、双租户映射、`/me`、客户草稿、独立审核、资格版本、审计时间线和受保护控制台均可执行。商品、报价、订单等后续业务能力仍保持 `Designed`；只有具备实现、测试与运行证据的能力标记为 `Available`。
+当前可运行范围包括 Task 01 工程骨架、Task 02 身份访问、Task 03 商业客户准入与 Task 04 酒款/供给检索纵向切片：本地 Keycloak realm、双租户映射、`/me`、客户草稿与独立审核、酒款/SKU、五类非承诺供给、PostgreSQL 搜索、权限化数量/批次、React 工作台和隔离 E2E 均可执行。报价、订单与库存预占等后续业务能力仍保持 `Designed`；只有具备实现、测试与运行证据的能力标记为 `Available`。
 
 ## 4. 追踪模板
 

@@ -106,6 +106,9 @@ The documentation is organized from evidence to delivery. Each layer narrows the
 - [Implementation status](05-delivery/10-implementation-status.md)
 - [Requirement traceability](05-delivery/11-requirement-traceability.md)
 - [Technical reviewer scorecard](05-delivery/12-reviewer-scorecard.md)
+- [Identity and access runbook](05-delivery/13-identity-access-runbook.md)
+- [Partner onboarding runbook](05-delivery/14-partner-onboarding-runbook.md)
+- [Catalog supply search runbook](05-delivery/15-catalog-supply-search-runbook.md)
 
 ## Change control
 
