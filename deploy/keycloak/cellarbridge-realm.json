@@ -112,6 +112,40 @@
       ]
     },
     {
+      "id": "11000000-0000-4000-8000-000000000003",
+      "username": "north.manager",
+      "enabled": true,
+      "firstName": "North",
+      "lastName": "Manager",
+      "email": "north.manager@example.test",
+      "emailVerified": true,
+      "attributes": { "tenant_code": ["north-cellars"] },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "CellarBridge-Demo-2026!",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "11000000-0000-4000-8000-000000000004",
+      "username": "north.admin",
+      "enabled": true,
+      "firstName": "North",
+      "lastName": "Administrator",
+      "email": "north.admin@example.test",
+      "emailVerified": true,
+      "attributes": { "tenant_code": ["north-cellars"] },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "CellarBridge-Demo-2026!",
+          "temporary": false
+        }
+      ]
+    },
+    {
       "id": "11000000-0000-4000-8000-000000000099",
       "username": "north.suspended",
       "enabled": true,

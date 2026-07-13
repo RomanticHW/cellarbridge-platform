@@ -24,11 +24,14 @@ jobs:
   identity-access:
     uses: ./.github/workflows/identity-access.yml
 
+  partner-onboarding:
+    uses: ./.github/workflows/partner-onboarding.yml
+
   required:
     name: Required quality gate
     runs-on: ubuntu-latest
     if: always()
-    needs: [docs-contracts, backend, frontend, security, identity-access]
+    needs: [docs-contracts, backend, frontend, security, identity-access, partner-onboarding]
     steps:
       - name: Require every quality workflow
         env:
@@ -37,9 +40,11 @@ jobs:
           FRONTEND_RESULT: ${{ needs.frontend.result }}
           SECURITY_RESULT: ${{ needs.security.result }}
           IDENTITY_RESULT: ${{ needs['identity-access'].result }}
+          PARTNER_RESULT: ${{ needs['partner-onboarding'].result }}
         run: |
           test "${DOCS_RESULT}" = "success"
           test "${BACKEND_RESULT}" = "success"
           test "${FRONTEND_RESULT}" = "success"
           test "${SECURITY_RESULT}" = "success"
           test "${IDENTITY_RESULT}" = "success"
+          test "${PARTNER_RESULT}" = "success"
