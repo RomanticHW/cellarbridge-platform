@@ -1,11 +1,11 @@
 openapi: 3.1.0
 info:
   title: CellarBridge API
-  version: 1.2.0
+  version: 1.3.0
   summary: Contract baseline for B2B wine quotation, order, inventory and fulfillment
   description: |
     This contract remains the design-first integration baseline for CellarBridge. All examples are synthetic.
-    The authenticated `/me` endpoint and partner-onboarding endpoints are implemented;
+    The authenticated `/me`, partner-onboarding and catalog supply-search endpoints are implemented;
     remaining business endpoints are delivered incrementally and retain their approved contracts.
     Internal commercial fields and customer-portal fields intentionally use separate schemas.
   license:
@@ -279,25 +279,60 @@ paths:
       operationId: searchSkus
       summary: Search SKU and supply summaries
       x-requirements: [FR-CAT-001, FR-CAT-002, FR-INV-002, FR-INV-003]
-      x-permissions: [catalog:read]
+      x-permissions: [catalog:read, inventory:read]
       parameters:
         - $ref: '#/components/parameters/PageSize'
         - $ref: '#/components/parameters/Cursor'
         - name: keyword
           in: query
           schema: { type: string, minLength: 1, maxLength: 100 }
+        - name: producer
+          in: query
+          schema: { type: string, minLength: 1, maxLength: 160 }
+        - name: region
+          in: query
+          schema: { type: string, minLength: 1, maxLength: 160 }
+        - name: countryCode
+          in: query
+          schema: { type: string, pattern: '^[A-Z]{2}$' }
+        - name: category
+          in: query
+          schema:
+            type: string
+            enum: [RED, WHITE, ROSE, SPARKLING, FORTIFIED, DESSERT, OTHER]
         - name: vintage
           in: query
           schema: { type: string, pattern: '^(NV|19[0-9]{2}|20[0-9]{2})$' }
+        - name: volumeMl
+          in: query
+          schema: { type: integer, minimum: 1 }
         - name: supplyType
           in: query
           schema:
             type: array
             items: { $ref: '#/components/schemas/SupplyType' }
           explode: false
+        - name: availabilityClass
+          in: query
+          schema:
+            type: array
+            items: { $ref: '#/components/schemas/AvailabilityClass' }
+          explode: false
         - name: automaticallyReservable
           in: query
           schema: { type: boolean }
+        - name: availableFrom
+          in: query
+          schema: { type: string, format: date-time }
+        - name: availableTo
+          in: query
+          schema: { type: string, format: date-time }
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [relevance, name, -updatedAt, vintage]
+            default: relevance
       responses:
         '200':
           description: SKU search results
@@ -305,6 +340,31 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/SkuSearchPage' }
         '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
+  /catalog/skus/{skuId}:
+    get:
+      tags: [Catalog]
+      operationId: getSku
+      summary: Get a current or inactive SKU and its visible supply summaries
+      x-requirements: [FR-CAT-001, FR-CAT-003, FR-INV-002, FR-INV-003]
+      x-permissions: [catalog:read, inventory:read]
+      parameters:
+        - name: skuId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: SKU detail
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SkuSearchItem' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /quotations:
     get:
       tags: [Quotations]
@@ -1116,6 +1176,9 @@ components:
     SupplyType:
       type: string
       enum: [DOMESTIC_ON_HAND, BONDED_ON_HAND, HONG_KONG_ON_HAND, IN_TRANSIT_PRESALE, OVERSEAS_SOURCING]
+    AvailabilityClass:
+      type: string
+      enum: [AVAILABLE, LIMITED, UNAVAILABLE, REQUIRES_CONFIRMATION]
     PartnerSummary:
       type: object
       required: [id, number, legalName, displayName, status, defaultCurrency, routeEligibility, version, updatedAt]
@@ -1329,20 +1392,49 @@ components:
         displayName: { type: string }
         producerName: { type: string }
         regionName: { type: string }
+        countryCode: { type: string, pattern: '^[A-Z]{2}$' }
+        category:
+          type: string
+          enum: [RED, WHITE, ROSE, SPARKLING, FORTIFIED, DESSERT, OTHER]
         vintage: { type: string }
         volumeMl: { type: integer, minimum: 1 }
         unitsPerCase: { type: integer, minimum: 1 }
+        packageType: { type: string, enum: [CASE, WOODEN_CASE, GIFT_BOX, BOTTLE] }
+        status: { type: string, enum: [DRAFT, ACTIVE, INACTIVE] }
         sourceVersion: { type: integer, format: int64 }
+        updatedAt: { type: string, format: date-time }
+    ExactLotAvailability:
+      type: object
+      required: [lotId, lotCode, warehouseLabel, onHandQuantity, reservedQuantity, availableQuantity, dataAsOf]
+      properties:
+        lotId: { type: string, format: uuid }
+        lotCode: { type: string }
+        warehouseLabel: { type: string }
+        onHandQuantity: { $ref: '#/components/schemas/Quantity' }
+        reservedQuantity: { $ref: '#/components/schemas/Quantity' }
+        availableQuantity: { $ref: '#/components/schemas/Quantity' }
+        availableFrom: { type: [string, 'null'], format: date-time }
+        dataAsOf: { type: string, format: date-time }
     SupplySummary:
       type: object
-      required: [supplyPoolId, supplyType, locationLabel, availabilityLevel, automaticallyReservable, updatedAt]
+      required: [supplyPoolId, supplyType, locationLabel, availabilityLevel, displayQuantityBand, automaticallyReservable, exactLots, updatedAt]
       properties:
         supplyPoolId: { type: string, format: uuid }
         supplyType: { $ref: '#/components/schemas/SupplyType' }
         locationLabel: { type: string }
-        displayedAvailableQuantity: { $ref: '#/components/schemas/Quantity' }
-        availabilityLevel: { type: string, enum: [AVAILABLE, LIMITED, UNAVAILABLE, REQUIRES_CONFIRMATION] }
+        displayedAvailableQuantity:
+          oneOf:
+            - { $ref: '#/components/schemas/Quantity' }
+            - { type: 'null' }
+        availabilityLevel: { $ref: '#/components/schemas/AvailabilityClass' }
+        displayQuantityBand:
+          type: string
+          enum: [NONE, LOW, MEDIUM, HIGH, CONFIRMATION_REQUIRED]
         automaticallyReservable: { type: boolean }
+        exactLots:
+          type: array
+          description: Empty unless the actor has exact-stock permission and warehouse scope.
+          items: { $ref: '#/components/schemas/ExactLotAvailability' }
         estimatedAvailableAt: { type: [string, 'null'], format: date-time }
         updatedAt: { type: string, format: date-time }
     SkuSearchItem:
@@ -1355,12 +1447,13 @@ components:
           items: { $ref: '#/components/schemas/SupplySummary' }
     SkuSearchPage:
       type: object
-      required: [items, pageInfo, availabilityDisclaimer]
+      required: [items, pageInfo, dataAsOf, availabilityDisclaimer]
       properties:
         items:
           type: array
           items: { $ref: '#/components/schemas/SkuSearchItem' }
         pageInfo: { $ref: '#/components/schemas/PageInfo' }
+        dataAsOf: { type: string, format: date-time }
         availabilityDisclaimer: { type: string }
     QuotationStatus:
       type: string

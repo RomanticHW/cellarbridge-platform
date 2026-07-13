@@ -18,6 +18,7 @@ public enum PermissionCode {
   ORDER_READ("order:read"),
   ORDER_CANCEL("order:cancel"),
   INVENTORY_READ("inventory:read"),
+  INVENTORY_READ_EXACT("inventory:read-exact"),
   INVENTORY_RESERVE("inventory:reserve"),
   INVENTORY_ADJUST("inventory:adjust"),
   FULFILLMENT_READ("fulfillment:read"),

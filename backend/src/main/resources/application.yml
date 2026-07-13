@@ -35,3 +35,5 @@ cellarbridge:
     allowed-origins: ${CELLARBRIDGE_SECURITY_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
   partner:
     cursor-secret: ${CELLARBRIDGE_PARTNER_CURSOR_SECRET:local-demo-partner-cursor-key-change-me}
+  catalog:
+    cursor-secret: ${CELLARBRIDGE_CATALOG_CURSOR_SECRET:local-demo-catalog-cursor-key-change-me}

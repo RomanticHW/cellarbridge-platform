@@ -38,6 +38,8 @@ class SecurityConfiguration {
                     .authenticated()
                     .requestMatchers("/api/v1/partners/**")
                     .authenticated()
+                    .requestMatchers(HttpMethod.GET, "/api/v1/catalog/skus/**")
+                    .authenticated()
                     .anyRequest()
                     .denyAll())
         .oauth2ResourceServer(
