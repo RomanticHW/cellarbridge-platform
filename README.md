@@ -5,8 +5,8 @@
 
 [English](#english) · [简体中文](#简体中文)
 
-> **Project status — Design Baseline v1.0**  
-> Product research, domain boundaries, architecture decisions, API/event contracts, data model, delivery plan, and review criteria are available. Application code is intentionally not included in this baseline.
+> **Project status — Executable foundation**
+> The approved design baseline now has a runnable Java and React workspace, local core profile, and automated quality gates. Business workflows remain planned and are not presented as implemented.
 
 ---
 
@@ -157,7 +157,10 @@ Exact versions are frozen in [the technology baseline](docs/03-architecture/13-t
 .
 ├── AGENTS.md                    Repository-wide engineering rules
 ├── README.md                    Bilingual project overview
+├── backend/                    Spring Boot modular-monolith application
+├── frontend/                   React operations console
 ├── contracts/                  OpenAPI, AsyncAPI, JSON Schemas, examples
+├── deploy/                     Local Docker Compose profiles
 ├── docs/
 │   ├── 00-research/             Evidence, business model, scenario selection
 │   ├── 01-product/              Vision, requirements, workflows, page specs
@@ -165,19 +168,43 @@ Exact versions are frozen in [the technology baseline](docs/03-architecture/13-t
 │   ├── 03-architecture/         Architecture, ADRs, security, operations
 │   ├── 04-contracts/            Data, API, permissions, audit conventions
 │   └── 05-delivery/             Roadmap, quality gates, review and release plan
-├── scripts/                     Documentation and contract validation
-└── .github/                     Contribution templates and documentation CI
+├── scripts/                     Validation and local smoke checks
+└── .github/                     Contribution templates and quality workflows
 ```
 
-The implementation phase will add `backend/`, `frontend/`, `deploy/`, and executable test assets without changing the approved domain boundaries silently.
+The executable foundation keeps every Spring Modulith business module as a direct child of
+`com.rom.cellarbridge`. The operations console exposes system readiness; business navigation is
+marked `Planned` until a complete vertical slice is delivered.
 
-### 8. Suggested review paths
+### 8. Run the foundation
+
+Prerequisites are Java 21, Node.js 24, Corepack/pnpm 11, Python 3.12 with the validation
+dependencies shown in the documentation CI, Docker, and Docker Compose. The committed wrappers
+and lockfiles define the build inputs.
+
+```bash
+cp .env.example .env            # optional local overrides; .env is ignored
+make validate                   # static, format, generated-code, and Compose checks
+make test                       # backend integration/architecture and frontend tests
+make dev-core                   # PostgreSQL, Keycloak, backend, and frontend
+make smoke-core                 # isolated build, health verification, and cleanup
+```
+
+After `make dev-core`, open <http://localhost:5173/app>. Backend readiness is available at
+<http://localhost:8080/actuator/health/readiness>, and Keycloak is available at
+<http://localhost:8081>. Task 01 starts Keycloak without a realm, roles, or clients; those belong to
+the identity and access slice. Stop the profile with `make stop-core`.
+
+Regenerate the checked-in TypeScript API boundary with `make generate-api-client`. The source
+OpenAPI remains a design contract; its business endpoints are not implemented by this foundation.
+
+### 9. Suggested review paths
 
 - **10 minutes:** this README → [reviewer guide](docs/reviewer-guide.md) → [architecture overview](docs/03-architecture/00-architecture-overview.md)
 - **30 minutes:** add [scenario selection](docs/00-research/07-scenario-selection.md), [aggregate invariants](docs/02-domain/04-aggregates-and-invariants.md), [inventory concurrency design](docs/03-architecture/08-performance-and-scalability.md), and the [requirement traceability matrix](docs/05-delivery/11-requirement-traceability.md)
 - **60 minutes:** add the [OpenAPI contract](contracts/openapi/cellarbridge-api.yaml), [event contract](contracts/asyncapi/cellarbridge-events.yaml), [database design](docs/04-contracts/05-database-design.md), [testing strategy](docs/05-delivery/03-testing-strategy.md), and the [technical reviewer scorecard](docs/05-delivery/12-reviewer-scorecard.md)
 
-### 9. Delivery status
+### 10. Delivery status
 
 | Stage | State |
 |---|---|
@@ -185,14 +212,15 @@ The implementation phase will add `backend/`, `frontend/`, `deploy/`, and execut
 | Product and domain design | Available |
 | Architecture and contracts | Available |
 | Repository governance | Available |
-| Java and React workspace | Planned |
+| Java and React workspace | Available |
+| Core local runtime and CI quality gates | Available |
 | End-to-end business slices | Planned |
 | Performance and security evidence | Planned |
 | Public demo release | Planned |
 
 The implementation roadmap is maintained in [docs/05-delivery/00-implementation-roadmap.md](docs/05-delivery/00-implementation-roadmap.md). The README must be updated as each capability becomes executable; planned work must never be presented as completed work.
 
-### 10. Disclaimer
+### 11. Disclaimer
 
 CellarBridge is an independent technical demonstration based on public business information and general supply-chain domain analysis. It is not an official product of Chengdu Fine West International Trade Co., Ltd., FineWest, WineMatcher, or any related brand. Company and brand names appear only in the research record. All customers, products, prices, inventory, orders, and operational events used by the project are synthetic.
 
@@ -293,7 +321,10 @@ flowchart LR
 .
 ├── AGENTS.md                    全仓库工程规则
 ├── README.md                    中英双语项目介绍
+├── backend/                    Spring Boot 模块化单体应用
+├── frontend/                   React 运营控制台
 ├── contracts/                  OpenAPI、AsyncAPI、JSON Schema 与示例
+├── deploy/                     本地 Docker Compose 环境
 ├── docs/
 │   ├── 00-research/             证据、商业模式与场景选择
 │   ├── 01-product/              产品愿景、需求、流程和页面设计
@@ -301,19 +332,39 @@ flowchart LR
 │   ├── 03-architecture/         架构、ADR、安全和运行设计
 │   ├── 04-contracts/            数据、接口、权限与审计规范
 │   └── 05-delivery/             路线图、质量门禁和发布计划
-├── scripts/                     文档与契约检查脚本
-└── .github/                     贡献模板和文档 CI
+├── scripts/                     验证与本地 smoke 脚本
+└── .github/                     贡献模板和质量门禁工作流
 ```
 
-进入实现阶段后会增加 `backend/`、`frontend/`、`deploy/` 和可执行测试资产，但不得在没有 ADR 的情况下改变已经批准的业务边界。
+可执行骨架将所有 Spring Modulith 业务模块保留为 `com.rom.cellarbridge` 的直接子包。运营控制台只展示系统就绪状态；完整纵向切片交付前，业务导航统一标记为 `Planned`。
 
-### 8. 推荐评审路径
+### 8. 运行工程骨架
+
+本地需要 Java 21、Node.js 24、Corepack/pnpm 11、Python 3.12（安装文档 CI 中列出的验证依赖）、Docker 与 Docker Compose。仓库中的 wrapper 与 lockfile 固定构建输入。
+
+```bash
+cp .env.example .env            # 可选的本地覆盖；.env 不进入版本库
+make validate                   # 静态、格式、生成代码与 Compose 检查
+make test                       # 后端集成/架构测试与前端测试
+make dev-core                   # 启动 PostgreSQL、Keycloak、后端和前端
+make smoke-core                 # 隔离构建、健康检查并自动清理
+```
+
+`make dev-core` 成功后访问 <http://localhost:5173/app>。后端 readiness 地址为
+<http://localhost:8080/actuator/health/readiness>，Keycloak 地址为 <http://localhost:8081>。
+Task 01 只启动 Keycloak，不配置 realm、角色或客户端；这些内容由身份与访问切片负责。使用
+`make stop-core` 停止环境。
+
+执行 `make generate-api-client` 可从 OpenAPI 重新生成并提交 TypeScript API 边界。当前 OpenAPI
+仍是设计契约，工程骨架没有实现其中的业务接口。
+
+### 9. 推荐评审路径
 
 - **10 分钟：** 本 README → [技术评审指南](docs/reviewer-guide.md) → [架构总览](docs/03-architecture/00-architecture-overview.md)
 - **30 分钟：** 再阅读[场景选择报告](docs/00-research/07-scenario-selection.md)、[聚合不变量](docs/02-domain/04-aggregates-and-invariants.md)、[库存并发设计](docs/03-architecture/08-performance-and-scalability.md)和[需求追踪矩阵](docs/05-delivery/11-requirement-traceability.md)
 - **60 分钟：** 再检查 [OpenAPI](contracts/openapi/cellarbridge-api.yaml)、[事件契约](contracts/asyncapi/cellarbridge-events.yaml)、[数据库设计](docs/04-contracts/05-database-design.md)、[测试策略](docs/05-delivery/03-testing-strategy.md)和[技术评审评分卡](docs/05-delivery/12-reviewer-scorecard.md)
 
-### 9. 当前进度
+### 10. 当前进度
 
 | 阶段 | 状态 |
 |---|---|
@@ -321,13 +372,14 @@ flowchart LR
 | 产品与领域设计 | 可审阅 |
 | 架构与契约 | 可审阅 |
 | 仓库工程治理 | 可审阅 |
-| Java 与 React 工程骨架 | 计划中 |
+| Java 与 React 工程骨架 | 可运行 |
+| 核心本地环境与 CI 质量门禁 | 可运行 |
 | 端到端业务切片 | 计划中 |
 | 性能与安全证据 | 计划中 |
 | 公开演示版本 | 计划中 |
 
 实现路线见 [docs/05-delivery/00-implementation-roadmap.md](docs/05-delivery/00-implementation-roadmap.md)。每完成一个可执行能力，都必须同步更新 README；尚未完成的内容不得包装成已经交付的功能。
 
-### 10. 非官方声明
+### 11. 非官方声明
 
 CellarBridge 是基于公开商业信息和通用供应链领域分析构建的独立技术演示项目，与成都优自西方国际贸易有限公司、FineWest、WineMatcher 或相关品牌不存在隶属、授权或合作关系。公司及品牌名称只出现在调研记录中。项目中的客户、酒款、价格、库存、订单和履约事件均为合成数据。

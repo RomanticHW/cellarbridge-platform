@@ -21,16 +21,16 @@ Status date: **2026-07-13**
 | Architecture/ADRs | Available | `docs/03-architecture` |
 | OpenAPI/AsyncAPI/JSON Schema | Available (design contract) | `contracts/` |
 | Repository engineering rules | Available | `AGENTS.md`, governance docs |
-| Java backend | Designed | implementation not started |
-| React frontend | Designed | implementation not started |
-| Docker/CI executable runtime | Designed | implementation not started |
+| Java backend foundation | Available | `backend/`; Spring context, PostgreSQL/Flyway, Actuator, Modulith and ArchUnit tests |
+| React frontend foundation | Available | `frontend/`; system status, readiness states, generated API types, Vitest and Playwright |
+| Docker/CI executable runtime | Available | `deploy/compose/core.compose.yaml`, `scripts/smoke_core.sh`, `.github/workflows/` |
 | Partner/catalog/quotation/order/inventory | Designed | implementation not started |
 | Fulfillment/exception/settlement/reporting | Designed | implementation not started |
 | Performance/security/release evidence | Planned | tasks 13–15 |
 
 ## 3. 声明
 
-本 tag 不包含业务实现，不应被描述为可运行产品。README 的架构/能力表使用 `Designed`。Task 01 开始后，每个 PR 更新本表并链接测试/commit。
+当前可运行范围仅为 Task 01 工程骨架，不包含业务表、业务接口、Keycloak realm 或端到端业务流程。业务能力继续保持 `Designed`；只有具备实现、测试与运行证据的基础能力标记为 `Available`。
 
 ## 4. 追踪模板
 
