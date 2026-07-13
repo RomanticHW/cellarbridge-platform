@@ -6,7 +6,7 @@ ENV_FILE ?= $(if $(wildcard .env),.env,.env.example)
 
 .PHONY: help validate validate-docs validate-contracts validate-public validate-backend \
 	validate-frontend validate-compose test test-backend test-frontend dev-core stop-core smoke-core \
-	generate-api-client
+	identity-e2e generate-api-client
 
 help:
 	@printf '%s\n' \
@@ -16,6 +16,7 @@ help:
 	  '  make dev-core            Start PostgreSQL, Keycloak, backend, and frontend' \
 	  '  make stop-core           Stop the core development profile' \
 	  '  make smoke-core          Build, verify, and clean an isolated core profile' \
+	  '  make identity-e2e        Verify real OIDC login and two-tenant isolation' \
 	  '  make generate-api-client Regenerate TypeScript API types from OpenAPI'
 
 validate: validate-docs validate-contracts validate-public validate-backend validate-frontend validate-compose
@@ -55,6 +56,9 @@ stop-core:
 
 smoke-core:
 	./scripts/smoke_core.sh
+
+identity-e2e:
+	./scripts/identity_access_e2e.sh
 
 generate-api-client:
 	cd frontend && $(PNPM) generate:api

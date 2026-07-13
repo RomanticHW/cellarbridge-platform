@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="${ROOT_DIR}/deploy/compose/core.compose.yaml"
 ENV_FILE="${ROOT_DIR}/.env.example"
-PROJECT_NAME="cellarbridge-smoke"
+PROJECT_NAME="cellarbridge-identity-e2e"
 
 compose() {
   docker compose --project-name "${PROJECT_NAME}" --env-file "${ENV_FILE}" --file "${COMPOSE_FILE}" "$@"
@@ -37,12 +37,5 @@ wait_for_health keycloak
 wait_for_health backend
 wait_for_health frontend
 
-compose exec -T postgres pg_isready -U cellarbridge -d cellarbridge >/dev/null
-curl --fail --silent --show-error http://127.0.0.1:8081/realms/cellarbridge/.well-known/openid-configuration | grep --quiet '"issuer":"http://localhost:8081/realms/cellarbridge"'
-curl --fail --silent --show-error http://127.0.0.1:8080/actuator/health/readiness | grep --quiet 'UP'
-curl --fail --silent --show-error http://127.0.0.1:5173/app | grep --quiet 'CellarBridge Operations'
-unauthenticated_response="$(curl --silent --show-error --write-out '\n%{http_code}' http://127.0.0.1:8080/api/v1/me)"
-[[ "${unauthenticated_response##*$'\n'}" == "401" ]]
-grep --quiet '"code":"AUTHENTICATION_REQUIRED"' <<<"${unauthenticated_response%$'\n'*}"
-
-printf '%s\n' 'Core smoke passed: OIDC realm, protected API, PostgreSQL, backend, and frontend are healthy.'
+cd "${ROOT_DIR}/frontend"
+corepack pnpm test:e2e:identity
