@@ -1,0 +1,73 @@
+# 报价与贸易路径运行手册
+
+Status: **Available in Task 05**
+
+Requirements: **UC-QUO-001–003, UC-TRD-001, FR-QUO-001–009, FR-TRD-001–006**
+
+## 1. 可观察行为
+
+- Sales 从活动客户与活动 SKU 创建报价草稿；金额使用 `BigDecimal`、四位小数与 `HALF_UP`，支持箱/瓶换算、折扣、人工单价和路线费用分摊。
+- 每次报价保存捕获客户、SKU、价格来源版本；已提交修订不可修改，变更请求后的再次保存创建新修订。
+- Trade Planning 对上海一般贸易、宁波保税 B2B 和香港自由贸易执行版本化硬约束、稳定加权评分与确定性排序。每个候选返回通过或机器可读的拒绝原因。
+- 非推荐路线只能由经理填写理由后覆盖；评估输入摘要、策略版本、原推荐、操作者和发生时间持久化。
+- 折扣、毛利、账期、人工/异常价格、非推荐路线和有效期规则产生审批要求。提交者不能审批自己的修订；并发重复审批由版本条件与唯一约束收敛为一条决策。
+- 只有仍在有效期且当前路线仍合格的已批准报价可以签发。签发生成高熵令牌，只保存 SHA-256 摘要；公开 API 使用明确 allow-list 和 `Cache-Control: no-store`。
+- Task 05 的公开页是只读预览，不提供接受、拒绝、转订单或库存预占。这些行为属于 Task 06 及后续任务。
+
+## 2. 模块与数据归属
+
+`quotation` 和 `tradeplanning` 均为 `com.rom.cellarbridge` 的直接子模块。Quotation 只调用 Partner、Catalog 与 Trade Planning 的公开接口；不会直接依赖 Inventory。Trade Planning 通过 Partner、Catalog 与 Inventory 的 tenant-explicit 查询接口组合评估输入。
+
+`V6__trade_planning_evaluations.sql` 保存评估、候选、评分、拒绝与覆盖证据；`V7__quotation_revisions_and_approvals.sql` 保存报价、修订、行、审批、公开访问摘要、审计、发布和工作项。每个表带 tenant，模块之间不建立跨 schema 外键，Quotation 不跨 schema join。
+
+策略版本固定为：
+
+| Policy | Version |
+|---|---|
+| Route evaluation | `ROUTE-2026-01` |
+| Pricing | `PRICE-2026-01` |
+| Approval | `APPROVAL-2026-01` |
+
+## 3. 权限与字段安全
+
+| 行为 | 权限与约束 |
+|---|---|
+| 查看报价 | `quotation:read`；Sales 仅本人，经理可管理当前 tenant |
+| 创建/修改/评估 | `quotation:create`；仅草稿/变更请求状态，所有写入使用 `If-Match` |
+| 提交 | `quotation:submit`；需已选择合格路线且未过期 |
+| 审批 | `quotation:approve`；不能是本修订提交者 |
+| 签发 | `quotation:issue`；需已批准、未过期、路线重新校验通过 |
+| 毛利字段 | `quotation:read-commercial-sensitive` |
+| 公开预览 | 随机令牌；仅 SENT 报价；不返回成本、毛利、路线评分、输入摘要、内部 actor 或策略证据 |
+
+控制器不接受 tenant/user 参数。内部查询和更新显式重复 tenant predicate；令牌摘要查询是受注解约束的全局注册表入口，返回后仍以报价记录自身 tenant 读取完整数据。
+
+## 4. 本地演示
+
+`demo` profile 提供活动客户 `Aurora Market Services`、六个合成 SKU 的 CNY 价格引用和角色权限。业务可见字段未写入工具或生成来源标记。
+
+```bash
+make dev-core
+# open http://localhost:5173/app/quotations
+
+make quotation-e2e
+```
+
+`make quotation-e2e` 使用隔离 Compose project 与新 volume，真实登录 `north.sales` 从 Catalog 选择 SKU，创建 9% 折扣报价、评估路线并提交；再真实登录 `north.manager` 独立审批、签发并打开只读客户安全预览。脚本验证公开页不显示毛利、路线评分或策略版本，结束后自动清理。
+
+## 5. 验证证据
+
+- `QuotationPricingPolicyTest`：1,000 组生成输入、箱/瓶换算、精度与舍入、费用分摊、重复 SKU 和折扣边界。
+- `RouteEvaluationPolicyTest`：硬约束拒绝、权重总分、稳定推荐和固定策略版本。
+- `QuotationAggregateTest`：修订冻结、新修订、状态迁移和自审拒绝。
+- `QuotationApiIntegrationTest`：真实 PostgreSQL 18.4 空库迁移、权限、经理覆盖、快照不可变、并发重复审批、签发、401/404、跨租户和公开字段 allow-list。
+- `QuotationWorkspace.test.tsx`、`quotationForm.test.ts`、`quotations.test.ts`：生成契约客户端、表单精度、恢复/并发提示、解释视图与无认证公开路由。
+- `quotation-trade-planning.live.spec.ts`：真实 OIDC 主链路和客户安全预览。
+- `ModularityTest` / `ArchitectureRulesTest`：根模块发现、层边界、tenant-explicit repository API 与禁止 `Quotation → Inventory`。
+
+## 6. 已知限制
+
+- 本任务不实现客户接受/拒绝、报价转订单、库存预占或履约。
+- 报价列表当前面向演示规模；接口返回稳定页结构，但深分页优化可在真实数据规模需要时引入。
+- 签发后的通知投递和外部事件 broker 发布属于后续可靠事件/通知任务；Task 05 只在 Quotation 自有表内记录发布证据与待办。
+- 路线与价格是确定性合成策略，不代表实际海关、税务、承运商报价或生产承诺。

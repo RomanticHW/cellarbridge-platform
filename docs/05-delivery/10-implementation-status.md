@@ -28,13 +28,14 @@ Status date: **2026-07-14**
 | Broader application security controls | Partial | Task 02 delivers identity boundary, safe audit logging, CORS and response headers; later threat, dependency and release evidence remains planned |
 | Partner onboarding and eligibility | Available | tenant-scoped draft/review lifecycle, duplicate controls, immutable eligibility, React workspace and real OIDC Playwright flow |
 | Catalog and supply search | Available | Catalog/Inventory model, FTS + trigram search, field/warehouse permissions, React workspace, real OIDC E2E and reproducible benchmark |
-| Quotation/order/inventory reservation | Designed | implementation not started; Task 04 inventory behavior is read-only and non-committing |
+| Quotation and trade planning | Available | revisioned snapshots/pricing, deterministic explainable route policy, independent approval, issue token, customer-safe read-only preview, React workspace, Testcontainers and real OIDC E2E |
+| Customer acceptance/order/inventory reservation | Designed | Task 05 ends at issue and read-only preview; acceptance, conversion and inventory commitment are not implemented |
 | Fulfillment/exception/settlement/reporting | Designed | implementation not started |
 | Performance/security/release evidence | Planned | tasks 13–15 |
 
 ## 3. 声明
 
-当前可运行范围包括 Task 01 工程骨架、Task 02 身份访问、Task 03 商业客户准入与 Task 04 酒款/供给检索纵向切片：本地 Keycloak realm、双租户映射、`/me`、客户草稿与独立审核、酒款/SKU、五类非承诺供给、PostgreSQL 搜索、权限化数量/批次、React 工作台和隔离 E2E 均可执行。报价、订单与库存预占等后续业务能力仍保持 `Designed`；只有具备实现、测试与运行证据的能力标记为 `Available`。
+当前可运行范围包括 Task 01 工程骨架、Task 02 身份访问、Task 03 商业客户准入、Task 04 酒款/供给检索与 Task 05 报价/贸易路径纵向切片：报价修订、快照定价、候选路线解释、经理覆盖、审批、签发和只读客户安全预览均有可执行证据。客户接受、转订单与库存预占仍保持 `Designed`；只有具备实现、测试与运行证据的能力标记为 `Available`。
 
 ## 4. 追踪模板
 
