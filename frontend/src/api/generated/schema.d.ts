@@ -93,6 +93,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/partners/{partnerId}/suspension": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Suspend an active partner while retaining eligibility history */
+        post: operations["suspendPartner"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/partners/{partnerId}/reactivation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit a suspended partner for independent reactivation review */
+        post: operations["requestPartnerReactivation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/catalog/skus": {
         parameters: {
             query?: never;
@@ -592,10 +626,10 @@ export interface components {
             /** Format: uuid */
             id: string;
             number: string;
-            legalName: string;
-            displayName: string;
+            legalName: string | null;
+            displayName: string | null;
             status: components["schemas"]["PartnerStatus"];
-            defaultCurrency: string;
+            defaultCurrency: string | null;
             routeEligibility: components["schemas"]["TradeRouteCode"][];
             /** Format: uuid */
             salesOwnerId?: string;
@@ -616,34 +650,86 @@ export interface components {
             /** @default false */
             primary: boolean;
         };
+        PartnerDraftContact: {
+            name?: string | null;
+            email?: string | null;
+            phone?: string | null;
+            /** @default false */
+            primary: boolean;
+        };
+        PartnerDraftAddress: {
+            countryCode?: string | null;
+            province?: string | null;
+            city?: string | null;
+            district?: string | null;
+            line1?: string | null;
+            postalCode?: string | null;
+        };
         CreatePartnerRequest: {
-            legalName: string;
-            displayName: string;
+            legalName?: string;
+            displayName?: string;
             registrationIdentifier?: string;
             /** @enum {string} */
-            type: "RESTAURANT_GROUP" | "DISTRIBUTOR" | "RETAILER" | "CORPORATE_BUYER" | "OTHER";
-            defaultCurrency: string;
-            requestedPaymentTermDays?: number;
-            requestedRouteCodes?: components["schemas"]["TradeRouteCode"][];
-            contact: components["schemas"]["ContactInput"];
-            billingAddress: components["schemas"]["Address"];
-        };
-        UpdatePartnerRequest: {
-            displayName?: string;
+            type?: "RESTAURANT_GROUP" | "DISTRIBUTOR" | "RETAILER" | "CORPORATE_BUYER" | "OTHER";
             defaultCurrency?: string;
             requestedPaymentTermDays?: number;
             requestedRouteCodes?: components["schemas"]["TradeRouteCode"][];
-            contact?: components["schemas"]["ContactInput"];
-            billingAddress?: components["schemas"]["Address"];
+            requestedServiceRegions?: string[];
+            requestedCurrencies?: string[];
+            contact?: components["schemas"]["PartnerDraftContact"];
+            billingAddress?: components["schemas"]["PartnerDraftAddress"];
+            duplicateResolutionNote?: string;
+        };
+        UpdatePartnerRequest: {
+            legalName?: string;
+            displayName?: string;
+            registrationIdentifier?: string;
+            /** @enum {string} */
+            type?: "RESTAURANT_GROUP" | "DISTRIBUTOR" | "RETAILER" | "CORPORATE_BUYER" | "OTHER";
+            defaultCurrency?: string;
+            requestedPaymentTermDays?: number;
+            requestedRouteCodes?: components["schemas"]["TradeRouteCode"][];
+            requestedServiceRegions?: string[];
+            requestedCurrencies?: string[];
+            contact?: components["schemas"]["PartnerDraftContact"];
+            billingAddress?: components["schemas"]["PartnerDraftAddress"];
+            duplicateResolutionNote?: string;
         };
         PartnerDetail: components["schemas"]["PartnerSummary"] & {
-            type: string;
-            registrationIdentifierMasked?: string;
-            contacts: components["schemas"]["ContactInput"][];
-            billingAddress: components["schemas"]["Address"];
-            paymentTermDays?: number;
-            creditLimit?: components["schemas"]["Money"];
+            /** @enum {string|null} */
+            type: "RESTAURANT_GROUP" | "DISTRIBUTOR" | "RETAILER" | "CORPORATE_BUYER" | "OTHER" | null;
+            registrationIdentifierMasked?: string | null;
+            contacts: components["schemas"]["PartnerDraftContact"][];
+            billingAddress: components["schemas"]["PartnerDraftAddress"] | null;
+            paymentTermDays?: number | null;
+            creditLimit?: components["schemas"]["Money"] | null;
+            eligibility?: components["schemas"]["PartnerEligibility"] | null;
+            requestedServiceRegions: string[];
+            requestedCurrencies: string[];
             allowedActions: string[];
+            duplicateWarnings: string[];
+            timeline: components["schemas"]["PartnerTimelineEntry"][];
+        };
+        PartnerEligibility: {
+            version: number;
+            routeCodes: components["schemas"]["TradeRouteCode"][];
+            serviceRegions: string[];
+            currencies: string[];
+            paymentTermDays: number;
+            creditLimit?: components["schemas"]["Money"] | null;
+            /** Format: date-time */
+            effectiveFrom: string;
+        };
+        PartnerTimelineEntry: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            occurredAt: string;
+            action: string;
+            previousState?: string | null;
+            newState?: string | null;
+            safeReason?: string | null;
+            changedFields: string[];
         };
         PartnerReviewRequest: {
             /** @enum {string} */
@@ -652,6 +738,11 @@ export interface components {
             approvedPaymentTermDays?: number;
             approvedCreditLimit?: components["schemas"]["Money"];
             approvedRouteCodes?: components["schemas"]["TradeRouteCode"][];
+            approvedServiceRegions?: string[];
+            approvedCurrencies?: string[];
+        };
+        PartnerReasonRequest: {
+            reason: string;
         };
         PartnerCommandResult: {
             /** Format: uuid */
@@ -1343,6 +1434,9 @@ export interface operations {
                 keyword?: string;
                 status?: components["schemas"]["PartnerStatus"][];
                 routeCode?: components["schemas"]["TradeRouteCode"];
+                ownerId?: string;
+                updatedFrom?: string;
+                updatedTo?: string;
             };
             header?: never;
             path?: never;
@@ -1359,6 +1453,7 @@ export interface operations {
                     "application/json": components["schemas"]["PartnerPage"];
                 };
             };
+            400: components["responses"]["ValidationFailed"];
             401: components["responses"]["AuthenticationRequired"];
             403: components["responses"]["AccessDenied"];
         };
@@ -1380,6 +1475,7 @@ export interface operations {
             201: {
                 headers: {
                     Location?: string;
+                    ETag: components["headers"]["ETag"];
                     [name: string]: unknown;
                 };
                 content: {
@@ -1387,6 +1483,8 @@ export interface operations {
                 };
             };
             400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
             409: components["responses"]["Conflict"];
         };
     };
@@ -1411,6 +1509,8 @@ export interface operations {
                     "application/json": components["schemas"]["PartnerDetail"];
                 };
             };
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -1442,6 +1542,9 @@ export interface operations {
                 };
             };
             400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
+            404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             412: components["responses"]["VersionConflict"];
             428: components["responses"]["PreconditionRequired"];
@@ -1463,15 +1566,20 @@ export interface operations {
             /** @description Partner submitted */
             200: {
                 headers: {
+                    ETag: components["headers"]["ETag"];
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["PartnerCommandResult"];
                 };
             };
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
+            404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             412: components["responses"]["VersionConflict"];
             422: components["responses"]["BusinessUnprocessable"];
+            428: components["responses"]["PreconditionRequired"];
         };
     };
     reviewPartner: {
@@ -1494,15 +1602,92 @@ export interface operations {
             /** @description Review recorded */
             200: {
                 headers: {
+                    ETag: components["headers"]["ETag"];
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["PartnerCommandResult"];
                 };
             };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["AuthenticationRequired"];
             403: components["responses"]["AccessDenied"];
+            404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             412: components["responses"]["VersionConflict"];
+            428: components["responses"]["PreconditionRequired"];
+        };
+    };
+    suspendPartner: {
+        parameters: {
+            query?: never;
+            header: {
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                partnerId: components["parameters"]["PartnerId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PartnerReasonRequest"];
+            };
+        };
+        responses: {
+            /** @description Partner suspended */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PartnerCommandResult"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["VersionConflict"];
+            428: components["responses"]["PreconditionRequired"];
+        };
+    };
+    requestPartnerReactivation: {
+        parameters: {
+            query?: never;
+            header: {
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                partnerId: components["parameters"]["PartnerId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PartnerReasonRequest"];
+            };
+        };
+        responses: {
+            /** @description Reactivation review requested */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PartnerCommandResult"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["VersionConflict"];
+            428: components["responses"]["PreconditionRequired"];
         };
     };
     searchSkus: {

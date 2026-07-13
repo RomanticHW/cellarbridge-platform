@@ -1,5 +1,4 @@
 export const plannedModules = [
-  { key: 'partners', label: 'Partners', requiredPermission: 'partner:read' },
   { key: 'catalog', label: 'Catalog', requiredPermission: 'catalog:read' },
   { key: 'inventory', label: 'Inventory', requiredPermission: 'inventory:read' },
   { key: 'quotations', label: 'Quotations', requiredPermission: 'quotation:read' },
