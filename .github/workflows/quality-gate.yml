@@ -1,0 +1,34 @@
+name: Pull request quality gate
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  docs-contracts:
+    uses: ./.github/workflows/docs-check.yml
+
+  backend:
+    uses: ./.github/workflows/backend.yml
+
+  frontend:
+    uses: ./.github/workflows/frontend.yml
+
+  security:
+    uses: ./.github/workflows/security.yml
+    secrets: inherit
+
+  required:
+    name: Required quality gate
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [docs-contracts, backend, frontend, security]
+    steps:
+      - name: Require every quality workflow
+        env:
+          RESULTS: ${{ join(needs.*.result, ',') }}
+        run: |
+          test "${RESULTS}" = "success,success,success,success"
