@@ -21,6 +21,8 @@ Requirements: **UC-IAM-001, FR-IAM-001–005**
 | -------------- | ---------------- | -------------------- | ------------------------- |
 | North Cellars  | `north.sales`    | Sales Representative | `CellarBridge-Demo-2026!` |
 | North Cellars  | `north.buyer`    | Customer Buyer       | `CellarBridge-Demo-2026!` |
+| North Cellars  | `north.manager`  | Sales Manager        | `CellarBridge-Demo-2026!` |
+| North Cellars  | `north.admin`    | Tenant Administrator | `CellarBridge-Demo-2026!` |
 | Harbor Cellars | `harbor.manager` | Sales Manager        | `CellarBridge-Demo-2026!` |
 
 `north.suspended` 仅用于拒绝路径验证。业务映射 seed 使用 `ON CONFLICT DO NOTHING`，重复启动不会覆盖后续修改。要恢复演示初始状态，只能清理本地 demo Compose volume 后重建。

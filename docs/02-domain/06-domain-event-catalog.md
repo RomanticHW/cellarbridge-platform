@@ -34,7 +34,8 @@ subjectType, subjectId, payload, metadata
 | `PartnerSubmittedForReviewV1` | partnerId, number, submittedBy | notification, audit |
 | `PartnerActivatedV1` | partnerId, number, eligibilityVersion | quotation read cache, audit |
 | `PartnerChangesRequestedV1` | partnerId, safeReason | notification, audit |
-| `PartnerSuspendedV1` | partnerId, reasonCode | quotation guard cache, audit |
+| `PartnerRejectedV1` | partnerId, safeReason | notification, audit |
+| `PartnerSuspendedV1` | partnerId, safeReason | quotation guard cache, audit |
 
 ### Catalog
 

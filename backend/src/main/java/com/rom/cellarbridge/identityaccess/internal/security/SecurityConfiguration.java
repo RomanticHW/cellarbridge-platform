@@ -36,6 +36,8 @@ class SecurityConfiguration {
                     .permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/v1/me")
                     .authenticated()
+                    .requestMatchers("/api/v1/partners/**")
+                    .authenticated()
                     .anyRequest()
                     .denyAll())
         .oauth2ResourceServer(

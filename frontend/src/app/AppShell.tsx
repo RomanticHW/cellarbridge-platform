@@ -27,6 +27,7 @@ function createMenuItems(permissions: ReadonlyArray<string>): MenuProps['items']
   return [
     { key: '/app', label: 'System status' },
     { key: '/app/profile', label: 'Identity & access' },
+    ...(permissions.includes('partner:read') ? [{ key: '/app/partners', label: 'Partners' }] : []),
     ...(plannedItems.length === 0
       ? []
       : [
@@ -80,6 +81,9 @@ export function AppShell() {
   }
 
   const menuItems = createMenuItems(currentUser.data.permissions);
+  const selectedPath = location.pathname.startsWith('/app/partners')
+    ? '/app/partners'
+    : location.pathname;
 
   return (
     <Layout className="app-shell">
@@ -107,7 +111,7 @@ export function AppShell() {
           <nav aria-label="Main navigation">
             <Menu
               mode="inline"
-              selectedKeys={[location.pathname]}
+              selectedKeys={[selectedPath]}
               onClick={({ key }) => navigate(key)}
               items={menuItems}
             />

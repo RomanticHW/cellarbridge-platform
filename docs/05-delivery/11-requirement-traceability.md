@@ -17,8 +17,8 @@
 
 | Task | 用例 | 功能需求 | 领域/架构依据 | HTTP / Event 契约 | 最低验证证据 | 初始状态 |
 |---:|---|---|---|---|---|---|
-| 02 | UC-IAM-001 | FR-IAM-001~005 | security/tenancy、permission matrix、ADR-006/010 | `GET /me` | JWT negative matrix、双租户隔离、React protected route | Designed |
-| 03 | UC-PAR-001/002 | FR-PAR-001~006 | Partner aggregate/state machine/invariants | `/partners*`; Partner lifecycle events | aggregate transitions、self-review deny、tenant/API/Playwright | Designed |
+| 02 | UC-IAM-001 | FR-IAM-001~005 | security/tenancy、permission matrix、ADR-006/010 | `GET /me` | JWT negative matrix、双租户隔离、React protected route | Verified |
+| 03 | UC-PAR-001/002 | FR-PAR-001~006 | `partner` aggregate/state machine, `V3__partner_onboarding.sql` | `/partners*`; persisted Partner lifecycle events | `PartnerTest`、`PartnerApiIntegrationTest`、`PartnerWorkspace.test.tsx`、真实 OIDC Playwright | Verified |
 | 04 | UC-CAT-001, UC-INV-001 | FR-CAT-001~004, FR-INV-001~003 | Catalog/Inventory boundaries、ADR-009 | `GET /catalog/skus` | PostgreSQL query plan、search/permission/UI tests | Designed |
 | 05 | UC-QUO-001~003, UC-TRD-001 | FR-QUO-001~009, FR-TRD-001~006 | Quotation/Trade Planning aggregates, policies, snapshots | quotation create/update/evaluate/submit/approve/issue | money properties、route golden cases、approval/field/E2E | Designed |
 | 06 | UC-QUO-004 | FR-QUO-009~011 | quotation acceptance state/idempotency/security | portal quotation + acceptance; `QuotationAcceptedV1` | safe DTO allow-list、expiry race、concurrent acceptance | Designed |

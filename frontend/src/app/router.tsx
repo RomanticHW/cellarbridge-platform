@@ -17,6 +17,21 @@ const ProfilePage = lazy(() =>
     default: module.ProfilePage,
   })),
 );
+const PartnerListPage = lazy(() =>
+  import('../features/partners/PartnerListPage').then((module) => ({
+    default: module.PartnerListPage,
+  })),
+);
+const PartnerEditorPage = lazy(() =>
+  import('../features/partners/PartnerEditorPage').then((module) => ({
+    default: module.PartnerEditorPage,
+  })),
+);
+const PartnerDetailPage = lazy(() =>
+  import('../features/partners/PartnerDetailPage').then((module) => ({
+    default: module.PartnerDetailPage,
+  })),
+);
 
 function FoundationRoute() {
   return (
@@ -46,6 +61,22 @@ function ProfileRoute() {
   );
 }
 
+function PartnerRoute({ page }: { page: 'list' | 'editor' | 'detail' }) {
+  const Page =
+    page === 'list' ? PartnerListPage : page === 'editor' ? PartnerEditorPage : PartnerDetailPage;
+  return (
+    <Suspense
+      fallback={
+        <Flex role="status" aria-label="Loading partner workspace" justify="center">
+          <Spin size="large" />
+        </Flex>
+      }
+    >
+      <Page />
+    </Suspense>
+  );
+}
+
 export const router = createBrowserRouter([
   { path: '/', element: <Navigate to="/app" replace /> },
   { path: '/login', element: <LoginPage /> },
@@ -59,6 +90,10 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <FoundationRoute /> },
           { path: 'profile', element: <ProfileRoute /> },
+          { path: 'partners', element: <PartnerRoute page="list" /> },
+          { path: 'partners/new', element: <PartnerRoute page="editor" /> },
+          { path: 'partners/:partnerId/edit', element: <PartnerRoute page="editor" /> },
+          { path: 'partners/:partnerId', element: <PartnerRoute page="detail" /> },
         ],
       },
     ],

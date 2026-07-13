@@ -43,7 +43,7 @@ flowchart LR
 | Capability | Business value | Baseline state |
 |---|---|---|
 | Identity, tenant and permission access | Establishes a non-forgeable tenant context and protected operations navigation | Available |
-| Partner onboarding and channel eligibility | Prevents transactions with inactive or ineligible customers | Designed |
+| Partner onboarding and channel eligibility | Prevents transactions with inactive or ineligible customers | Available |
 | Wine product, SKU, lot, and supply-pool model | Preserves vintage, package, provenance, and availability semantics | Designed |
 | Customer-specific quotation workflow | Freezes commercial terms and supports approval policies | Designed |
 | Explainable trade-route evaluation | Compares delivery options by hard constraints and weighted scores | Designed |
@@ -174,8 +174,8 @@ Exact versions are frozen in [the technology baseline](docs/03-architecture/13-t
 ```
 
 The executable application keeps every Spring Modulith business module as a direct child of
-`com.rom.cellarbridge`. Identity and access is available; remaining business navigation is marked
-`Planned` until a complete vertical slice is delivered.
+`com.rom.cellarbridge`. Identity/access and partner onboarding are available; remaining business
+navigation is marked `Planned` until its complete vertical slice is delivered.
 
 ### 8. Run the foundation
 
@@ -190,17 +190,21 @@ make test                       # backend integration/architecture and frontend 
 make dev-core                   # PostgreSQL, Keycloak, backend, and frontend
 make smoke-core                 # isolated build, health verification, and cleanup
 make identity-e2e               # real OIDC login and two-tenant isolation
+make partner-e2e                # partner submission, independent review, and self-review denial
 ```
 
 After `make dev-core`, open <http://localhost:5173/app>. Backend readiness is available at
 <http://localhost:8080/actuator/health/readiness>, and Keycloak is available at
-<http://localhost:8081>. Sign in with synthetic local account `north.sales`, `north.buyer`, or
-`harbor.manager`; their demo-only password is `CellarBridge-Demo-2026!`. These credentials exist
-only in the local `demo` profile and must never be reused in production. Stop the profile with
-`make stop-core`; see the [identity access runbook](docs/05-delivery/13-identity-access-runbook.md).
+<http://localhost:8081>. Sign in with synthetic local account `north.sales`, `north.buyer`,
+`north.manager`, `north.admin`, or `harbor.manager`; their demo-only password is
+`CellarBridge-Demo-2026!`. These credentials exist only in the local `demo` profile and must never
+be reused in production. Stop the profile with
+`make stop-core`; see the [identity access runbook](docs/05-delivery/13-identity-access-runbook.md)
+and [partner onboarding runbook](docs/05-delivery/14-partner-onboarding-runbook.md).
 
 Regenerate the checked-in TypeScript API boundary with `make generate-api-client`. The source
-OpenAPI remains a design contract; its business endpoints are not implemented by this foundation.
+OpenAPI remains authoritative; `/me` and `/partners*` are implemented while later business paths
+remain design contracts.
 
 ### 9. Suggested review paths
 
@@ -219,7 +223,8 @@ OpenAPI remains a design contract; its business endpoints are not implemented by
 | Java and React workspace | Available |
 | Core local runtime and CI quality gates | Available |
 | Identity and tenant access slice | Available |
-| End-to-end commercial business slices | Planned |
+| Partner onboarding business slice | Available |
+| Remaining end-to-end commercial slices | Planned |
 | Performance and security evidence | Planned |
 | Public demo release | Planned |
 
@@ -264,7 +269,7 @@ flowchart LR
 | 能力 | 解决的问题 | 基线状态 |
 |---|---|---|
 | 身份、租户与权限访问 | 建立不可伪造的租户上下文和受保护的运营导航 | 可运行 |
-| 商业客户准入与渠道资格 | 防止未激活、已停用或不具备交付资格的客户参与交易 | 已设计 |
+| 商业客户准入与渠道资格 | 防止未激活、已停用或不具备交付资格的客户参与交易 | 可运行 |
 | 酒款、SKU、批次与货源池 | 准确表达年份、包装、来源、库存位置和可售数量 | 已设计 |
 | 客户专属报价与审批 | 固化商业条件，管理折扣、毛利和审批责任 | 已设计 |
 | 可解释贸易路径评估 | 用硬约束与加权评分比较多种交付方案 | 已设计 |
@@ -342,7 +347,7 @@ flowchart LR
 └── .github/                     贡献模板和质量门禁工作流
 ```
 
-可执行应用将所有 Spring Modulith 业务模块保留为 `com.rom.cellarbridge` 的直接子包。身份访问已经可运行；其余业务能力在完整纵向切片交付前仍标记为 `Planned`。
+可执行应用将所有 Spring Modulith 业务模块保留为 `com.rom.cellarbridge` 的直接子包。身份访问与商业客户准入已经可运行；其余业务能力在完整纵向切片交付前仍标记为 `Planned`。
 
 ### 8. 运行工程骨架
 
@@ -355,16 +360,19 @@ make test                       # 后端集成/架构测试与前端测试
 make dev-core                   # 启动 PostgreSQL、Keycloak、后端和前端
 make smoke-core                 # 隔离构建、健康检查并自动清理
 make identity-e2e               # 真实 OIDC 登录与双租户隔离
+make partner-e2e                # 客户提交、独立审核与自审拒绝
 ```
 
 `make dev-core` 成功后访问 <http://localhost:5173/app>。后端 readiness 地址为
 <http://localhost:8080/actuator/health/readiness>，Keycloak 地址为 <http://localhost:8081>。
-可使用合成本地账号 `north.sales`、`north.buyer` 或 `harbor.manager` 登录；仅用于 demo profile
-的密码为 `CellarBridge-Demo-2026!`，严禁复用于生产。使用 `make stop-core` 停止环境，详细
-行为和安全控制见[身份访问运行手册](docs/05-delivery/13-identity-access-runbook.md)。
+可使用合成本地账号 `north.sales`、`north.buyer`、`north.manager`、`north.admin` 或
+`harbor.manager` 登录；仅用于 demo profile 的密码为 `CellarBridge-Demo-2026!`，严禁复用于生产。
+使用 `make stop-core` 停止环境，详细行为和安全控制见
+[身份访问运行手册](docs/05-delivery/13-identity-access-runbook.md)与
+[商业客户准入运行手册](docs/05-delivery/14-partner-onboarding-runbook.md)。
 
-执行 `make generate-api-client` 可从 OpenAPI 重新生成并提交 TypeScript API 边界。当前 OpenAPI
-仍是设计契约，工程骨架没有实现其中的业务接口。
+执行 `make generate-api-client` 可从 OpenAPI 重新生成并提交 TypeScript API 边界。OpenAPI
+仍是权威契约；`/me` 与 `/partners*` 已实现，后续业务路径仍为设计契约。
 
 ### 9. 推荐评审路径
 
@@ -383,7 +391,8 @@ make identity-e2e               # 真实 OIDC 登录与双租户隔离
 | Java 与 React 工程骨架 | 可运行 |
 | 核心本地环境与 CI 质量门禁 | 可运行 |
 | 身份与租户访问切片 | 可运行 |
-| 商业业务端到端切片 | 计划中 |
+| 商业客户准入切片 | 可运行 |
+| 其余商业业务端到端切片 | 计划中 |
 | 性能与安全证据 | 计划中 |
 | 公开演示版本 | 计划中 |
 
