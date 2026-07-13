@@ -26,13 +26,14 @@ Status date: **2026-07-13**
 | Docker/CI executable runtime | Available | `deploy/compose/core.compose.yaml`, `scripts/smoke_core.sh`, `.github/workflows/` |
 | Identity, tenant and permission access | Available | OIDC Code + PKCE, JWT validation, `/me`, two-tenant mapping/isolation and protected permission-aware navigation |
 | Broader application security controls | Partial | Task 02 delivers identity boundary, safe audit logging, CORS and response headers; later threat, dependency and release evidence remains planned |
-| Partner/catalog/quotation/order/inventory | Designed | implementation not started |
+| Partner onboarding and eligibility | Available | tenant-scoped draft/review lifecycle, duplicate controls, immutable eligibility, React workspace and real OIDC Playwright flow |
+| Catalog/quotation/order/inventory | Designed | implementation not started |
 | Fulfillment/exception/settlement/reporting | Designed | implementation not started |
 | Performance/security/release evidence | Planned | tasks 13–15 |
 
 ## 3. 声明
 
-当前可运行范围包括 Task 01 工程骨架与 Task 02 身份访问纵向切片：本地 Keycloak realm、双租户映射、`/me`、权限边界和受保护控制台均可执行。伙伴、商品、报价、订单等业务能力仍保持 `Designed`；只有具备实现、测试与运行证据的能力标记为 `Available`。
+当前可运行范围包括 Task 01 工程骨架、Task 02 身份访问纵向切片与 Task 03 商业客户准入纵向切片：本地 Keycloak realm、双租户映射、`/me`、客户草稿、独立审核、资格版本、审计时间线和受保护控制台均可执行。商品、报价、订单等后续业务能力仍保持 `Designed`；只有具备实现、测试与运行证据的能力标记为 `Available`。
 
 ## 4. 追踪模板
 
