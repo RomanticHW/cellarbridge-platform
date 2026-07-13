@@ -1,0 +1,283 @@
+package com.rom.cellarbridge.quotation;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.rom.cellarbridge.test.PostgresIntegrationTestSupport;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.oauth2.jwt.BadJwtException;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.test.context.ActiveProfiles;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+
+@Testcontainers
+@ActiveProfiles({"test", "demo"})
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+class QuotationApiIntegrationTest extends PostgresIntegrationTestSupport {
+
+  private static final String NORTH_SALES = "quotation-north-sales-token";
+  private static final String NORTH_MANAGER = "quotation-north-manager-token";
+  private static final String HARBOR_MANAGER = "quotation-harbor-manager-token";
+  private static final String PARTNER = "53000000-0000-4000-8000-000000000001";
+  private static final String SKU = "34000000-0000-4000-8000-000000000001";
+
+  private final HttpClient httpClient = HttpClient.newHttpClient();
+
+  @Value("${local.server.port}")
+  private int port;
+
+  @Autowired private JsonMapper jsonMapper;
+
+  @Autowired private JdbcTemplate jdbc;
+
+  @Test
+  void createsEvaluatesApprovesIssuesAndReturnsCustomerSafeSnapshot() throws Exception {
+    Instant now = Instant.now();
+    String request =
+        """
+        {
+          "partnerId": "%s",
+          "currency": "CNY",
+          "requestedDeliveryDate": "%s",
+          "expiresAt": "%s",
+          "paymentTermDays": 30,
+          "deliveryAddress": {
+            "countryCode": "CN",
+            "province": "Shanghai",
+            "city": "Shanghai",
+            "district": "Pudong",
+            "line1": "88 Harbor Avenue",
+            "postalCode": "200120"
+          },
+          "lines": [{
+            "skuId": "%s",
+            "quantity": {"value": "6", "unit": "CASE"},
+            "discountRate": "0.0900"
+          }]
+        }
+        """
+            .formatted(
+                PARTNER,
+                LocalDate.now(ZoneOffset.UTC).plusDays(20),
+                now.plusSeconds(10 * 86_400L),
+                SKU);
+
+    ApiResponse created = request("POST", "/api/v1/quotations", NORTH_SALES, null, request);
+    assertThat(created.status()).withFailMessage(created.raw()).isEqualTo(201);
+    assertThat(created.body().path("status").asText()).isEqualTo("DRAFT");
+    assertThat(created.body().path("estimatedMarginRate").isNull()).isTrue();
+    assertThat(created.body().path("lines").path(0).path("sku").path("skuCode").asText())
+        .isEqualTo("CB-MTV-2019-750X6");
+    String quotationId = created.body().path("id").asText();
+
+    ApiResponse unauthorizedOverride =
+        request(
+            "POST",
+            "/api/v1/quotations/" + quotationId + "/route-evaluations",
+            NORTH_SALES,
+            "\"0\"",
+            """
+            {"requestedRouteCode":"NB_BONDED_B2B","overrideReason":"Use bonded delivery"}
+            """);
+    assertThat(unauthorizedOverride.status()).isEqualTo(403);
+    assertThat(unauthorizedOverride.body().path("code").asText()).isEqualTo("ACCESS_DENIED");
+
+    ApiResponse evaluated =
+        request(
+            "POST",
+            "/api/v1/quotations/" + quotationId + "/route-evaluations",
+            NORTH_MANAGER,
+            "\"0\"",
+            """
+            {"requestedRouteCode":"NB_BONDED_B2B","overrideReason":"Use bonded delivery"}
+            """);
+    assertThat(evaluated.status()).withFailMessage(evaluated.raw()).isEqualTo(200);
+    assertThat(evaluated.body().path("policyVersion").asText()).isEqualTo("ROUTE-2026-01");
+    assertThat(evaluated.body().path("recommendedRouteCode").asText())
+        .isEqualTo("SH_GENERAL_TRADE");
+    assertThat(evaluated.body().path("selectedRouteCode").asText()).isEqualTo("NB_BONDED_B2B");
+    assertThat(evaluated.body().path("override").path("originalRecommendation").asText())
+        .isEqualTo("SH_GENERAL_TRADE");
+    assertThat(evaluated.body().path("candidates").size()).isEqualTo(3);
+
+    ApiResponse routed = get("/api/v1/quotations/" + quotationId, NORTH_SALES);
+    assertThat(routed.body().path("version").asLong()).isEqualTo(1);
+    ApiResponse submitted =
+        request(
+            "POST",
+            "/api/v1/quotations/" + quotationId + "/submission",
+            NORTH_SALES,
+            "\"1\"",
+            null);
+    assertThat(submitted.status()).withFailMessage(submitted.raw()).isEqualTo(200);
+    assertThat(submitted.body().path("status").asText()).isEqualTo("PENDING_APPROVAL");
+    assertThat(submitted.body().path("version").asLong()).isEqualTo(2);
+
+    ApiResponse selfApproval =
+        request(
+            "POST",
+            "/api/v1/quotations/" + quotationId + "/approval",
+            NORTH_SALES,
+            "\"2\"",
+            "{\"decision\":\"APPROVE\",\"reason\":\"Approve commercial terms\"}");
+    assertThat(selfApproval.status()).isEqualTo(403);
+    assertThat(selfApproval.body().path("code").asText()).isEqualTo("ACCESS_DENIED");
+
+    ApiResponse managerView = get("/api/v1/quotations/" + quotationId, NORTH_MANAGER);
+    assertThat(managerView.status()).isEqualTo(200);
+    assertThat(managerView.body().path("estimatedMarginRate").asText()).isNotBlank();
+    assertThat(managerView.body().path("approvalRequirements").path(0).path("code").asText())
+        .isEqualTo("DISCOUNT_THRESHOLD_EXCEEDED");
+    jdbc.update(
+        """
+        UPDATE catalog.wine_product
+           SET name = 'Moonlit Terrace Updated', version = version + 1
+         WHERE tenant_id = '10000000-0000-4000-8000-000000000001'
+           AND id = '33000000-0000-4000-8000-000000000001'
+        """);
+    ApiResponse frozenSnapshot = get("/api/v1/quotations/" + quotationId, NORTH_MANAGER);
+    assertThat(frozenSnapshot.body().path("lines").path(0).path("sku").path("displayName").asText())
+        .isEqualTo("Moonlit Terrace");
+    CompletableFuture<ApiResponse> firstApproval =
+        CompletableFuture.supplyAsync(() -> approve(quotationId));
+    CompletableFuture<ApiResponse> duplicateApproval =
+        CompletableFuture.supplyAsync(() -> approve(quotationId));
+    List<ApiResponse> approvals = List.of(firstApproval.join(), duplicateApproval.join());
+    assertThat(approvals).extracting(ApiResponse::status).containsOnly(200);
+    assertThat(approvals)
+        .extracting(response -> response.body().path("status").asText())
+        .containsOnly("APPROVED");
+    Integer decisionCount =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM quotation.approval_decision WHERE quotation_id = ?::uuid",
+            Integer.class,
+            quotationId);
+    assertThat(decisionCount).isEqualTo(1);
+
+    ApiResponse issued =
+        request("POST", "/api/v1/quotations/" + quotationId + "/issue", NORTH_SALES, "\"3\"", null);
+    assertThat(issued.status()).withFailMessage(issued.raw()).isEqualTo(200);
+    assertThat(issued.body().path("status").asText()).isEqualTo("SENT");
+    String portalUrl = issued.body().path("portalUrl").asText();
+
+    ApiResponse publicView = get("/api/v1" + portalUrl, null);
+    assertThat(publicView.status()).withFailMessage(publicView.raw()).isEqualTo(200);
+    assertThat(publicView.body().path("customerDisplayName").asText())
+        .isEqualTo("Aurora Market Services");
+    assertThat(publicView.raw())
+        .doesNotContain("cost", "margin", "score", "inputHash", "policyVersion");
+    assertThat(publicView.headers().firstValue("cache-control").orElse("")).contains("no-store");
+
+    ApiResponse crossTenant = get("/api/v1/quotations/" + quotationId, HARBOR_MANAGER);
+    assertThat(crossTenant.status()).isEqualTo(404);
+    assertThat(crossTenant.raw()).doesNotContain("Aurora Market Services");
+  }
+
+  @Test
+  void rejectsUnauthenticatedInternalAccessAndMalformedPublicTokens() throws Exception {
+    ApiResponse internal = get("/api/v1/quotations", null);
+    assertThat(internal.status()).isEqualTo(401);
+
+    ApiResponse publicView = get("/api/v1/portal/quotations/not-a-token", null);
+    assertThat(publicView.status()).isEqualTo(404);
+    assertThat(publicView.body().path("code").asText()).isEqualTo("RESOURCE_NOT_FOUND");
+  }
+
+  private ApiResponse get(String path, String token) throws Exception {
+    return request("GET", path, token, null, null);
+  }
+
+  private ApiResponse approve(String quotationId) {
+    try {
+      return request(
+          "POST",
+          "/api/v1/quotations/" + quotationId + "/approval",
+          NORTH_MANAGER,
+          "\"2\"",
+          "{\"decision\":\"APPROVE\",\"reason\":\"Approved within demo policy\"}");
+    } catch (Exception exception) {
+      throw new IllegalStateException(exception);
+    }
+  }
+
+  private ApiResponse request(String method, String path, String token, String ifMatch, String body)
+      throws Exception {
+    HttpRequest.Builder request =
+        HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + path))
+            .header("Accept", "application/json");
+    if (token != null) {
+      request.header("Authorization", "Bearer " + token);
+    }
+    if (ifMatch != null) {
+      request.header("If-Match", ifMatch);
+    }
+    if (body != null) {
+      request.header("Content-Type", "application/json");
+    }
+    request.method(
+        method,
+        body == null
+            ? HttpRequest.BodyPublishers.noBody()
+            : HttpRequest.BodyPublishers.ofString(body));
+    HttpResponse<String> response =
+        httpClient.send(request.build(), HttpResponse.BodyHandlers.ofString());
+    return new ApiResponse(
+        response.statusCode(),
+        response.body().isBlank()
+            ? jsonMapper.createObjectNode()
+            : jsonMapper.readTree(response.body()),
+        response.body(),
+        response.headers());
+  }
+
+  record ApiResponse(int status, JsonNode body, String raw, java.net.http.HttpHeaders headers) {}
+
+  @TestConfiguration(proxyBeanMethods = false)
+  static class TestTokenConfiguration {
+
+    @Bean
+    @Primary
+    JwtDecoder testJwtDecoder() {
+      return token ->
+          switch (token) {
+            case NORTH_SALES -> jwt(token, "11000000-0000-4000-8000-000000000001", "north-cellars");
+            case NORTH_MANAGER ->
+                jwt(token, "11000000-0000-4000-8000-000000000003", "north-cellars");
+            case HARBOR_MANAGER ->
+                jwt(token, "22000000-0000-4000-8000-000000000001", "harbor-cellars");
+            default -> throw new BadJwtException("Token is invalid");
+          };
+    }
+
+    private static Jwt jwt(String token, String subject, String tenantCode) {
+      Instant now = Instant.now();
+      return Jwt.withTokenValue(token)
+          .header("alg", "RS256")
+          .issuer("http://localhost:8081/realms/cellarbridge")
+          .subject(subject)
+          .audience(List.of("cellarbridge-api"))
+          .issuedAt(now.minusSeconds(30))
+          .expiresAt(now.plusSeconds(300))
+          .claim("tenant_code", tenantCode)
+          .build();
+    }
+  }
+}

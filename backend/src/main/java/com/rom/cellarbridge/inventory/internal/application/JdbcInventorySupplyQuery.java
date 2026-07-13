@@ -4,7 +4,9 @@ import com.rom.cellarbridge.identityaccess.AuthorizationService;
 import com.rom.cellarbridge.identityaccess.PermissionCode;
 import com.rom.cellarbridge.identityaccess.TenantContext;
 import com.rom.cellarbridge.identityaccess.TenantContextHolder;
+import com.rom.cellarbridge.identityaccess.TenantId;
 import com.rom.cellarbridge.inventory.InventorySupplyQuery;
+import com.rom.cellarbridge.inventory.SupplyType;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -106,6 +108,55 @@ public class JdbcInventorySupplyQuery implements InventorySupplyQuery {
                 resultSet.getTimestamp("available_from") == null
                     ? null
                     : resultSet.getTimestamp("available_from").toInstant(),
+                resultSet.getTimestamp("data_as_of").toInstant()));
+  }
+
+  @Override
+  public List<RouteAvailability> findRouteAvailability(TenantId tenantId, Set<UUID> skuIds) {
+    if (skuIds == null || skuIds.isEmpty()) {
+      return List.of();
+    }
+    return jdbc.query(
+        """
+        SELECT sp.id AS supply_pool_id,
+               l.sku_id,
+               sp.route_code,
+               sp.supply_type,
+               sp.currency,
+               SUM(l.on_hand_quantity - l.reserved_quantity) AS available_quantity,
+               MIN(COALESCE(l.available_from, sp.available_from)) AS available_from,
+               sp.confidence,
+               sp.policy_version,
+               MAX(GREATEST(l.updated_at, sp.updated_at)) AS data_as_of
+          FROM inventory.supply_pool sp
+          JOIN inventory.inventory_lot l
+            ON l.tenant_id = sp.tenant_id
+           AND l.supply_pool_id = sp.id
+         WHERE sp.tenant_id = :tenantId
+           AND l.sku_id IN (:skuIds)
+           AND sp.status = 'ACTIVE'
+           AND l.status = 'AVAILABLE'
+           AND sp.route_code IS NOT NULL
+         GROUP BY sp.id, l.sku_id, sp.route_code, sp.supply_type, sp.currency,
+                  sp.confidence, sp.policy_version
+         ORDER BY sp.route_code, l.sku_id, sp.id
+        """,
+        new MapSqlParameterSource()
+            .addValue("tenantId", tenantId.value())
+            .addValue("skuIds", skuIds),
+        (resultSet, rowNumber) ->
+            new RouteAvailability(
+                resultSet.getObject("supply_pool_id", UUID.class),
+                resultSet.getObject("sku_id", UUID.class),
+                resultSet.getString("route_code"),
+                SupplyType.valueOf(resultSet.getString("supply_type")),
+                resultSet.getString("currency"),
+                resultSet.getBigDecimal("available_quantity"),
+                resultSet.getTimestamp("available_from") == null
+                    ? null
+                    : resultSet.getTimestamp("available_from").toInstant(),
+                resultSet.getString("confidence"),
+                resultSet.getString("policy_version"),
                 resultSet.getTimestamp("data_as_of").toInstant()));
   }
 

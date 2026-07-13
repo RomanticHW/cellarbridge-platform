@@ -1,5 +1,6 @@
 package com.rom.cellarbridge.inventory;
 
+import com.rom.cellarbridge.identityaccess.TenantId;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -12,6 +13,9 @@ public interface InventorySupplyQuery {
 
   List<ExactLotAvailability> findAuthorizedLots(Set<UUID> supplyPoolIds);
 
+  /** Internal module collaboration query. Results are not a reservation or customer promise. */
+  List<RouteAvailability> findRouteAvailability(TenantId tenantId, Set<UUID> skuIds);
+
   record ExactLotAvailability(
       UUID supplyPoolId,
       UUID skuId,
@@ -22,5 +26,17 @@ public interface InventorySupplyQuery {
       BigDecimal reservedQuantity,
       BigDecimal availableQuantity,
       Instant availableFrom,
+      Instant dataAsOf) {}
+
+  record RouteAvailability(
+      UUID supplyPoolId,
+      UUID skuId,
+      String routeCode,
+      SupplyType supplyType,
+      String currency,
+      BigDecimal availableQuantity,
+      Instant availableFrom,
+      String confidence,
+      String policyVersion,
       Instant dataAsOf) {}
 }

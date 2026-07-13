@@ -5,6 +5,7 @@ import com.rom.cellarbridge.identityaccess.PermissionCode;
 import com.rom.cellarbridge.identityaccess.TenantContext;
 import com.rom.cellarbridge.identityaccess.TenantContextHolder;
 import com.rom.cellarbridge.identityaccess.TenantId;
+import com.rom.cellarbridge.partner.PartnerEligibilityException;
 import com.rom.cellarbridge.partner.PartnerEligibilityService;
 import com.rom.cellarbridge.partner.PartnerStatus;
 import com.rom.cellarbridge.partner.internal.application.PartnerRepository.ChangedField;
@@ -291,26 +292,37 @@ public class PartnerApplicationService implements PartnerEligibilityService {
   @Override
   @Transactional(readOnly = true)
   public EligibilitySnapshot requireActive(TenantId tenantId, UUID partnerId) {
-    Partner partner = requirePartner(tenantId, partnerId);
-    mapDomain(
-        () -> {
-          partner.requireActive();
-          return partner;
-        });
-    EligibilityRecord record =
-        repository
-            .latestEligibility(tenantId, partnerId)
-            .orElseThrow(PartnerProblemException::notFound);
-    return new EligibilitySnapshot(
-        partner.id(),
-        partner.number(),
-        partner.profile().displayName(),
-        record.version(),
-        record.eligibility().routeCodes(),
-        record.eligibility().serviceRegions(),
-        record.eligibility().currencies(),
-        record.eligibility().paymentTermDays(),
-        clock.instant());
+    try {
+      Partner partner = requirePartner(tenantId, partnerId);
+      mapDomain(
+          () -> {
+            partner.requireActive();
+            return partner;
+          });
+      EligibilityRecord record =
+          repository
+              .latestEligibility(tenantId, partnerId)
+              .orElseThrow(PartnerProblemException::notFound);
+      return new EligibilitySnapshot(
+          partner.id(),
+          partner.number(),
+          partner.profile().displayName(),
+          record.version(),
+          record.eligibility().routeCodes(),
+          record.eligibility().serviceRegions(),
+          record.eligibility().currencies(),
+          record.eligibility().paymentTermDays(),
+          new AddressSnapshot(
+              partner.profile().billingAddress().countryCode(),
+              partner.profile().billingAddress().province(),
+              partner.profile().billingAddress().city(),
+              partner.profile().billingAddress().district(),
+              partner.profile().billingAddress().line1(),
+              partner.profile().billingAddress().postalCode()),
+          clock.instant());
+    } catch (PartnerProblemException exception) {
+      throw new PartnerEligibilityException(exception.code(), exception.getMessage());
+    }
   }
 
   private void recordStateEvent(

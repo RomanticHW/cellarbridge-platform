@@ -40,6 +40,10 @@ class SecurityConfiguration {
                     .authenticated()
                     .requestMatchers(HttpMethod.GET, "/api/v1/catalog/skus/**")
                     .authenticated()
+                    .requestMatchers(HttpMethod.GET, "/api/v1/portal/quotations/**")
+                    .permitAll()
+                    .requestMatchers("/api/v1/quotations/**")
+                    .authenticated()
                     .anyRequest()
                     .denyAll())
         .oauth2ResourceServer(
