@@ -1,0 +1,333 @@
+# CellarBridge
+
+**An explainable B2B wine trade orchestration platform, from quotation to delivery.**  
+**一个从询报价到交付的可解释酒饮 B2B 贸易协同平台。**
+
+[English](#english) · [简体中文](#简体中文)
+
+> **Project status — Design Baseline v1.0**  
+> Product research, domain boundaries, architecture decisions, API/event contracts, data model, delivery plan, and review criteria are available. Application code is intentionally not included in this baseline.
+
+---
+
+## English
+
+### 1. Why this project exists
+
+CellarBridge models a realistic enterprise workflow for a wine importer and B2B supply-chain operator. It is not a consumer storefront and it is not a collection of disconnected CRUD screens. The platform coordinates customer eligibility, product and supply data, quotation approval, explainable trade-route evaluation, idempotent order creation, concurrent inventory reservation, fulfillment milestones, exception handling, receivables, and audit evidence.
+
+The project is designed to make engineering decisions easy to inspect. A reviewer can trace a business requirement from the product specification to a bounded context, aggregate invariant, API or event contract, database ownership rule, acceptance scenario, and implementation task.
+
+### 2. Core business scenario
+
+A sales representative prepares a customer-specific quotation for several wine SKUs. The platform evaluates eligible delivery routes, explains why each route is accepted or rejected, calculates a versioned price breakdown, and requests approval when margin or discount policies are exceeded. After the customer accepts the quotation, the platform creates exactly one order, reserves inventory without overselling, generates a route-specific fulfillment plan, tracks operational milestones, opens exceptions when service-level rules are breached, and closes the commercial loop through receivable and payment records.
+
+```mermaid
+flowchart LR
+    A[Partner onboarding] --> B[Catalog and supply search]
+    B --> C[Quotation]
+    C --> D[Trade-route evaluation]
+    D --> E[Approval]
+    E --> F[Customer acceptance]
+    F --> G[Idempotent order conversion]
+    G --> H[Atomic inventory reservation]
+    H --> I[Fulfillment orchestration]
+    I --> J[Exception handling]
+    I --> K[Receivable and payment]
+    J --> L[Audit and reporting]
+    K --> L
+```
+
+### 3. Product capabilities
+
+| Capability | Business value | Baseline state |
+|---|---|---|
+| Partner onboarding and channel eligibility | Prevents transactions with inactive or ineligible customers | Designed |
+| Wine product, SKU, lot, and supply-pool model | Preserves vintage, package, provenance, and availability semantics | Designed |
+| Customer-specific quotation workflow | Freezes commercial terms and supports approval policies | Designed |
+| Explainable trade-route evaluation | Compares delivery options by hard constraints and weighted scores | Designed |
+| Quote-to-order conversion | Guarantees one accepted quote produces at most one order | Designed |
+| Inventory reservation | Uses atomic conditional updates and deterministic allocation to prevent overselling | Designed |
+| Fulfillment plans and milestones | Models different delivery routes without embedding customs-law assumptions | Designed |
+| Exception center | Turns shortages, delays, and failed process steps into owned work | Designed |
+| Receivables and payment records | Completes the order-to-cash demonstration without a real payment gateway | Designed |
+| Audit trail and operational read models | Supports traceability, dashboards, and technical review | Designed |
+
+### 4. Architecture at a glance
+
+CellarBridge starts as a **domain-oriented modular monolith**. This is a deliberate choice: the business needs strong consistency inside aggregates, clear module ownership, simple local execution, and credible extraction paths—not distributed-system ceremony before it is justified.
+
+```mermaid
+flowchart TB
+    subgraph Browser[Browser]
+        UI[React operations console and customer portal]
+    end
+
+    subgraph App[Java application]
+        API[REST API and OpenAPI boundary]
+        IAM[Identity & Access]
+        PAR[Partner]
+        CAT[Catalog]
+        INV[Inventory]
+        QUO[Quotation]
+        TRD[Trade Planning]
+        ORD[Trade Order]
+        FUL[Fulfillment]
+        EXC[Exception Center]
+        SET[Settlement]
+        REP[Reporting & Audit]
+        EVT[Reliable event publication]
+    end
+
+    subgraph Platform[Platform services]
+        PG[(PostgreSQL)]
+        KC[Keycloak / OIDC]
+        REDIS[(Redis)]
+        KAFKA[Kafka - full profile]
+        OTEL[OpenTelemetry Collector]
+    end
+
+    UI -->|OIDC + REST| API
+    API --> IAM
+    API --> PAR
+    API --> CAT
+    API --> INV
+    API --> QUO
+    API --> ORD
+    API --> FUL
+    API --> EXC
+    API --> SET
+    QUO --> TRD
+    ORD --> EVT
+    INV --> EVT
+    FUL --> EVT
+    EVT --> KAFKA
+    App --> PG
+    App --> REDIS
+    UI --> KC
+    API --> KC
+    App --> OTEL
+```
+
+The principal architecture rules are:
+
+- business modules communicate only through published module APIs and versioned events;
+- each module owns its tables and migrations; cross-module foreign keys are avoided;
+- accepted quotations and orders store immutable commercial snapshots;
+- critical commands are idempotent and use database constraints as the final guard;
+- inventory correctness never depends on cache or distributed locks;
+- external event delivery is at-least-once, so consumers must be idempotent;
+- PostgreSQL search is preferred over a separate search cluster for the expected catalog size;
+- every architectural exception requires an Architecture Decision Record.
+
+### 5. Technology baseline
+
+| Area | Baseline |
+|---|---|
+| Backend | Java 21 LTS, Spring Boot 4.1, Spring Modulith 2.1, Spring Security, Spring Data JPA, JDBC for hot paths |
+| API | REST, OpenAPI 3.1, RFC 9457-style problem details, generated TypeScript types |
+| Data | PostgreSQL 18, Flyway, schema-per-module ownership, JSONB only for snapshots and event envelopes |
+| Messaging | Transactional event publication, Kafka 4.3 in the full profile, inbox deduplication |
+| Cache | Redis 8 for safe read caching and reference data; never the inventory source of truth |
+| Identity | Keycloak 26, OIDC Authorization Code with PKCE, JWT resource server |
+| Frontend | React 19.2, TypeScript, Vite 8, React Router, TanStack Query, Ant Design, React Hook Form, Zod, ECharts |
+| Quality | JUnit, AssertJ, Testcontainers, ArchUnit, Spring Modulith verification, Vitest, Testing Library, Playwright |
+| Observability | Micrometer, OpenTelemetry, Prometheus, Grafana, structured logs and business metrics |
+| Delivery | Maven Wrapper, pnpm, Docker Compose, GitHub Actions, SBOM and dependency scanning |
+
+Exact versions are frozen in [the technology baseline](docs/03-architecture/13-technology-baseline.md) and may only move through a reviewed dependency change.
+
+### 6. What is technically distinctive
+
+**Business correctness before framework code.** Aggregates define explicit state transitions and invariants. Monetary values never use floating-point types. Time comes from an injected clock. Accepted commercial data is never recalculated silently.
+
+**Explainable route decisions.** The trade-planning engine rejects invalid routes with machine-readable reason codes and scores valid routes using versioned policies. A manager may override a recommendation only with a recorded reason.
+
+**Concurrency that can be demonstrated.** Inventory reservation uses deterministic lot ordering and atomic conditional SQL. The test plan includes concurrent reservation attempts, transaction rollback, retry limits, and proof that reserved quantity never exceeds on-hand quantity.
+
+**Reliable asynchronous collaboration.** Cross-module work uses persisted event publications and idempotent handlers. Correlation and causation identifiers connect API requests, domain events, audit records, and traces.
+
+**Architecture as an executable constraint.** Spring Modulith verification and ArchUnit tests enforce module boundaries, dependency direction, public interfaces, and layer rules. These tests are part of the definition of done, not optional documentation.
+
+**Reviewer-friendly operation.** The target release provides synthetic demo data, role-based demo accounts, a deterministic walkthrough, one-command local startup, health checks, API documentation, dashboards, and a concise technical review path.
+
+### 7. Repository map
+
+```text
+.
+├── AGENTS.md                    Repository-wide engineering rules
+├── README.md                    Bilingual project overview
+├── contracts/                  OpenAPI, AsyncAPI, JSON Schemas, examples
+├── docs/
+│   ├── 00-research/             Evidence, business model, scenario selection
+│   ├── 01-product/              Vision, requirements, workflows, page specs
+│   ├── 02-domain/               Context map, aggregates, invariants, events
+│   ├── 03-architecture/         Architecture, ADRs, security, operations
+│   ├── 04-contracts/            Data, API, permissions, audit conventions
+│   └── 05-delivery/             Roadmap, quality gates, review and release plan
+├── scripts/                     Documentation and contract validation
+└── .github/                     Contribution templates and documentation CI
+```
+
+The implementation phase will add `backend/`, `frontend/`, `deploy/`, and executable test assets without changing the approved domain boundaries silently.
+
+### 8. Suggested review paths
+
+- **10 minutes:** this README → [reviewer guide](docs/reviewer-guide.md) → [architecture overview](docs/03-architecture/00-architecture-overview.md)
+- **30 minutes:** add [scenario selection](docs/00-research/07-scenario-selection.md), [aggregate invariants](docs/02-domain/04-aggregates-and-invariants.md), [inventory concurrency design](docs/03-architecture/08-performance-and-scalability.md), and the [requirement traceability matrix](docs/05-delivery/11-requirement-traceability.md)
+- **60 minutes:** add the [OpenAPI contract](contracts/openapi/cellarbridge-api.yaml), [event contract](contracts/asyncapi/cellarbridge-events.yaml), [database design](docs/04-contracts/05-database-design.md), [testing strategy](docs/05-delivery/03-testing-strategy.md), and the [technical reviewer scorecard](docs/05-delivery/12-reviewer-scorecard.md)
+
+### 9. Delivery status
+
+| Stage | State |
+|---|---|
+| Evidence-backed research | Available |
+| Product and domain design | Available |
+| Architecture and contracts | Available |
+| Repository governance | Available |
+| Java and React workspace | Planned |
+| End-to-end business slices | Planned |
+| Performance and security evidence | Planned |
+| Public demo release | Planned |
+
+The implementation roadmap is maintained in [docs/05-delivery/00-implementation-roadmap.md](docs/05-delivery/00-implementation-roadmap.md). The README must be updated as each capability becomes executable; planned work must never be presented as completed work.
+
+### 10. Disclaimer
+
+CellarBridge is an independent technical demonstration based on public business information and general supply-chain domain analysis. It is not an official product of Chengdu Fine West International Trade Co., Ltd., FineWest, WineMatcher, or any related brand. Company and brand names appear only in the research record. All customers, products, prices, inventory, orders, and operational events used by the project are synthetic.
+
+---
+
+## 简体中文
+
+### 1. 项目定位
+
+CellarBridge（酒桥）模拟一家进口酒饮供应链服务商的核心企业流程。它不是面向消费者的酒类商城，也不是把若干 CRUD 页面拼在一起的后台模板。平台围绕商业客户准入、酒款与货源、询报价、交付路径评估、订单、库存预占、履约节点、异常处理、应收与审计建立一条可运行、可追踪、可验证的完整链路。
+
+本项目强调“设计可以被审阅”。技术评审者可以从一条业务需求出发，继续追踪到限界上下文、聚合不变量、接口或事件契约、数据库归属、验收场景和实现任务，而不需要依赖口头补充来理解系统。
+
+### 2. 核心业务场景
+
+销售人员为商业客户选择多个酒款 SKU，并生成客户专属报价。系统根据客户资格、货源位置、目标交付时间、交付区域和成本构成评估可用的贸易交付路径；每个候选方案都给出可解释的通过、拒绝原因和评分。报价触发折扣或毛利规则时进入审批。客户接受报价后，系统必须只创建一个订单，在并发条件下安全预占库存，按照选定路径生成履约计划，持续记录物流与操作节点；若库存不足、节点逾期或处理失败，则进入异常中心，由明确责任人完成处置。交付完成后生成应收并记录付款，最终形成完整审计证据。
+
+```mermaid
+flowchart LR
+    A[客户准入] --> B[酒款与货源检索]
+    B --> C[询价与报价]
+    C --> D[贸易路径评估]
+    D --> E[审批]
+    E --> F[客户接受]
+    F --> G[幂等转订单]
+    G --> H[原子库存预占]
+    H --> I[履约编排]
+    I --> J[异常处理]
+    I --> K[应收与付款]
+    J --> L[审计与报表]
+    K --> L
+```
+
+### 3. 产品能力
+
+| 能力 | 解决的问题 | 基线状态 |
+|---|---|---|
+| 商业客户准入与渠道资格 | 防止未激活、已停用或不具备交付资格的客户参与交易 | 已设计 |
+| 酒款、SKU、批次与货源池 | 准确表达年份、包装、来源、库存位置和可售数量 | 已设计 |
+| 客户专属报价与审批 | 固化商业条件，管理折扣、毛利和审批责任 | 已设计 |
+| 可解释贸易路径评估 | 用硬约束与加权评分比较多种交付方案 | 已设计 |
+| 报价转订单 | 保证同一份已接受报价最多生成一个订单 | 已设计 |
+| 库存预占 | 通过原子条件更新和确定性分配防止超卖 | 已设计 |
+| 履约计划与节点 | 用可配置模板表达不同交付路径，而不是把法规细节写死在代码中 | 已设计 |
+| 异常中心 | 将缺货、延迟、节点失败转化为可分派、可追踪的工作项 | 已设计 |
+| 应收与付款记录 | 在不接入真实支付网关的前提下完成订单到回款闭环 | 已设计 |
+| 审计与经营读模型 | 支持问题追溯、经营看板和技术评审 | 已设计 |
+
+### 4. 架构概览
+
+项目采用**领域驱动的模块化单体**作为起点。这不是对微服务能力的回避，而是基于当前业务规模、团队协作、事务边界和演示可运行性做出的工程判断。系统先通过明确模块边界、独立数据归属、可靠事件和架构测试获得可拆分性；只有在独立扩缩容、发布节奏、团队所有权或故障隔离确有需要时，才考虑提取服务。
+
+核心规则如下：
+
+- 模块之间只能通过公开模块接口和版本化事件协作；
+- 每个模块拥有自己的表和迁移，原则上不建立跨模块外键；
+- 已接受报价与订单保存不可变商业快照，不依赖后续商品或价格数据；
+- 高风险命令必须支持幂等，最终防线是数据库唯一约束；
+- 库存正确性不依赖缓存，也不依赖分布式锁；
+- 外部事件按至少一次语义交付，消费端必须去重；
+- 预期酒款规模优先使用 PostgreSQL 搜索能力，不为少量数据单独维护搜索集群；
+- 任何突破边界的决定都必须通过 ADR 记录背景、取舍和后果。
+
+### 5. 技术栈基线
+
+| 领域 | 选型 |
+|---|---|
+| 后端 | Java 21 LTS、Spring Boot 4.1、Spring Modulith 2.1、Spring Security、Spring Data JPA；热点路径使用 JDBC |
+| 接口 | REST、OpenAPI 3.1、Problem Details、自动生成 TypeScript 类型 |
+| 数据 | PostgreSQL 18、Flyway、按模块划分 Schema；JSONB 仅用于快照和事件信封 |
+| 消息 | 事务性事件发布；完整运行配置使用 Kafka 4.3；消费端 Inbox 去重 |
+| 缓存 | Redis 8，仅缓存安全的查询与参考数据，不作为库存事实来源 |
+| 身份 | Keycloak 26、OIDC 授权码模式与 PKCE、后端 JWT Resource Server |
+| 前端 | React 19.2、TypeScript、Vite 8、React Router、TanStack Query、Ant Design、React Hook Form、Zod、ECharts |
+| 测试 | JUnit、AssertJ、Testcontainers、ArchUnit、Spring Modulith Verification、Vitest、Testing Library、Playwright |
+| 可观测性 | Micrometer、OpenTelemetry、Prometheus、Grafana、结构化日志和业务指标 |
+| 交付 | Maven Wrapper、pnpm、Docker Compose、GitHub Actions、SBOM 与依赖扫描 |
+
+具体版本与升级规则见[技术基线](docs/03-architecture/13-technology-baseline.md)。
+
+### 6. 技术亮点
+
+**业务正确性优先。** 聚合显式维护状态迁移和不变量；金额禁止使用浮点数；时间通过 `Clock` 注入；报价接受后不得静默重新计价；订单取消、库存释放和付款冲正都有明确边界。
+
+**决策过程可解释。** 贸易路径引擎先执行硬约束，再对合格方案评分。每个拒绝原因和得分项都可以展示、审计和测试。人工覆盖推荐结果时必须填写理由，并保存使用的策略版本。
+
+**并发行为可以被证明。** 库存预占采用确定性批次排序和原子条件 SQL。测试计划会同时发起多次预占，验证事务回滚、有限重试以及“预占数量永远不超过在库数量”的不变量。
+
+**异步协作可恢复。** 跨模块事件拥有持久化发布记录、相关标识和幂等消费机制。API 请求、领域事件、审计日志和链路追踪使用同一组 correlation/causation 信息串联。
+
+**架构约束可执行。** Spring Modulith 和 ArchUnit 在 CI 中验证模块依赖、公开接口、分层规则和循环依赖。架构不是只存在于文档中的愿望，而是构建失败条件的一部分。
+
+**方便运行与评审。** 目标版本将提供合成演示数据、分角色账号、固定演示脚本、一键启动、健康检查、接口文档、指标看板和技术评审路径，使评审者能够在有限时间内验证关键能力。
+
+### 7. 文档与代码结构
+
+```text
+.
+├── AGENTS.md                    全仓库工程规则
+├── README.md                    中英双语项目介绍
+├── contracts/                  OpenAPI、AsyncAPI、JSON Schema 与示例
+├── docs/
+│   ├── 00-research/             证据、商业模式与场景选择
+│   ├── 01-product/              产品愿景、需求、流程和页面设计
+│   ├── 02-domain/               上下文、聚合、不变量和领域事件
+│   ├── 03-architecture/         架构、ADR、安全和运行设计
+│   ├── 04-contracts/            数据、接口、权限与审计规范
+│   └── 05-delivery/             路线图、质量门禁和发布计划
+├── scripts/                     文档与契约检查脚本
+└── .github/                     贡献模板和文档 CI
+```
+
+进入实现阶段后会增加 `backend/`、`frontend/`、`deploy/` 和可执行测试资产，但不得在没有 ADR 的情况下改变已经批准的业务边界。
+
+### 8. 推荐评审路径
+
+- **10 分钟：** 本 README → [技术评审指南](docs/reviewer-guide.md) → [架构总览](docs/03-architecture/00-architecture-overview.md)
+- **30 分钟：** 再阅读[场景选择报告](docs/00-research/07-scenario-selection.md)、[聚合不变量](docs/02-domain/04-aggregates-and-invariants.md)、[库存并发设计](docs/03-architecture/08-performance-and-scalability.md)和[需求追踪矩阵](docs/05-delivery/11-requirement-traceability.md)
+- **60 分钟：** 再检查 [OpenAPI](contracts/openapi/cellarbridge-api.yaml)、[事件契约](contracts/asyncapi/cellarbridge-events.yaml)、[数据库设计](docs/04-contracts/05-database-design.md)、[测试策略](docs/05-delivery/03-testing-strategy.md)和[技术评审评分卡](docs/05-delivery/12-reviewer-scorecard.md)
+
+### 9. 当前进度
+
+| 阶段 | 状态 |
+|---|---|
+| 有证据支撑的业务调研 | 可审阅 |
+| 产品与领域设计 | 可审阅 |
+| 架构与契约 | 可审阅 |
+| 仓库工程治理 | 可审阅 |
+| Java 与 React 工程骨架 | 计划中 |
+| 端到端业务切片 | 计划中 |
+| 性能与安全证据 | 计划中 |
+| 公开演示版本 | 计划中 |
+
+实现路线见 [docs/05-delivery/00-implementation-roadmap.md](docs/05-delivery/00-implementation-roadmap.md)。每完成一个可执行能力，都必须同步更新 README；尚未完成的内容不得包装成已经交付的功能。
+
+### 10. 非官方声明
+
+CellarBridge 是基于公开商业信息和通用供应链领域分析构建的独立技术演示项目，与成都优自西方国际贸易有限公司、FineWest、WineMatcher 或相关品牌不存在隶属、授权或合作关系。公司及品牌名称只出现在调研记录中。项目中的客户、酒款、价格、库存、订单和履约事件均为合成数据。

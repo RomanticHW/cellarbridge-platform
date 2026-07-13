@@ -1,0 +1,52 @@
+name: Feature proposal
+description: Propose a capability that fits the approved product boundary.
+title: "feat: "
+labels: ["type:feature", "status:triage"]
+body:
+  - type: input
+    id: problem
+    attributes:
+      label: Business problem
+      description: State the user, decision, or operational risk. Do not start with a framework or library.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome and acceptance evidence
+    validations:
+      required: true
+  - type: dropdown
+    id: evidence
+    attributes:
+      label: Evidence class
+      options:
+        - CONFIRMED
+        - INFERRED
+        - DEMO_ENHANCEMENT
+    validations:
+      required: true
+  - type: input
+    id: module
+    attributes:
+      label: Likely owning module
+      placeholder: quotation / inventory / fulfillment / unknown
+  - type: textarea
+    id: boundary
+    attributes:
+      label: Scope and explicit exclusions
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: compatibility
+    attributes:
+      label: Change-control check
+      options:
+        - label: I checked the product scope, domain model, contracts, and accepted ADRs.
+          required: true
+        - label: I will propose an ADR before changing a core architecture decision.
+          required: true

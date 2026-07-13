@@ -1,0 +1,54 @@
+name: Bug report
+description: Report reproducible behavior that conflicts with an approved requirement or contract.
+title: "bug: "
+labels: ["type:bug", "status:triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include credentials, real customer data, or private project-control material.
+  - type: input
+    id: requirement
+    attributes:
+      label: Design or requirement reference
+      description: Requirement ID, use case, contract path, invariant, or ADR.
+      placeholder: FR-ORD-006 / docs/... / contracts/...
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behavior
+      description: Include stable error codes and relevant correlation identifiers, with sensitive values removed.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. Start the core profile...
+        2. Sign in as...
+        3. Submit...
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment and version
+      description: Commit, profile, browser, JVM, operating system, and relevant container versions.
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed secrets, private material, and real business data.
+          required: true

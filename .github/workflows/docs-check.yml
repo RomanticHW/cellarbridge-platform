@@ -1,0 +1,47 @@
+name: Documentation and contract checks
+
+on:
+  pull_request:
+    paths:
+      - '**/*.md'
+      - '**/*.yaml'
+      - '**/*.yml'
+      - '**/*.json'
+      - '**/*.csv'
+      - 'scripts/**'
+      - 'Makefile'
+      - '.github/workflows/docs-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - '**/*.md'
+      - '**/*.yaml'
+      - '**/*.yml'
+      - '**/*.json'
+      - '**/*.csv'
+      - 'scripts/**'
+      - 'Makefile'
+      - '.github/workflows/docs-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install validation dependencies
+        run: python -m pip install --disable-pip-version-check 'PyYAML>=6,<7' 'jsonschema[format]>=4.23,<5'
+
+      - name: Validate design baseline
+        run: make validate

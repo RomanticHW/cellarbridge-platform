@@ -1,0 +1,53 @@
+project:
+  name: CellarBridge
+  chinese_name: 酒桥
+  repository: cellarbridge-platform
+  description: Explainable B2B wine trade orchestration from quotation to delivery
+baseline:
+  version: 1.0.0
+  status: approved-for-implementation
+  approved_on: 2026-07-13
+  implementation_present: false
+  architecture_style: domain-oriented-modular-monolith
+  primary_scenario: b2b-quotation-to-order-to-fulfillment
+  data_policy: synthetic-only
+  public_repository: true
+classifications:
+  - CONFIRMED
+  - INFERRED
+  - DEMO_ENHANCEMENT
+core_modules:
+  - identity-access
+  - partner
+  - catalog
+  - inventory
+  - quotation
+  - trade-planning
+  - trade-order
+  - fulfillment
+  - exception-center
+  - settlement
+  - audit-reporting
+technology:
+  java: "21 LTS"
+  spring_boot: "4.1.0"
+  spring_modulith: "2.1.0"
+  postgresql: "18.4"
+  keycloak: "26.7.0"
+  kafka: "4.3"
+  redis: "8.8"
+  node: "24 LTS"
+  react: "19.2"
+  vite: "8.1.4"
+quality_gates:
+  architecture_verification: required
+  domain_unit_tests: required
+  integration_tests: required
+  concurrency_tests: required
+  tenant_isolation_tests: required
+  contract_validation: required
+  e2e_demo_path: required
+change_control:
+  architecture_change_requires_adr: true
+  contract_break_requires_version_decision: true
+  migration_rewrite_after_merge: forbidden

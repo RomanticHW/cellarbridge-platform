@@ -1,0 +1,48 @@
+name: Architecture change proposal
+description: Propose a material change to an accepted architecture decision.
+title: "adr: "
+labels: ["type:architecture", "status:decision-needed"]
+body:
+  - type: textarea
+    id: context
+    attributes:
+      label: Context and measurable problem
+      description: Describe the current limitation with evidence. Technology preference alone is insufficient.
+    validations:
+      required: true
+  - type: input
+    id: current_adr
+    attributes:
+      label: Affected ADR or baseline rule
+      placeholder: ADR-007 / docs/03-architecture/...
+    validations:
+      required: true
+  - type: textarea
+    id: options
+    attributes:
+      label: Options and trade-offs
+      description: Include keeping the current design as one option.
+    validations:
+      required: true
+  - type: textarea
+    id: recommendation
+    attributes:
+      label: Recommended decision
+    validations:
+      required: true
+  - type: textarea
+    id: consequences
+    attributes:
+      label: Consequences
+      description: Cover complexity, reliability, operations, migration, security, cost, testing, and rollback.
+    validations:
+      required: true
+  - type: checkboxes
+    id: guard
+    attributes:
+      label: Guardrails
+      options:
+        - label: No implementation will begin before the ADR is accepted.
+          required: true
+        - label: Existing public history will not be rewritten to conceal the decision trail.
+          required: true

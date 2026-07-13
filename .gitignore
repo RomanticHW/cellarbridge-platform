@@ -1,0 +1,52 @@
+# Operating systems and editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.example.json
+*.iml
+*.swp
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.jks
+secrets/
+
+# Java and Maven
+target/
+.mvn/timing.properties
+*.class
+hs_err_pid*
+
+# Node and frontend
+node_modules/
+dist/
+coverage/
+playwright-report/
+test-results/
+.pnpm-store/
+
+# Containers and local data
+.data/
+data/
+volumes/
+*.log
+
+# Generated contracts and reports
+generated/
+build/
+reports/
+
+# Private project-control material
+private-control/
+project-control/
+prompts-private/
+HANDOFF.private.md
+task-ledger.private.yaml
+research/raw/

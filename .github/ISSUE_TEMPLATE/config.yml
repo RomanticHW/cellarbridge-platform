@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security report
+    url: https://github.com/RomanticHW/cellarbridge-platform/security/advisories/new
+    about: Use RomanticHW's private security advisories for vulnerabilities.
