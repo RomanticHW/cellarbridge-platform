@@ -39,9 +39,9 @@ describe('SystemStatusPage', () => {
     expect(
       await screen.findByText('Reported by the backend readiness health group.'),
     ).toBeVisible();
-    expect(screen.getAllByText('Planned')).toHaveLength(12);
+    expect(screen.getAllByText('Planned')).toHaveLength(11);
     expect(
-      screen.getByText(/Business workflows are intentionally not available yet\./),
+      screen.getByText(/Identity, tenant resolution, and permission-aware access are available\./),
     ).toBeVisible();
     expect((await axe.run(container)).violations).toEqual([]);
   });
