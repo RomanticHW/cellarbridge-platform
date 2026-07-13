@@ -154,6 +154,7 @@ export const router = createBrowserRouter([
   { path: '/', element: <Navigate to="/app" replace /> },
   { path: '/login', element: <LoginPage /> },
   { path: '/forbidden', element: <ForbiddenPage /> },
+  { path: '/portal/quotes/:publicToken', element: <PublicQuotationRoute /> },
   { path: '/portal/quotations/:publicToken', element: <PublicQuotationRoute /> },
   {
     element: <RequireAuthentication />,

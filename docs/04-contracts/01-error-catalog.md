@@ -63,6 +63,7 @@
 | `QUOTE_EXPIRED` | 409 | 到期 |
 | `QUOTE_WITHDRAWN` | 409 | 已撤销 |
 | `QUOTE_ALREADY_DECIDED` | 409/200 | 已接受/拒绝，按幂等语义 |
+| `QUOTE_TERMS_VERSION_MISMATCH` | 409 | 客户确认的条款版本与当前签发修订不一致 |
 | `ROUTE_POLICY_NOT_FOUND` | 409 | 无适用策略 |
 | `ROUTE_POLICY_INVALID` | 500 | 已发布策略不合法（严重配置错误） |
 

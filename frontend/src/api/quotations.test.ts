@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  acceptPublicQuotation,
   createQuotation,
   decideQuotationApproval,
   getPublicQuotation,
   getQuotation,
   issueQuotation,
+  rejectPublicQuotation,
   type QuotationApiError,
   type QuotationDetail,
   type QuotationDraftRequest,
@@ -159,5 +161,60 @@ describe('quotation API client', () => {
         message: 'Quotation link is unavailable',
       }),
     );
+  });
+
+  it('submits customer decisions with a stable transport key and privacy-safe request options', async () => {
+    const requests: Request[] = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const incoming = input as Request;
+      requests.push(incoming);
+      if (new URL(incoming.url).pathname.endsWith('/acceptance')) {
+        return json(
+          {
+            acceptanceId: '61000000-0000-4000-8000-000000000001',
+            quotationNumber: quotation.number,
+            status: 'ACCEPTED',
+            acceptedAt: '2026-07-14T01:00:00Z',
+            orderCreationStatus: 'PENDING',
+            orderId: null,
+            orderNumber: null,
+            replayed: false,
+          },
+          201,
+        );
+      }
+      return json(
+        {
+          rejectionId: '62000000-0000-4000-8000-000000000001',
+          quotationNumber: quotation.number,
+          status: 'REJECTED_BY_CUSTOMER',
+          rejectedAt: '2026-07-14T01:05:00Z',
+          reasonCategory: 'DELIVERY_TIMING',
+          replayed: false,
+        },
+        201,
+      );
+    });
+
+    const acceptanceKey = '71000000-0000-4000-8000-000000000001';
+    const rejectionKey = '72000000-0000-4000-8000-000000000001';
+    await acceptPublicQuotation('customer-safe-token', acceptanceKey, {
+      acceptedTermsVersion: 'PRICE-2026-01',
+    });
+    await rejectPublicQuotation('customer-safe-token', rejectionKey, {
+      reasonCategory: 'DELIVERY_TIMING',
+    });
+
+    expect(requests).toHaveLength(2);
+    expect(requests.map((request) => request.method)).toEqual(['POST', 'POST']);
+    expect(requests[0].headers.get('idempotency-key')).toBe(acceptanceKey);
+    expect(requests[1].headers.get('idempotency-key')).toBe(rejectionKey);
+    expect(requests.every((request) => !request.headers.has('authorization'))).toBe(true);
+    expect(requests.every((request) => request.cache === 'no-store')).toBe(true);
+    expect(requests.every((request) => request.referrerPolicy === 'no-referrer')).toBe(true);
+    await expect(requests[0].json()).resolves.toEqual({
+      acceptedTermsVersion: 'PRICE-2026-01',
+    });
+    await expect(requests[1].json()).resolves.toEqual({ reasonCategory: 'DELIVERY_TIMING' });
   });
 });

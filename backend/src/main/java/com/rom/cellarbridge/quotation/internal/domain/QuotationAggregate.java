@@ -156,6 +156,30 @@ public record QuotationAggregate(
     return with(QuotationStatus.SENT, submittedById, version + 1, now, revision, approvals);
   }
 
+  public QuotationAggregate accept(UUID boundRevisionId, Instant now) {
+    requireCurrentPortalRevision(boundRevisionId);
+    requireOpenCustomerDecision(now);
+    return with(QuotationStatus.ACCEPTED, submittedById, version + 1, now, revision, approvals);
+  }
+
+  public QuotationAggregate reject(UUID boundRevisionId, Instant now) {
+    requireCurrentPortalRevision(boundRevisionId);
+    requireOpenCustomerDecision(now);
+    return with(
+        QuotationStatus.REJECTED_BY_CUSTOMER, submittedById, version + 1, now, revision, approvals);
+  }
+
+  public QuotationAggregate expire(Instant now) {
+    if (status != QuotationStatus.SENT) {
+      throw problem(
+          HttpStatus.CONFLICT, "QUOTE_NOT_ACCEPTABLE", "Only a sent quotation can expire");
+    }
+    if (now.isBefore(revision.terms().expiresAt())) {
+      throw problem(HttpStatus.CONFLICT, "QUOTE_NOT_EXPIRED", "Quotation is still valid");
+    }
+    return with(QuotationStatus.EXPIRED, submittedById, version + 1, now, revision, approvals);
+  }
+
   public void requireOwnerOrManager(UUID actorId, boolean manager) {
     if (!ownerId.equals(actorId) && !manager) {
       throw problem(HttpStatus.FORBIDDEN, "ACCESS_DENIED", "Quotation belongs to another owner");
@@ -168,6 +192,36 @@ public record QuotationAggregate(
           HttpStatus.CONFLICT,
           "INVALID_STATE_TRANSITION",
           "The current quotation revision is immutable");
+    }
+  }
+
+  private void requireCurrentPortalRevision(UUID boundRevisionId) {
+    if (!revision.id().equals(boundRevisionId)) {
+      throw problem(
+          HttpStatus.CONFLICT,
+          "QUOTE_NOT_ACCEPTABLE",
+          "The customer link is not bound to the current quotation revision");
+    }
+  }
+
+  private void requireOpenCustomerDecision(Instant now) {
+    if (status == QuotationStatus.WITHDRAWN) {
+      throw problem(HttpStatus.CONFLICT, "QUOTE_WITHDRAWN", "Quotation has been withdrawn");
+    }
+    if (status == QuotationStatus.ACCEPTED || status == QuotationStatus.REJECTED_BY_CUSTOMER) {
+      throw problem(
+          HttpStatus.CONFLICT,
+          "QUOTE_ALREADY_DECIDED",
+          "Quotation already has a customer decision");
+    }
+    if (status == QuotationStatus.EXPIRED || !now.isBefore(revision.terms().expiresAt())) {
+      throw problem(HttpStatus.CONFLICT, "QUOTE_EXPIRED", "Quotation has expired");
+    }
+    if (status != QuotationStatus.SENT) {
+      throw problem(
+          HttpStatus.CONFLICT,
+          "QUOTE_NOT_ACCEPTABLE",
+          "Quotation is not open for a customer decision");
     }
   }
 

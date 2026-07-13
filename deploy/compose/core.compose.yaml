@@ -57,7 +57,7 @@ services:
       CELLARBRIDGE_SECURITY_AUDIENCE: ${OIDC_AUDIENCE:-cellarbridge-api}
       CELLARBRIDGE_SECURITY_ALLOWED_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
     ports:
-      - '${BACKEND_PORT:-8080}:8080'
+      - '127.0.0.1:${BACKEND_PORT:-8080}:8080'
     depends_on:
       postgres:
         condition: service_healthy

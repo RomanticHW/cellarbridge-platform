@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PublicQuotation, QuotationDetail } from '../../api/quotations';
@@ -157,6 +157,7 @@ const publicDetail: PublicQuotation = {
   expiresAt: detail.expiresAt,
   lines: [
     {
+      skuCode: 'CB-MTV-2019-750X6',
       description: 'Moonlit Terrace',
       vintage: '2019',
       package: '750 ml × 6',
@@ -165,11 +166,18 @@ const publicDetail: PublicQuotation = {
       lineTotal: { amount: '8400.0000', currency: 'CNY' },
     },
   ],
+  subtotal: { amount: '8400.0000', currency: 'CNY' },
+  fees: { amount: '20.0000', currency: 'CNY' },
   total: { amount: '8420.0000', currency: 'CNY' },
   deliveryOption: { label: 'Shanghai general trade', estimatedWindow: '2026-08-01' },
   paymentTermDays: 30,
   termsVersion: 'PRICE-2026-01',
-  allowedActions: [],
+  termsSummary: [
+    'Prices and availability apply only to this quotation revision.',
+    'Delivery dates remain subject to the selected delivery option.',
+  ],
+  allowedActions: ['ACCEPT', 'REJECT'],
+  decisionReceipt: null,
 };
 const draftDetail: QuotationDetail = {
   ...detail,
@@ -390,7 +398,240 @@ describe('quotation workspace', () => {
     expect(screen.queryByText('0.2210')).not.toBeInTheDocument();
     expect(screen.queryByText('must-not-render')).not.toBeInTheDocument();
     expect(screen.queryByText('6550.0000')).not.toBeInTheDocument();
+    expect(screen.getByText(publicDetail.termsSummary[0])).toBeVisible();
+    expect(screen.getByRole('checkbox', { name: /reviewed and agree/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Accept quotation' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Reject quotation' })).toBeEnabled();
     expect(requests.some((request) => new URL(request.url).pathname.endsWith('/me'))).toBe(false);
     expect(requests[0]?.headers.has('authorization')).toBe(false);
+  });
+
+  it('accepts once with confirmed terms and reloads the terminal receipt without another POST', async () => {
+    let accepted = false;
+    const requests: Request[] = [];
+    const receipt = {
+      decisionId: '61000000-0000-4000-8000-000000000001',
+      decision: 'ACCEPTED' as const,
+      decidedAt: '2026-07-14T01:00:00Z',
+      reference: 'ACC-202607-000001',
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const request = incoming(input);
+      requests.push(request);
+      const path = new URL(request.url).pathname;
+      if (path.endsWith('/acceptance')) {
+        accepted = true;
+        return response(
+          {
+            acceptanceId: receipt.decisionId,
+            quotationNumber: publicDetail.number,
+            status: 'ACCEPTED',
+            acceptedAt: receipt.decidedAt,
+            orderCreationStatus: 'PENDING',
+            orderId: null,
+            orderNumber: null,
+            replayed: false,
+          },
+          201,
+        );
+      }
+      return response(
+        accepted
+          ? {
+              ...publicDetail,
+              status: 'ACCEPTED',
+              allowedActions: [],
+              decisionReceipt: receipt,
+            }
+          : publicDetail,
+      );
+    });
+    await router.navigate('/portal/quotes/customer-safe-token');
+    const user = userEvent.setup();
+    const firstRender = renderApplication();
+
+    const acceptButton = await screen.findByRole('button', { name: 'Accept quotation' });
+    await user.click(screen.getByRole('checkbox', { name: /reviewed and agree/i }));
+    expect(acceptButton).toBeEnabled();
+    fireEvent.click(acceptButton);
+    fireEvent.click(acceptButton);
+
+    expect(await screen.findByText('Quotation accepted')).toBeVisible();
+    expect(await screen.findByText(receipt.reference)).toBeVisible();
+    await waitFor(() =>
+      expect(requests.filter((request) => request.method === 'POST')).toHaveLength(1),
+    );
+
+    firstRender.unmount();
+    renderApplication();
+    expect(await screen.findByText('Quotation accepted')).toBeVisible();
+    expect(await screen.findByText(receipt.reference)).toBeVisible();
+    expect(requests.filter((request) => request.method === 'POST')).toHaveLength(1);
+    expect(requests.filter((request) => request.method === 'GET').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('reuses the same idempotency key when an unchanged acceptance is retried', async () => {
+    let acceptanceAttempts = 0;
+    let accepted = false;
+    const idempotencyKeys: Array<string | null> = [];
+    const receipt = {
+      decisionId: '61000000-0000-4000-8000-000000000002',
+      decision: 'ACCEPTED' as const,
+      decidedAt: '2026-07-14T01:03:00Z',
+      reference: 'ACC-202607-000002',
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const request = incoming(input);
+      if (new URL(request.url).pathname.endsWith('/acceptance')) {
+        acceptanceAttempts += 1;
+        idempotencyKeys.push(request.headers.get('idempotency-key'));
+        if (acceptanceAttempts === 1) {
+          return response(
+            {
+              status: 503,
+              code: 'DEPENDENCY_UNAVAILABLE',
+              detail: 'The decision service is temporarily unavailable.',
+              traceId: 'portal-retry-trace',
+              retryable: true,
+            },
+            503,
+          );
+        }
+        accepted = true;
+        return response(
+          {
+            acceptanceId: receipt.decisionId,
+            quotationNumber: publicDetail.number,
+            status: 'ACCEPTED',
+            acceptedAt: receipt.decidedAt,
+            orderCreationStatus: 'PENDING',
+            orderId: null,
+            orderNumber: null,
+            replayed: false,
+          },
+          201,
+        );
+      }
+      return response(
+        accepted
+          ? {
+              ...publicDetail,
+              status: 'ACCEPTED',
+              allowedActions: [],
+              decisionReceipt: receipt,
+            }
+          : publicDetail,
+      );
+    });
+    await router.navigate('/portal/quotations/customer-safe-token');
+    const user = userEvent.setup();
+    renderApplication();
+
+    await user.click(await screen.findByRole('checkbox', { name: /reviewed and agree/i }));
+    await user.click(screen.getByRole('button', { name: 'Accept quotation' }));
+    expect(await screen.findByText(/DEPENDENCY_UNAVAILABLE/)).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Accept quotation' }));
+
+    expect(await screen.findByText('Quotation accepted')).toBeVisible();
+    expect(idempotencyKeys).toHaveLength(2);
+    expect(idempotencyKeys[0]).toMatch(/^[A-Za-z0-9._~-]{20,200}$/);
+    expect(idempotencyKeys[1]).toBe(idempotencyKeys[0]);
+  });
+
+  it('records an optional categorized rejection and shows the immutable receipt', async () => {
+    const requests: Request[] = [];
+    let rejected = false;
+    const receipt = {
+      decisionId: '62000000-0000-4000-8000-000000000001',
+      decision: 'REJECTED_BY_CUSTOMER' as const,
+      decidedAt: '2026-07-14T01:05:00Z',
+      reference: 'REJ-202607-000001',
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const request = incoming(input);
+      requests.push(request);
+      if (new URL(request.url).pathname.endsWith('/rejection')) {
+        rejected = true;
+        return response(
+          {
+            rejectionId: receipt.decisionId,
+            quotationNumber: publicDetail.number,
+            status: 'REJECTED_BY_CUSTOMER',
+            rejectedAt: receipt.decidedAt,
+            reasonCategory: 'DELIVERY_TIMING',
+            replayed: false,
+          },
+          201,
+        );
+      }
+      return response(
+        rejected
+          ? {
+              ...publicDetail,
+              status: 'REJECTED_BY_CUSTOMER',
+              allowedActions: [],
+              decisionReceipt: receipt,
+            }
+          : publicDetail,
+      );
+    });
+    await router.navigate('/portal/quotations/customer-safe-token');
+    const user = userEvent.setup();
+    renderApplication();
+
+    await user.click(await screen.findByLabelText('Optional rejection reason'));
+    await user.click(screen.getByText('Delivery timing'));
+    await user.click(screen.getByRole('button', { name: 'Reject quotation' }));
+
+    expect(await screen.findByText('Quotation rejected')).toBeVisible();
+    expect(await screen.findByText(receipt.reference)).toBeVisible();
+    const rejectionRequest = requests.find((request) => request.method === 'POST');
+    if (!rejectionRequest) throw new Error('Expected a rejection request');
+    await expect(rejectionRequest.json()).resolves.toEqual({ reasonCategory: 'DELIVERY_TIMING' });
+    expect(rejectionRequest.headers.get('idempotency-key')).toMatch(/^[A-Za-z0-9._~-]{20,200}$/);
+  });
+
+  it.each([
+    ['QUOTE_EXPIRED', 409, 'Quotation expired'],
+    ['RESOURCE_NOT_FOUND', 404, 'Quotation unavailable or revoked'],
+  ])('renders the safe terminal for %s without decision actions', async (code, status, title) => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      response(
+        {
+          status,
+          code,
+          detail: 'The secure quotation is unavailable.',
+          traceId: 'safe-portal-trace',
+          retryable: false,
+        },
+        status,
+      ),
+    );
+    await router.navigate('/portal/quotations/customer-safe-token');
+    renderApplication();
+
+    expect(await screen.findByText(title)).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Accept quotation' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reject quotation' })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['EXPIRED', 'Quotation expired'],
+    ['WITHDRAWN', 'Quotation withdrawn'],
+  ])('renders a readable %s quotation as a terminal view', async (status, title) => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      response({
+        ...publicDetail,
+        status,
+        allowedActions: [],
+        decisionReceipt: null,
+      }),
+    );
+    await router.navigate('/portal/quotations/customer-safe-token');
+    renderApplication();
+
+    expect(await screen.findByText(title)).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Accept quotation' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reject quotation' })).not.toBeInTheDocument();
   });
 });

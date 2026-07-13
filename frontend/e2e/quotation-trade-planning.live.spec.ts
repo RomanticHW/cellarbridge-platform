@@ -80,9 +80,8 @@ test('creates, routes, approves, issues, and safely previews a revisioned quotat
   await manager.page.goto(publicPath ?? '');
   await expect(manager.page.getByRole('heading', { name: /Quotation QUO-/ })).toBeVisible();
   await expect(manager.page.getByText('Moonlit Terrace')).toBeVisible();
-  await expect(
-    manager.page.getByText(/acceptance will be available in the next workflow stage/i),
-  ).toBeVisible();
+  await expect(manager.page.getByRole('button', { name: 'Accept quotation' })).toBeVisible();
+  await expect(manager.page.getByRole('button', { name: 'Reject quotation' })).toBeVisible();
   await expect(manager.page.getByText('Estimated margin')).toHaveCount(0);
   await expect(manager.page.getByText('Weighted score')).toHaveCount(0);
   await expect(manager.page.getByText('ROUTE-2026-01')).toHaveCount(0);

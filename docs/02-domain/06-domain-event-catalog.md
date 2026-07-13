@@ -62,6 +62,8 @@ subjectType, subjectId, payload, metadata
 
 `QuotationAcceptedV1` payload 最少包括：报价/修订 ID、业务编号、客户快照、行项目快照、金额、币种、付款条款、路径决策快照、接受时间和幂等摘要。不得迫使 Order 回查 Quotation 数据库。
 
+实现约定：幂等摘要放在受控 envelope `metadata.idempotencyDigest`；v1 payload 兼容增加签发条款版本、请求交付日期和交付地址，生产者始终填充，旧事件消费者仍可按可选字段安全读取。
+
 ### Trade Planning
 
 | 事件 | 用途 |

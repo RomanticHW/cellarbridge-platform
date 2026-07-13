@@ -13,6 +13,14 @@ public final class QuotationProblem extends RuntimeException {
     this(status, code, message, null, null);
   }
 
+  public QuotationProblem(HttpStatus status, String code, String message, Throwable cause) {
+    super(message, cause);
+    this.status = status;
+    this.code = code;
+    this.currentVersion = null;
+    this.currentState = null;
+  }
+
   public QuotationProblem(
       HttpStatus status, String code, String message, Long currentVersion, String currentState) {
     super(message);

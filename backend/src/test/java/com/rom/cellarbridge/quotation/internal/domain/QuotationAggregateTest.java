@@ -85,7 +85,58 @@ class QuotationAggregateTest {
             problem -> assertThat(problem.code()).isEqualTo("QUOTE_REVIEWER_CONFLICT"));
   }
 
+  @Test
+  void appliesTheCustomerDecisionDeadlineAtTheExactInstant() {
+    Instant expiresAt = NOW.plusSeconds(60);
+
+    QuotationAggregate acceptanceSource = sent(expiresAt);
+    QuotationAggregate accepted =
+        acceptanceSource.accept(acceptanceSource.revision().id(), expiresAt.minusMillis(1));
+    assertThat(accepted.status()).isEqualTo(QuotationStatus.ACCEPTED);
+
+    QuotationAggregate rejectedSource = sent(expiresAt);
+    QuotationAggregate rejected =
+        rejectedSource.reject(rejectedSource.revision().id(), expiresAt.minusMillis(1));
+    assertThat(rejected.status()).isEqualTo(QuotationStatus.REJECTED_BY_CUSTOMER);
+
+    QuotationAggregate atBoundary = sent(expiresAt);
+    assertProblem(() -> atBoundary.accept(atBoundary.revision().id(), expiresAt), "QUOTE_EXPIRED");
+    assertProblem(() -> atBoundary.reject(atBoundary.revision().id(), expiresAt), "QUOTE_EXPIRED");
+    assertProblem(() -> atBoundary.expire(expiresAt.minusMillis(1)), "QUOTE_NOT_EXPIRED");
+    assertThat(atBoundary.expire(expiresAt).status()).isEqualTo(QuotationStatus.EXPIRED);
+  }
+
+  @Test
+  void makesAcceptRejectAndExpireMutuallyExclusiveTerminalTransitions() {
+    Instant expiresAt = NOW.plusSeconds(60);
+    Instant decisionTime = expiresAt.minusSeconds(1);
+
+    QuotationAggregate acceptanceSource = sent(expiresAt);
+    QuotationAggregate accepted =
+        acceptanceSource.accept(acceptanceSource.revision().id(), decisionTime);
+    assertProblem(
+        () -> accepted.reject(accepted.revision().id(), decisionTime), "QUOTE_ALREADY_DECIDED");
+    assertProblem(() -> accepted.expire(expiresAt), "QUOTE_NOT_ACCEPTABLE");
+
+    QuotationAggregate rejectionSource = sent(expiresAt);
+    QuotationAggregate rejected =
+        rejectionSource.reject(rejectionSource.revision().id(), decisionTime);
+    assertProblem(
+        () -> rejected.accept(rejected.revision().id(), decisionTime), "QUOTE_ALREADY_DECIDED");
+    assertProblem(() -> rejected.expire(expiresAt), "QUOTE_NOT_ACCEPTABLE");
+
+    QuotationAggregate expirationSource = sent(expiresAt);
+    QuotationAggregate expired = expirationSource.expire(expiresAt);
+    assertProblem(() -> expired.accept(expired.revision().id(), expiresAt), "QUOTE_EXPIRED");
+    assertProblem(() -> expired.reject(expired.revision().id(), expiresAt), "QUOTE_EXPIRED");
+    assertProblem(() -> expired.expire(expiresAt), "QUOTE_NOT_ACCEPTABLE");
+  }
+
   private static QuotationAggregate draft() {
+    return draft(terms());
+  }
+
+  private static QuotationAggregate draft(DraftTerms terms) {
     return QuotationAggregate.draft(
         UUID.randomUUID(),
         new TenantId(UUID.fromString("10000000-0000-4000-8000-000000000001")),
@@ -93,9 +144,30 @@ class QuotationAggregateTest {
         partner().partnerId(),
         OWNER,
         partner(),
-        terms(),
+        terms,
         pricing(),
         NOW);
+  }
+
+  private static QuotationAggregate sent(Instant expiresAt) {
+    DraftTerms terms =
+        new DraftTerms(
+            "CNY",
+            LocalDate.of(2026, 7, 30),
+            expiresAt,
+            30,
+            new Address("CN", "Shanghai", "Shanghai", "Pudong", "88 Harbor Avenue", "200120"));
+    return draft(terms)
+        .applyRoute(evaluation(), pricing(), NOW.plusSeconds(1))
+        .submit(List.of(), OWNER, NOW.plusSeconds(2))
+        .quotation()
+        .issue(NOW.plusSeconds(3));
+  }
+
+  private static void assertProblem(Runnable transition, String code) {
+    assertThatThrownBy(transition::run)
+        .isInstanceOfSatisfying(
+            QuotationProblem.class, problem -> assertThat(problem.code()).isEqualTo(code));
   }
 
   private static PartnerSnapshot partner() {

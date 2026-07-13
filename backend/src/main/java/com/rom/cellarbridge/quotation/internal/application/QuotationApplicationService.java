@@ -43,6 +43,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -63,6 +64,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class QuotationApplicationService {
 
   private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+  static final String TERMS_VERSION = "TERMS-2026-01";
+  private static final Duration PORTAL_READ_RETENTION = Duration.ofDays(30);
   private final QuotationRepository repository;
   private final PartnerEligibilityService partnerEligibilityService;
   private final CatalogSearchQuery catalogSearchQuery;
@@ -264,61 +267,17 @@ public class QuotationApplicationService {
         expectedVersion,
         context.userId(),
         UUID.randomUUID(),
-        sha256(token));
+        sha256(token),
+        context.tenantId().value().toString(),
+        context.tenantName(),
+        TERMS_VERSION,
+        after.revision().terms().expiresAt().plus(PORTAL_READ_RETENTION));
     return new IssueView(
         after.id(),
         after.status(),
         after.version(),
         "/portal/quotations/" + token,
         after.revision().terms().expiresAt());
-  }
-
-  @Transactional(readOnly = true)
-  public PublicView publicView(String token) {
-    if (token == null || !token.matches("^[A-Za-z0-9_-]{40,100}$")) {
-      throw problem(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", "Quotation is not available");
-    }
-    QuotationAggregate quotation =
-        repository
-            .findByPortalTokenHash(sha256(token))
-            .orElseThrow(
-                () ->
-                    problem(
-                        HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", "Quotation is not available"));
-    Instant now = clock.instant();
-    if (!now.isBefore(quotation.revision().terms().expiresAt())) {
-      throw problem(HttpStatus.CONFLICT, "QUOTE_EXPIRED", "Quotation has expired");
-    }
-    if (quotation.status() != QuotationStatus.SENT) {
-      throw problem(HttpStatus.CONFLICT, "QUOTE_NOT_ISSUABLE", "Quotation is not available");
-    }
-    return new PublicView(
-        quotation.number(),
-        quotation.currentRevision(),
-        "CellarBridge Demo Supply",
-        quotation.revision().partnerSnapshot().displayName(),
-        quotation.status(),
-        quotation.revision().terms().expiresAt(),
-        quotation.revision().pricing().lines().stream()
-            .map(
-                line ->
-                    new PublicLine(
-                        line.sku().displayName(),
-                        line.sku().vintage(),
-                        line.sku().packageType(),
-                        line.quantity(),
-                        line.unit(),
-                        line.netUnitPrice(),
-                        line.lineTotal(),
-                        line.currency()))
-            .toList(),
-        quotation.revision().pricing().total(),
-        quotation.revision().terms().currency(),
-        routeLabel(quotation.revision().selectedRouteCode()),
-        "Estimated delivery by " + quotation.revision().terms().requestedDeliveryDate(),
-        quotation.revision().terms().paymentTermDays(),
-        "DEMO-2026-01",
-        List.of());
   }
 
   private RouteEvaluation evaluate(
@@ -653,14 +612,6 @@ public class QuotationApplicationService {
         .divide(BigDecimal.valueOf(line.sku().unitsPerCase()), 6, RoundingMode.CEILING);
   }
 
-  private static String routeLabel(TradeRouteCode code) {
-    return switch (code) {
-      case SH_GENERAL_TRADE -> "Shanghai general-trade delivery";
-      case NB_BONDED_B2B -> "Ningbo bonded B2B delivery";
-      case HK_FREE_TRADE -> "Hong Kong free-trade delivery";
-    };
-  }
-
   private static String sha256(String value) {
     try {
       return HexFormat.of()
@@ -770,35 +721,4 @@ public class QuotationApplicationService {
       long version,
       String portalUrl,
       Instant expiresAt) {}
-
-  public record PublicLine(
-      String description,
-      String vintage,
-      String packageType,
-      BigDecimal quantity,
-      QuantityUnit unit,
-      BigDecimal unitPrice,
-      BigDecimal lineTotal,
-      String currency) {}
-
-  public record PublicView(
-      String number,
-      int revision,
-      String supplierDisplayName,
-      String customerDisplayName,
-      QuotationStatus status,
-      Instant expiresAt,
-      List<PublicLine> lines,
-      BigDecimal total,
-      String currency,
-      String deliveryLabel,
-      String estimatedWindow,
-      int paymentTermDays,
-      String termsVersion,
-      List<String> allowedActions) {
-    public PublicView {
-      lines = List.copyOf(lines);
-      allowedActions = List.copyOf(allowedActions);
-    }
-  }
 }

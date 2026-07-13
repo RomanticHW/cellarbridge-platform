@@ -4,6 +4,13 @@ import com.rom.cellarbridge.identityaccess.GlobalRegistryAccess;
 import com.rom.cellarbridge.identityaccess.TenantId;
 import com.rom.cellarbridge.quotation.QuotationStatus;
 import com.rom.cellarbridge.quotation.internal.application.QuotationRepository;
+import com.rom.cellarbridge.quotation.internal.application.QuotationRepository.CustomerDecision;
+import com.rom.cellarbridge.quotation.internal.application.QuotationRepository.CustomerDecisionType;
+import com.rom.cellarbridge.quotation.internal.application.QuotationRepository.CustomerOperation;
+import com.rom.cellarbridge.quotation.internal.application.QuotationRepository.ExpirationWorkItem;
+import com.rom.cellarbridge.quotation.internal.application.QuotationRepository.IdempotencyRecord;
+import com.rom.cellarbridge.quotation.internal.application.QuotationRepository.IdempotencyWrite;
+import com.rom.cellarbridge.quotation.internal.application.QuotationRepository.PortalContext;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationAggregate;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationAggregate.Address;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationAggregate.ApprovalDecision;
@@ -293,15 +300,23 @@ public class JdbcQuotationRepository implements QuotationRepository {
       long expectedVersion,
       UUID actorId,
       UUID accessId,
-      String tokenHash) {
+      String tokenHash,
+      String supplierPublicId,
+      String supplierDisplayName,
+      String termsVersion,
+      Instant portalExpiresAt) {
     updateQuotation(after, expectedVersion, actorId);
     jdbc.update(
         """
         INSERT INTO quotation.portal_access
-          (id, tenant_id, quotation_id, revision_id, token_hash, expires_at,
+          (id, tenant_id, quotation_id, revision_id, partner_id, token_hash, purpose,
+           allowed_actions, terms_version, supplier_public_id, supplier_display_name,
+           quotation_expires_at, expires_at,
            created_at, created_by, updated_at, updated_by, version)
         VALUES
-          (:id, :tenantId, :quotationId, :revisionId, :tokenHash, :expiresAt,
+          (:id, :tenantId, :quotationId, :revisionId, :partnerId, :tokenHash,
+           'CUSTOMER_QUOTATION_DECISION', ARRAY['VIEW','ACCEPT','REJECT'], :termsVersion,
+           :supplierPublicId, :supplierDisplayName, :quotationExpiresAt, :portalExpiresAt,
            :occurredAt, :actorId, :occurredAt, :actorId, 0)
         """,
         new MapSqlParameterSource()
@@ -309,31 +324,359 @@ public class JdbcQuotationRepository implements QuotationRepository {
             .addValue("tenantId", after.tenantId().value())
             .addValue("quotationId", after.id())
             .addValue("revisionId", after.revision().id())
+            .addValue("partnerId", after.partnerId())
             .addValue("tokenHash", tokenHash)
-            .addValue("expiresAt", timestamp(after.revision().terms().expiresAt()))
+            .addValue("termsVersion", termsVersion)
+            .addValue("supplierPublicId", supplierPublicId)
+            .addValue("supplierDisplayName", supplierDisplayName)
+            .addValue("quotationExpiresAt", timestamp(after.revision().terms().expiresAt()))
+            .addValue("portalExpiresAt", timestamp(portalExpiresAt))
             .addValue("occurredAt", timestamp(after.updatedAt()))
             .addValue("actorId", actorId));
+    jdbc.update(
+        """
+        INSERT INTO quotation.expiration_work_item
+          (id, tenant_id, quotation_id, revision_id, due_at, status, attempts,
+           created_at, created_by, updated_at, updated_by, version)
+        VALUES
+          (:id, :tenantId, :quotationId, :revisionId, :dueAt, 'PENDING', 0,
+           :occurredAt, :actorId, :occurredAt, :actorId, 0)
+        ON CONFLICT (tenant_id, quotation_id, revision_id) DO NOTHING
+        """,
+        actionParameters(after, actorId)
+            .addValue("id", UUID.randomUUID())
+            .addValue("dueAt", timestamp(after.revision().terms().expiresAt())));
     insertAudit(before, after, actorId, "QUOTATION_ISSUED", null);
     insertPublication(after, actorId, "cellarbridge.quotation.issued.v1", null);
   }
 
   @Override
   @GlobalRegistryAccess
-  public Optional<QuotationAggregate> findByPortalTokenHash(String tokenHash) {
+  public Optional<PortalContext> findPortalContext(
+      String tokenHash, Instant now, boolean forUpdate) {
+    String portalLookup =
+        """
+        SELECT portal.id, portal.tenant_id, portal.quotation_id, portal.revision_id,
+               portal.partner_id, portal.supplier_public_id, portal.supplier_display_name,
+               portal.terms_version, portal.allowed_actions, portal.expires_at
+          FROM quotation.portal_access portal
+          JOIN quotation.quotation q
+            ON q.tenant_id = portal.tenant_id
+           AND q.id = portal.quotation_id
+           AND q.partner_id = portal.partner_id
+           AND q.current_revision_id = portal.revision_id
+          JOIN quotation.quotation_revision bound_revision
+            ON bound_revision.tenant_id = portal.tenant_id
+           AND bound_revision.id = portal.revision_id
+           AND bound_revision.quotation_id = portal.quotation_id
+           AND bound_revision.expires_at = portal.quotation_expires_at
+         WHERE portal.token_hash = :tokenHash
+           AND portal.purpose = 'CUSTOMER_QUOTATION_DECISION'
+           AND portal.revoked_at IS NULL
+           AND portal.expires_at > :now
+        """;
+    if (forUpdate) {
+      portalLookup += " FOR UPDATE OF portal";
+    }
+    List<PortalAccessRow> rows =
+        jdbc.query(
+            portalLookup,
+            new MapSqlParameterSource()
+                .addValue("tokenHash", tokenHash)
+                .addValue("now", timestamp(now)),
+            (resultSet, rowNumber) ->
+                new PortalAccessRow(
+                    resultSet.getObject("id", UUID.class),
+                    new TenantId(resultSet.getObject("tenant_id", UUID.class)),
+                    resultSet.getObject("quotation_id", UUID.class),
+                    resultSet.getObject("revision_id", UUID.class),
+                    resultSet.getObject("partner_id", UUID.class),
+                    resultSet.getString("supplier_public_id"),
+                    resultSet.getString("supplier_display_name"),
+                    resultSet.getString("terms_version"),
+                    stringSet(resultSet, "allowed_actions"),
+                    instant(resultSet, "expires_at")));
+    if (rows.isEmpty()) {
+      return Optional.empty();
+    }
+    PortalAccessRow access = rows.getFirst();
+    Optional<QuotationAggregate> quotation =
+        forUpdate
+            ? findForUpdate(access.tenantId(), access.quotationId())
+            : find(access.tenantId(), access.quotationId());
+    if (quotation.isEmpty()
+        || !quotation.get().revision().id().equals(access.revisionId())
+        || !quotation.get().partnerId().equals(access.partnerId())) {
+      return Optional.empty();
+    }
+    QuotationAggregate aggregate = quotation.orElseThrow();
+    return Optional.of(
+        new PortalContext(
+            access.id(),
+            access.tenantId(),
+            access.partnerId(),
+            access.revisionId(),
+            access.supplierPublicId(),
+            access.supplierDisplayName(),
+            aggregate.revision().partnerSnapshot().number(),
+            access.termsVersion(),
+            access.allowedActions(),
+            access.expiresAt(),
+            aggregate,
+            findCustomerDecision(access.tenantId(), access.quotationId()).orElse(null)));
+  }
+
+  @Override
+  public Optional<QuotationAggregate> findForUpdate(TenantId tenantId, UUID quotationId) {
     List<QuotationAggregate> rows =
         jdbc.query(
             CURRENT_SELECT
-                + """
-                   JOIN quotation.portal_access portal
-                     ON portal.tenant_id = q.tenant_id
-                    AND portal.quotation_id = q.id
-                    AND portal.revision_id = r.id
-                  WHERE portal.token_hash = :tokenHash
-                    AND portal.revoked_at IS NULL
-                """,
-            new MapSqlParameterSource().addValue("tokenHash", tokenHash),
+                + " WHERE q.tenant_id = :tenantId AND q.id = :quotationId FOR UPDATE OF q",
+            ids(tenantId, "quotationId", quotationId),
             (resultSet, rowNumber) -> mapAggregate(resultSet));
     return rows.stream().findFirst();
+  }
+
+  @Override
+  public Optional<IdempotencyRecord> findIdempotency(
+      TenantId tenantId, UUID partnerId, CustomerOperation operation, String keyHash) {
+    List<IdempotencyRecord> rows =
+        jdbc.query(
+            """
+            SELECT request_hash, decision_id
+              FROM quotation.http_idempotency
+             WHERE tenant_id = :tenantId
+               AND partner_id = :partnerId
+               AND operation = :operation
+               AND key_hash = :keyHash
+               AND expires_at > CURRENT_TIMESTAMP
+            """,
+            new MapSqlParameterSource()
+                .addValue("tenantId", tenantId.value())
+                .addValue("partnerId", partnerId)
+                .addValue("operation", operation.name())
+                .addValue("keyHash", keyHash),
+            (resultSet, rowNumber) ->
+                new IdempotencyRecord(
+                    resultSet.getString("request_hash"),
+                    resultSet.getObject("decision_id", UUID.class)));
+    return rows.stream().findFirst();
+  }
+
+  @Override
+  public void lockIdempotencyKey(
+      TenantId tenantId, UUID partnerId, CustomerOperation operation, String keyHash) {
+    jdbc.queryForObject(
+        "SELECT pg_advisory_xact_lock(hashtextextended(:scope, 0))",
+        new MapSqlParameterSource()
+            .addValue(
+                "scope",
+                tenantId.value() + ":" + partnerId + ":" + operation.name() + ":" + keyHash),
+        (resultSet, rowNumber) -> resultSet.getObject(1));
+  }
+
+  @Override
+  public void saveCustomerDecision(
+      TenantId tenantId,
+      QuotationAggregate before,
+      QuotationAggregate after,
+      CustomerDecision decision,
+      IdempotencyWrite idempotency,
+      UUID actorId) {
+    requireTenant(tenantId, before.tenantId(), after.tenantId(), decision.tenantId());
+    updateQuotation(after, before.version(), actorId);
+    jdbc.update(
+        """
+        INSERT INTO quotation.customer_decision
+          (id, tenant_id, quotation_id, revision_id, portal_access_id, partner_id, decision,
+           accepted_terms_version, buyer_reference, reason_category, commercial_snapshot,
+           snapshot_hash, idempotency_digest, accepted_event_id, decided_at,
+           created_at, created_by, updated_at, updated_by, version)
+        VALUES
+          (:id, :tenantId, :quotationId, :revisionId, :portalAccessId, :partnerId, :decision,
+           :acceptedTermsVersion, :buyerReference, :reasonCategory,
+           CAST(:commercialSnapshot AS jsonb), :snapshotHash, :idempotencyDigest,
+           :acceptedEventId, :decidedAt,
+           :decidedAt, :actorId, :decidedAt, :actorId, 0)
+        """,
+        new MapSqlParameterSource()
+            .addValue("id", decision.id())
+            .addValue("tenantId", decision.tenantId().value())
+            .addValue("quotationId", decision.quotationId())
+            .addValue("revisionId", decision.revisionId())
+            .addValue("portalAccessId", decision.portalAccessId())
+            .addValue("partnerId", decision.partnerId())
+            .addValue("decision", decision.decision().name())
+            .addValue("acceptedTermsVersion", decision.acceptedTermsVersion())
+            .addValue("buyerReference", decision.buyerReference())
+            .addValue("reasonCategory", decision.reasonCategory())
+            .addValue("commercialSnapshot", decision.commercialSnapshot())
+            .addValue("snapshotHash", decision.snapshotHash())
+            .addValue("idempotencyDigest", decision.idempotencyDigest())
+            .addValue("acceptedEventId", decision.acceptedEventId())
+            .addValue("decidedAt", timestamp(decision.decidedAt()))
+            .addValue("actorId", actorId));
+    insertIdempotency(decision.tenantId(), decision.partnerId(), decision, idempotency);
+    completeExpirationForQuotation(after, actorId);
+    insertAudit(
+        before,
+        after,
+        actorId,
+        "CUSTOMER_TOKEN",
+        decision.decision() == CustomerDecisionType.ACCEPTED
+            ? "QUOTATION_ACCEPTED_BY_CUSTOMER"
+            : "QUOTATION_REJECTED_BY_CUSTOMER",
+        decision.reasonCategory());
+  }
+
+  @Override
+  public void saveIdempotencyResult(
+      TenantId tenantId,
+      PortalContext context,
+      CustomerDecision decision,
+      IdempotencyWrite idempotency) {
+    requireTenant(tenantId, context.tenantId(), decision.tenantId());
+    insertIdempotency(context.tenantId(), context.partnerId(), decision, idempotency);
+  }
+
+  @Override
+  @GlobalRegistryAccess
+  public List<ExpirationWorkItem> claimExpired(
+      Instant now, UUID claimOwner, Instant claimUntil, int batchSize) {
+    return jdbc.query(
+        """
+        WITH candidates AS (
+          SELECT id
+            FROM quotation.expiration_work_item
+           WHERE due_at <= :now
+             AND (status = 'PENDING'
+                  OR (status = 'CLAIMED' AND claim_until <= :now))
+           ORDER BY due_at, id
+           FOR UPDATE SKIP LOCKED
+           LIMIT :batchSize
+        )
+        UPDATE quotation.expiration_work_item work
+           SET status = 'CLAIMED', claim_owner = :claimOwner, claim_until = :claimUntil,
+               attempts = attempts + 1, updated_at = :now, updated_by = :actorId,
+               version = version + 1
+          FROM candidates
+         WHERE work.id = candidates.id
+        RETURNING work.id, work.tenant_id, work.quotation_id, work.revision_id, work.due_at
+        """,
+        new MapSqlParameterSource()
+            .addValue("now", timestamp(now))
+            .addValue("claimOwner", claimOwner.toString())
+            .addValue("actorId", claimOwner)
+            .addValue("claimUntil", timestamp(claimUntil))
+            .addValue("batchSize", batchSize),
+        (resultSet, rowNumber) ->
+            new ExpirationWorkItem(
+                resultSet.getObject("id", UUID.class),
+                new TenantId(resultSet.getObject("tenant_id", UUID.class)),
+                resultSet.getObject("quotation_id", UUID.class),
+                resultSet.getObject("revision_id", UUID.class),
+                instant(resultSet, "due_at")));
+  }
+
+  @Override
+  public void saveExpiration(
+      TenantId tenantId, QuotationAggregate before, QuotationAggregate after, UUID systemActorId) {
+    requireTenant(tenantId, before.tenantId(), after.tenantId());
+    updateQuotation(after, before.version(), systemActorId);
+    completeExpirationForQuotation(after, systemActorId);
+    insertAudit(before, after, systemActorId, "SYSTEM", "QUOTATION_EXPIRED", null);
+  }
+
+  @Override
+  public void completeExpiration(
+      TenantId tenantId, ExpirationWorkItem workItem, Instant now, UUID systemActorId) {
+    requireTenant(tenantId, workItem.tenantId());
+    jdbc.update(
+        """
+        UPDATE quotation.expiration_work_item
+           SET status = 'COMPLETED', claim_owner = NULL, claim_until = NULL,
+               completion_outcome = 'SKIPPED_FINAL',
+               completed_at = COALESCE(completed_at, :now), updated_at = :now,
+               updated_by = :actorId, version = version + 1
+         WHERE tenant_id = :tenantId AND id = :id AND status <> 'COMPLETED'
+        """,
+        new MapSqlParameterSource()
+            .addValue("tenantId", tenantId.value())
+            .addValue("id", workItem.id())
+            .addValue("now", timestamp(now))
+            .addValue("actorId", systemActorId));
+  }
+
+  private Optional<CustomerDecision> findCustomerDecision(TenantId tenantId, UUID quotationId) {
+    List<CustomerDecision> rows =
+        jdbc.query(
+            """
+            SELECT id, tenant_id, quotation_id, revision_id, portal_access_id, partner_id,
+                   decision, accepted_terms_version, buyer_reference, reason_category,
+                   commercial_snapshot::text, snapshot_hash, idempotency_digest,
+                   accepted_event_id, decided_at
+              FROM quotation.customer_decision
+             WHERE tenant_id = :tenantId AND quotation_id = :quotationId
+            """,
+            ids(tenantId, "quotationId", quotationId),
+            (resultSet, rowNumber) ->
+                new CustomerDecision(
+                    resultSet.getObject("id", UUID.class),
+                    new TenantId(resultSet.getObject("tenant_id", UUID.class)),
+                    resultSet.getObject("quotation_id", UUID.class),
+                    resultSet.getObject("revision_id", UUID.class),
+                    resultSet.getObject("portal_access_id", UUID.class),
+                    resultSet.getObject("partner_id", UUID.class),
+                    CustomerDecisionType.valueOf(resultSet.getString("decision")),
+                    resultSet.getString("accepted_terms_version"),
+                    resultSet.getString("buyer_reference"),
+                    resultSet.getString("reason_category"),
+                    resultSet.getString("commercial_snapshot"),
+                    resultSet.getString("snapshot_hash"),
+                    resultSet.getString("idempotency_digest"),
+                    resultSet.getObject("accepted_event_id", UUID.class),
+                    instant(resultSet, "decided_at")));
+    return rows.stream().findFirst();
+  }
+
+  private void insertIdempotency(
+      TenantId tenantId, UUID partnerId, CustomerDecision decision, IdempotencyWrite idempotency) {
+    jdbc.update(
+        """
+        INSERT INTO quotation.http_idempotency
+          (id, tenant_id, partner_id, operation, key_hash, request_hash, status, decision_id,
+           response_status, expires_at, created_at, updated_at, version)
+        VALUES
+          (:id, :tenantId, :partnerId, :operation, :keyHash, :requestHash, 'COMPLETED',
+           :decisionId, :responseStatus, :expiresAt, :createdAt, :createdAt, 0)
+        ON CONFLICT (tenant_id, partner_id, operation, key_hash) DO NOTHING
+        """,
+        new MapSqlParameterSource()
+            .addValue("id", idempotency.id())
+            .addValue("tenantId", tenantId.value())
+            .addValue("partnerId", partnerId)
+            .addValue("operation", idempotency.operation().name())
+            .addValue("keyHash", idempotency.keyHash())
+            .addValue("requestHash", idempotency.requestHash())
+            .addValue("decisionId", decision.id())
+            .addValue("responseStatus", idempotency.responseStatus())
+            .addValue("expiresAt", timestamp(idempotency.expiresAt()))
+            .addValue("createdAt", timestamp(idempotency.createdAt())));
+  }
+
+  private void completeExpirationForQuotation(QuotationAggregate quotation, UUID actorId) {
+    String outcome = quotation.status() == QuotationStatus.EXPIRED ? "EXPIRED" : "SKIPPED_FINAL";
+    jdbc.update(
+        """
+        UPDATE quotation.expiration_work_item
+           SET status = 'COMPLETED', claim_owner = NULL, claim_until = NULL,
+               completion_outcome = CASE WHEN :outcome = 'EXPIRED' THEN 'EXPIRED' ELSE 'SKIPPED_FINAL' END,
+               completed_at = COALESCE(completed_at, :occurredAt), updated_at = :occurredAt,
+               updated_by = :actorId, version = version + 1
+         WHERE tenant_id = :tenantId AND quotation_id = :quotationId
+           AND status <> 'COMPLETED'
+        """,
+        actionParameters(quotation, actorId).addValue("outcome", outcome));
   }
 
   private QuotationAggregate mapAggregate(ResultSet resultSet) throws SQLException {
@@ -654,19 +997,30 @@ public class JdbcQuotationRepository implements QuotationRepository {
       UUID actorId,
       String action,
       String reason) {
+    insertAudit(before, after, actorId, "INTERNAL_USER", action, reason);
+  }
+
+  private void insertAudit(
+      QuotationAggregate before,
+      QuotationAggregate after,
+      UUID actorId,
+      String actorType,
+      String action,
+      String reason) {
     jdbc.update(
         """
         INSERT INTO quotation.audit_entry
-          (id, tenant_id, quotation_id, revision_id, actor_id, action,
+          (id, tenant_id, quotation_id, revision_id, actor_id, actor_type, action,
            previous_state, new_state, safe_reason, occurred_at,
            created_at, created_by, updated_at, updated_by, version)
         VALUES
-          (:id, :tenantId, :quotationId, :revisionId, :actorId, :action,
+          (:id, :tenantId, :quotationId, :revisionId, :actorId, :actorType, :action,
            :previousState, :newState, :reason, :occurredAt,
            :occurredAt, :actorId, :occurredAt, :actorId, 0)
         """,
         actionParameters(after, actorId)
             .addValue("id", UUID.randomUUID())
+            .addValue("actorType", actorType)
             .addValue("action", action)
             .addValue("previousState", before == null ? null : before.status().name())
             .addValue("newState", after.status().name())
@@ -859,6 +1213,14 @@ public class JdbcQuotationRepository implements QuotationRepository {
     return new MapSqlParameterSource().addValue("tenantId", tenantId.value()).addValue(name, id);
   }
 
+  private static void requireTenant(TenantId expected, TenantId... actual) {
+    for (TenantId tenantId : actual) {
+      if (!expected.equals(tenantId)) {
+        throw new IllegalArgumentException("Tenant scope mismatch");
+      }
+    }
+  }
+
   private static Timestamp timestamp(Instant value) {
     return value == null ? null : Timestamp.from(value);
   }
@@ -870,6 +1232,14 @@ public class JdbcQuotationRepository implements QuotationRepository {
   private static Instant nullableInstant(ResultSet resultSet, String column) throws SQLException {
     Timestamp timestamp = resultSet.getTimestamp(column);
     return timestamp == null ? null : timestamp.toInstant();
+  }
+
+  private static Set<String> stringSet(ResultSet resultSet, String column) throws SQLException {
+    java.sql.Array array = resultSet.getArray(column);
+    if (array == null) {
+      return Set.of();
+    }
+    return Set.copyOf(List.of((String[]) array.getArray()));
   }
 
   private static TradeRouteCode route(String value) {
@@ -886,4 +1256,16 @@ public class JdbcQuotationRepository implements QuotationRepository {
       java.math.BigDecimal totalCost,
       java.math.BigDecimal marginRate,
       java.math.BigDecimal routeCharges) {}
+
+  private record PortalAccessRow(
+      UUID id,
+      TenantId tenantId,
+      UUID quotationId,
+      UUID revisionId,
+      UUID partnerId,
+      String supplierPublicId,
+      String supplierDisplayName,
+      String termsVersion,
+      Set<String> allowedActions,
+      Instant expiresAt) {}
 }

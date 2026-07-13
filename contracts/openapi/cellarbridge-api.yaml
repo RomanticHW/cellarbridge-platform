@@ -574,6 +574,7 @@ paths:
               schema: { $ref: '#/components/schemas/PublicQuotation' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/RateLimited' }
   /portal/quotations/{publicToken}/acceptance:
     post:
       tags: [Customer Portal]
@@ -588,26 +589,70 @@ paths:
         required: true
         content:
           application/json:
-            schema:
-              type: object
-              required: [acceptedTermsVersion]
-              properties:
-                acceptedTermsVersion: { type: string, minLength: 1, maxLength: 50 }
-                buyerReference: { type: string, maxLength: 100 }
+            schema: { $ref: '#/components/schemas/QuotationAcceptanceRequest' }
       responses:
         '200':
           description: Existing acceptance replayed
           headers:
             Idempotency-Replayed: { $ref: '#/components/headers/IdempotencyReplayed' }
+            Cache-Control:
+              schema: { type: string, const: no-store }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/QuotationAcceptanceResult' }
         '201':
           description: Quotation accepted
+          headers:
+            Idempotency-Replayed: { $ref: '#/components/headers/IdempotencyReplayed' }
+            Cache-Control:
+              schema: { type: string, const: no-store }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/QuotationAcceptanceResult' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
+  /portal/quotations/{publicToken}/rejection:
+    post:
+      tags: [Customer Portal]
+      operationId: rejectPublicQuotation
+      summary: Reject a valid quotation idempotently
+      security: []
+      x-requirements: [FR-QUO-010]
+      parameters:
+        - $ref: '#/components/parameters/PublicToken'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/QuotationRejectionRequest' }
+      responses:
+        '200':
+          description: Existing rejection replayed
+          headers:
+            Idempotency-Replayed: { $ref: '#/components/headers/IdempotencyReplayed' }
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QuotationRejectionResult' }
+        '201':
+          description: Quotation rejected by the customer
+          headers:
+            Idempotency-Replayed: { $ref: '#/components/headers/IdempotencyReplayed' }
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QuotationRejectionResult' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
   /orders:
     get:
       tags: [Orders]
@@ -1011,7 +1056,11 @@ components:
       name: Idempotency-Key
       in: header
       required: true
-      schema: { type: string, minLength: 20, maxLength: 200 }
+      schema:
+        type: string
+        minLength: 20
+        maxLength: 200
+        pattern: '^[A-Za-z0-9._~-]+$'
     IdempotencyKeyOptional:
       name: Idempotency-Key
       in: header
@@ -1051,7 +1100,11 @@ components:
       name: publicToken
       in: path
       required: true
-      schema: { type: string, minLength: 32, maxLength: 300 }
+      schema:
+        type: string
+        minLength: 43
+        maxLength: 43
+        pattern: '^[A-Za-z0-9_-]{43}$'
   responses:
     AuthenticationRequired:
       description: Authentication required or token invalid
@@ -1090,6 +1143,16 @@ components:
           schema: { $ref: '#/components/schemas/Problem' }
     BusinessUnprocessable:
       description: Syntactically valid request cannot satisfy the business preconditions
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    RateLimited:
+      description: The public portal request rate has been exceeded
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    DependencyUnavailable:
+      description: A required dependency is temporarily unavailable
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
@@ -1660,41 +1723,94 @@ components:
           items: { type: string }
     PublicQuotation:
       type: object
-      required: [number, revision, supplierDisplayName, customerDisplayName, status, expiresAt, lines, total, deliveryOption, paymentTermDays, termsVersion, allowedActions]
+      additionalProperties: false
+      required: [number, revision, supplierDisplayName, customerDisplayName, status, expiresAt, lines, subtotal, fees, total, deliveryOption, paymentTermDays, termsVersion, termsSummary, allowedActions, decisionReceipt]
       properties:
         number: { type: string }
-        revision: { type: integer }
-        supplierDisplayName: { type: string }
-        customerDisplayName: { type: string }
+        revision: { type: integer, minimum: 1 }
+        supplierPublicId: { type: string, maxLength: 80 }
+        supplierDisplayName: { type: string, maxLength: 160 }
+        customerPublicId: { type: string, maxLength: 80 }
+        customerDisplayName: { type: string, maxLength: 160 }
         status: { type: string, enum: [SENT, ACCEPTED, REJECTED_BY_CUSTOMER, WITHDRAWN, EXPIRED, CONVERTED] }
         expiresAt: { type: string, format: date-time }
         lines:
           type: array
-          items:
-            type: object
-            required: [description, quantity, unitPrice, lineTotal]
-            properties:
-              description: { type: string }
-              vintage: { type: string }
-              package: { type: string }
-              quantity: { $ref: '#/components/schemas/Quantity' }
-              unitPrice: { $ref: '#/components/schemas/Money' }
-              lineTotal: { $ref: '#/components/schemas/Money' }
-        total: { $ref: '#/components/schemas/Money' }
-        deliveryOption:
-          type: object
-          required: [label, estimatedWindow]
-          properties:
-            label: { type: string }
-            estimatedWindow: { type: string }
-        paymentTermDays: { type: integer }
-        termsVersion: { type: string }
+          minItems: 1
+          maxItems: 50
+          items: { $ref: '#/components/schemas/PublicQuotationLine' }
+        subtotal: { $ref: '#/components/schemas/PublicMoney' }
+        fees: { $ref: '#/components/schemas/PublicMoney' }
+        total: { $ref: '#/components/schemas/PublicMoney' }
+        deliveryOption: { $ref: '#/components/schemas/PublicDeliveryOption' }
+        paymentTermDays: { type: integer, minimum: 0, maximum: 180 }
+        termsVersion: { type: string, minLength: 1, maxLength: 50 }
+        termsSummary:
+          type: array
+          minItems: 1
+          maxItems: 10
+          items: { type: string, minLength: 1, maxLength: 500 }
         allowedActions:
           type: array
+          uniqueItems: true
           items: { type: string, enum: [ACCEPT, REJECT, VIEW_ORDER] }
+        decisionReceipt:
+          oneOf:
+            - $ref: '#/components/schemas/PublicQuotationDecisionReceipt'
+            - type: 'null'
         orderNumber: { type: [string, 'null'] }
+    PublicMoney:
+      type: object
+      additionalProperties: false
+      required: [amount, currency]
+      properties:
+        amount: { type: string, pattern: '^[0-9]+(\.[0-9]{1,4})?$' }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+    PublicQuantity:
+      type: object
+      additionalProperties: false
+      required: [value, unit]
+      properties:
+        value: { type: string, pattern: '^[0-9]+(\.[0-9]{1,6})?$' }
+        unit: { type: string, enum: [CASE, BOTTLE] }
+    PublicQuotationLine:
+      type: object
+      additionalProperties: false
+      required: [skuCode, description, quantity, unitPrice, lineTotal]
+      properties:
+        skuCode: { type: string, minLength: 1, maxLength: 80 }
+        description: { type: string, minLength: 1, maxLength: 200 }
+        vintage: { type: string, maxLength: 20 }
+        package: { type: string, maxLength: 80 }
+        quantity: { $ref: '#/components/schemas/PublicQuantity' }
+        unitPrice: { $ref: '#/components/schemas/PublicMoney' }
+        lineTotal: { $ref: '#/components/schemas/PublicMoney' }
+    PublicDeliveryOption:
+      type: object
+      additionalProperties: false
+      required: [label, estimatedWindow]
+      properties:
+        label: { type: string, minLength: 1, maxLength: 160 }
+        estimatedWindow: { type: string, minLength: 1, maxLength: 160 }
+    PublicQuotationDecisionReceipt:
+      type: object
+      additionalProperties: false
+      required: [decisionId, decision, decidedAt]
+      properties:
+        decisionId: { type: string, format: uuid }
+        decision: { type: string, enum: [ACCEPTED, REJECTED_BY_CUSTOMER] }
+        decidedAt: { type: string, format: date-time }
+        reference: { type: string, maxLength: 100 }
+    QuotationAcceptanceRequest:
+      type: object
+      additionalProperties: false
+      required: [acceptedTermsVersion]
+      properties:
+        acceptedTermsVersion: { type: string, minLength: 1, maxLength: 50 }
+        buyerReference: { type: string, minLength: 1, maxLength: 100 }
     QuotationAcceptanceResult:
       type: object
+      additionalProperties: false
       required: [acceptanceId, quotationNumber, status, acceptedAt, orderCreationStatus, replayed]
       properties:
         acceptanceId: { type: string, format: uuid }
@@ -1704,6 +1820,28 @@ components:
         orderCreationStatus: { type: string, enum: [PENDING, CREATED, FAILED_RETRYING] }
         orderId: { type: [string, 'null'], format: uuid }
         orderNumber: { type: [string, 'null'] }
+        replayed: { type: boolean }
+    QuotationRejectionReason:
+      type: string
+      enum: [PRICE, DELIVERY_TIMING, PAYMENT_TERMS, PRODUCT_SELECTION, OTHER]
+    QuotationRejectionRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        reasonCategory: { $ref: '#/components/schemas/QuotationRejectionReason' }
+    QuotationRejectionResult:
+      type: object
+      additionalProperties: false
+      required: [rejectionId, quotationNumber, status, rejectedAt, replayed]
+      properties:
+        rejectionId: { type: string, format: uuid }
+        quotationNumber: { type: string }
+        status: { const: REJECTED_BY_CUSTOMER }
+        rejectedAt: { type: string, format: date-time }
+        reasonCategory:
+          oneOf:
+            - $ref: '#/components/schemas/QuotationRejectionReason'
+            - type: 'null'
         replayed: { type: boolean }
     OrderStatus:
       type: string
