@@ -20,8 +20,8 @@ export function SystemStatusPage() {
             System status
           </Typography.Title>
           <Typography.Paragraph type="secondary" className="page-introduction">
-            This foundation validates the approved modular-monolith structure, local runtime, and
-            engineering quality gates. Business workflows are intentionally not available yet.
+            Identity, tenant resolution, and permission-aware access are available. Remaining
+            business workflows stay planned until their complete vertical slices are verified.
           </Typography.Paragraph>
         </div>
 
@@ -35,7 +35,7 @@ export function SystemStatusPage() {
                 <Descriptions.Item label="Backend">Java 21 · Spring Boot 4.1</Descriptions.Item>
                 <Descriptions.Item label="Frontend">React 19.2 · TypeScript</Descriptions.Item>
                 <Descriptions.Item label="Delivery stage">
-                  <Tag color="blue">Foundation available</Tag>
+                  <Tag color="green">Identity access available</Tag>
                 </Descriptions.Item>
               </Descriptions>
             </Card>
@@ -64,8 +64,8 @@ export function SystemStatusPage() {
 
         <Card title="Business modules">
           <Typography.Paragraph type="secondary">
-            Navigation is reserved for approved modules. Each remains planned until its complete
-            vertical slice is implemented and verified.
+            Identity and access is available from the navigation. Each module below remains planned
+            until its complete vertical slice is implemented and verified.
           </Typography.Paragraph>
           <div className="module-grid" aria-label="Planned business modules">
             {plannedModules.map((module) => (

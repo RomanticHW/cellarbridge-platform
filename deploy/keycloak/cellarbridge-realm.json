@@ -1,0 +1,149 @@
+{
+  "realm": "cellarbridge",
+  "enabled": true,
+  "displayName": "CellarBridge local identity",
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "rememberMe": false,
+  "loginWithEmailAllowed": false,
+  "duplicateEmailsAllowed": false,
+  "bruteForceProtected": true,
+  "clients": [
+    {
+      "clientId": "cellarbridge-api",
+      "name": "CellarBridge API audience",
+      "enabled": true,
+      "bearerOnly": true,
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false
+    },
+    {
+      "clientId": "cellarbridge-console",
+      "name": "CellarBridge Operations Console",
+      "enabled": true,
+      "publicClient": true,
+      "clientAuthenticatorType": "client-secret",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "rootUrl": "http://localhost:5173",
+      "baseUrl": "http://localhost:5173/app",
+      "redirectUris": [
+        "http://localhost:5173/app",
+        "http://127.0.0.1:5173/app"
+      ],
+      "webOrigins": ["http://localhost:5173", "http://127.0.0.1:5173"],
+      "attributes": {
+        "post.logout.redirect.uris": "http://localhost:5173/login##http://127.0.0.1:5173/login",
+        "pkce.code.challenge.method": "S256"
+      },
+      "defaultClientScopes": ["web-origins", "acr", "roles", "profile", "basic"],
+      "optionalClientScopes": [],
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "tenant-code",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "tenant_code",
+            "claim.name": "tenant_code",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "false",
+            "multivalued": "false"
+          }
+        },
+        {
+          "name": "cellarbridge-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "cellarbridge-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "id": "11000000-0000-4000-8000-000000000001",
+      "username": "north.sales",
+      "enabled": true,
+      "firstName": "North",
+      "lastName": "Sales",
+      "email": "north.sales@example.test",
+      "emailVerified": true,
+      "attributes": { "tenant_code": ["north-cellars"] },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "CellarBridge-Demo-2026!",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "11000000-0000-4000-8000-000000000002",
+      "username": "north.buyer",
+      "enabled": true,
+      "firstName": "North",
+      "lastName": "Buyer",
+      "email": "north.buyer@example.test",
+      "emailVerified": true,
+      "attributes": { "tenant_code": ["north-cellars"] },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "CellarBridge-Demo-2026!",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "11000000-0000-4000-8000-000000000099",
+      "username": "north.suspended",
+      "enabled": true,
+      "firstName": "Suspended",
+      "lastName": "User",
+      "email": "north.suspended@example.test",
+      "emailVerified": true,
+      "attributes": { "tenant_code": ["north-cellars"] },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "CellarBridge-Demo-2026!",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "22000000-0000-4000-8000-000000000001",
+      "username": "harbor.manager",
+      "enabled": true,
+      "firstName": "Harbor",
+      "lastName": "Manager",
+      "email": "harbor.manager@example.test",
+      "emailVerified": true,
+      "attributes": { "tenant_code": ["harbor-cellars"] },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "CellarBridge-Demo-2026!",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}

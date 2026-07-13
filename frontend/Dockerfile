@@ -1,4 +1,8 @@
 FROM node:24.18.0-alpine3.23 AS build
+ARG VITE_OIDC_AUTHORITY=http://localhost:8081/realms/cellarbridge
+ARG VITE_OIDC_CLIENT_ID=cellarbridge-console
+ENV VITE_OIDC_AUTHORITY=${VITE_OIDC_AUTHORITY}
+ENV VITE_OIDC_CLIENT_ID=${VITE_OIDC_CLIENT_ID}
 RUN corepack enable
 WORKDIR /workspace/frontend
 COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./

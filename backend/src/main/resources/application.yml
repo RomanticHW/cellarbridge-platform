@@ -28,3 +28,8 @@ management:
 cellarbridge:
   build:
     commit: ${CELLARBRIDGE_COMMIT:local}
+  security:
+    issuer: ${CELLARBRIDGE_SECURITY_ISSUER:http://localhost:8081/realms/cellarbridge}
+    jwk-set-uri: ${CELLARBRIDGE_SECURITY_JWK_SET_URI:http://localhost:8081/realms/cellarbridge/protocol/openid-connect/certs}
+    audience: ${CELLARBRIDGE_SECURITY_AUDIENCE:cellarbridge-api}
+    allowed-origins: ${CELLARBRIDGE_SECURITY_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}

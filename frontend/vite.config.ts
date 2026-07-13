@@ -8,6 +8,7 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       '/actuator': 'http://localhost:8080',
+      '/api': 'http://localhost:8080',
     },
   },
   test: {

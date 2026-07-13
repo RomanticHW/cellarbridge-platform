@@ -7,7 +7,7 @@ baseline:
   version: 1.0.0
   status: approved-for-implementation
   approved_on: 2026-07-13
-  implementation_present: false
+  implementation_present: true
   architecture_style: domain-oriented-modular-monolith
   primary_scenario: b2b-quotation-to-order-to-fulfillment
   data_policy: synthetic-only

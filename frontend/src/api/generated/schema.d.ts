@@ -1332,6 +1332,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
         };
     };
     listPartners: {

@@ -20,11 +20,14 @@ services:
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.7.0
-    command: ['start-dev']
+    command: ['start-dev', '--import-realm']
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:-local-admin}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-local-admin-change-me}
       KC_HEALTH_ENABLED: 'true'
+      KC_HOSTNAME: ${OIDC_HOSTNAME:-http://localhost:8081}
+    volumes:
+      - ../keycloak:/opt/keycloak/data/import:ro
     ports:
       - '${KEYCLOAK_PORT:-8081}:8080'
     healthcheck:
@@ -48,10 +51,17 @@ services:
       CELLARBRIDGE_DB_USERNAME: ${POSTGRES_USER:-cellarbridge}
       CELLARBRIDGE_DB_PASSWORD: ${POSTGRES_PASSWORD:-cellarbridge_local}
       CELLARBRIDGE_COMMIT: ${CELLARBRIDGE_COMMIT:-local}
+      SPRING_PROFILES_ACTIVE: demo
+      CELLARBRIDGE_SECURITY_ISSUER: ${OIDC_AUTHORITY:-http://localhost:8081/realms/cellarbridge}
+      CELLARBRIDGE_SECURITY_JWK_SET_URI: http://keycloak:8080/realms/cellarbridge/protocol/openid-connect/certs
+      CELLARBRIDGE_SECURITY_AUDIENCE: ${OIDC_AUDIENCE:-cellarbridge-api}
+      CELLARBRIDGE_SECURITY_ALLOWED_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
     ports:
       - '${BACKEND_PORT:-8080}:8080'
     depends_on:
       postgres:
+        condition: service_healthy
+      keycloak:
         condition: service_healthy
     healthcheck:
       test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:8080/actuator/health/readiness | grep -q UP']
@@ -65,6 +75,9 @@ services:
     build:
       context: ../..
       dockerfile: frontend/Dockerfile
+      args:
+        VITE_OIDC_AUTHORITY: ${OIDC_AUTHORITY:-http://localhost:8081/realms/cellarbridge}
+        VITE_OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-cellarbridge-console}
     ports:
       - '${FRONTEND_PORT:-5173}:80'
     depends_on:

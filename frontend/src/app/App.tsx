@@ -1,7 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App as AntApp, ConfigProvider } from 'antd';
 import { useState } from 'react';
+import { AuthProvider } from 'react-oidc-context';
 import { RouterProvider } from 'react-router-dom';
+import { AuthSessionBridge } from '../features/identity-access/AuthSessionBridge';
+import { oidcConfig } from '../features/identity-access/authConfig';
 import { AppErrorBoundary } from './AppErrorBoundary';
 import { router } from './router';
 
@@ -25,7 +28,7 @@ const theme = {
   },
 };
 
-export function App() {
+export function Application() {
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -48,5 +51,15 @@ export function App() {
         </AntApp>
       </ConfigProvider>
     </AppErrorBoundary>
+  );
+}
+
+export function App() {
+  return (
+    <AuthProvider {...oidcConfig}>
+      <AuthSessionBridge>
+        <Application />
+      </AuthSessionBridge>
+    </AuthProvider>
   );
 }

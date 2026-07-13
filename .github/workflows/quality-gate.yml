@@ -21,14 +21,25 @@ jobs:
     uses: ./.github/workflows/security.yml
     secrets: inherit
 
+  identity-access:
+    uses: ./.github/workflows/identity-access.yml
+
   required:
     name: Required quality gate
     runs-on: ubuntu-latest
     if: always()
-    needs: [docs-contracts, backend, frontend, security]
+    needs: [docs-contracts, backend, frontend, security, identity-access]
     steps:
       - name: Require every quality workflow
         env:
-          RESULTS: ${{ join(needs.*.result, ',') }}
+          DOCS_RESULT: ${{ needs['docs-contracts'].result }}
+          BACKEND_RESULT: ${{ needs.backend.result }}
+          FRONTEND_RESULT: ${{ needs.frontend.result }}
+          SECURITY_RESULT: ${{ needs.security.result }}
+          IDENTITY_RESULT: ${{ needs['identity-access'].result }}
         run: |
-          test "${RESULTS}" = "success,success,success,success"
+          test "${DOCS_RESULT}" = "success"
+          test "${BACKEND_RESULT}" = "success"
+          test "${FRONTEND_RESULT}" = "success"
+          test "${SECURITY_RESULT}" = "success"
+          test "${IDENTITY_RESULT}" = "success"
