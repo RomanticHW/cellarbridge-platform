@@ -40,7 +40,12 @@ class SecurityConfiguration {
                     .authenticated()
                     .requestMatchers(HttpMethod.GET, "/api/v1/catalog/skus/**")
                     .authenticated()
-                    .requestMatchers(HttpMethod.GET, "/api/v1/portal/quotations/**")
+                    .requestMatchers(HttpMethod.GET, "/api/v1/portal/quotations/*")
+                    .permitAll()
+                    .requestMatchers(
+                        HttpMethod.POST,
+                        "/api/v1/portal/quotations/*/acceptance",
+                        "/api/v1/portal/quotations/*/rejection")
                     .permitAll()
                     .requestMatchers("/api/v1/quotations/**")
                     .authenticated()
@@ -82,7 +87,7 @@ class SecurityConfiguration {
     configuration.setAllowedHeaders(
         List.of(
             "Authorization", "Content-Type", "If-Match", "Idempotency-Key", "X-Correlation-ID"));
-    configuration.setExposedHeaders(List.of("ETag", "X-Correlation-ID"));
+    configuration.setExposedHeaders(List.of("ETag", "X-Correlation-ID", "Idempotency-Replayed"));
     configuration.setAllowCredentials(false);
     configuration.setMaxAge(3600L);
     UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

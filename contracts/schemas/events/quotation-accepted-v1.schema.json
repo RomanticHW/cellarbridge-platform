@@ -119,6 +119,52 @@
                 }
               }
             },
+            "acceptedTermsVersion": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 50
+            },
+            "requestedDeliveryDate": {
+              "type": "string",
+              "format": "date"
+            },
+            "deliveryAddress": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "countryCode",
+                "province",
+                "city",
+                "line1"
+              ],
+              "properties": {
+                "countryCode": {
+                  "type": "string",
+                  "pattern": "^[A-Z]{2}$"
+                },
+                "province": {
+                  "type": "string"
+                },
+                "city": {
+                  "type": "string"
+                },
+                "district": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "line1": {
+                  "type": "string"
+                },
+                "postalCode": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            },
             "snapshotHash": {
               "type": "string",
               "minLength": 1

@@ -33,6 +33,16 @@
       "policyVersion": "TRP-2026-01",
       "estimatedDeliveryDate": "2026-08-15"
     },
+    "acceptedTermsVersion": "TERMS-2026-01",
+    "requestedDeliveryDate": "2026-08-15",
+    "deliveryAddress": {
+      "countryCode": "CN",
+      "province": "Shanghai",
+      "city": "Shanghai",
+      "district": "Pudong",
+      "line1": "88 Harbor Avenue",
+      "postalCode": "200120"
+    },
     "snapshotHash": "sha256:synthetic-example",
     "lines": [
       {
