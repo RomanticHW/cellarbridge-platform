@@ -30,11 +30,14 @@ jobs:
   catalog-supply-search:
     uses: ./.github/workflows/catalog-supply-search.yml
 
+  quotation-trade-planning:
+    uses: ./.github/workflows/quotation-trade-planning.yml
+
   required:
     name: Required quality gate
     runs-on: ubuntu-latest
     if: always()
-    needs: [docs-contracts, backend, frontend, security, identity-access, partner-onboarding, catalog-supply-search]
+    needs: [docs-contracts, backend, frontend, security, identity-access, partner-onboarding, catalog-supply-search, quotation-trade-planning]
     steps:
       - name: Require every quality workflow
         env:
@@ -45,6 +48,7 @@ jobs:
           IDENTITY_RESULT: ${{ needs['identity-access'].result }}
           PARTNER_RESULT: ${{ needs['partner-onboarding'].result }}
           CATALOG_RESULT: ${{ needs['catalog-supply-search'].result }}
+          QUOTATION_RESULT: ${{ needs['quotation-trade-planning'].result }}
         run: |
           test "${DOCS_RESULT}" = "success"
           test "${BACKEND_RESULT}" = "success"
@@ -53,3 +57,4 @@ jobs:
           test "${IDENTITY_RESULT}" = "success"
           test "${PARTNER_RESULT}" = "success"
           test "${CATALOG_RESULT}" = "success"
+          test "${QUOTATION_RESULT}" = "success"

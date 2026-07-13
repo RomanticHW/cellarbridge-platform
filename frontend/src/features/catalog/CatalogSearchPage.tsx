@@ -15,7 +15,7 @@ import {
   Typography,
 } from 'antd';
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   CatalogApiError,
   searchCatalog,
@@ -409,6 +409,13 @@ export function CatalogSearchPage() {
                     </Button>
                   </div>
                 ))}
+                <Link
+                  to={`/app/quotations/new?skuIds=${selection.map((sku) => sku.skuId).join(',')}`}
+                >
+                  <Button type="primary" block>
+                    Create quotation with selection
+                  </Button>
+                </Link>
               </Space>
             )}
           </Card>

@@ -37,6 +37,26 @@ const CatalogSearchPage = lazy(() =>
     default: module.CatalogSearchPage,
   })),
 );
+const QuotationListPage = lazy(() =>
+  import('../features/quotations/QuotationListPage').then((module) => ({
+    default: module.QuotationListPage,
+  })),
+);
+const QuotationEditorPage = lazy(() =>
+  import('../features/quotations/QuotationEditorPage').then((module) => ({
+    default: module.QuotationEditorPage,
+  })),
+);
+const QuotationDetailPage = lazy(() =>
+  import('../features/quotations/QuotationDetailPage').then((module) => ({
+    default: module.QuotationDetailPage,
+  })),
+);
+const PublicQuotationPage = lazy(() =>
+  import('../features/quotations/PublicQuotationPage').then((module) => ({
+    default: module.PublicQuotationPage,
+  })),
+);
 
 function FoundationRoute() {
   return (
@@ -96,10 +116,45 @@ function CatalogRoute() {
   );
 }
 
+function QuotationRoute({ page }: { page: 'list' | 'editor' | 'detail' }) {
+  const Page =
+    page === 'list'
+      ? QuotationListPage
+      : page === 'editor'
+        ? QuotationEditorPage
+        : QuotationDetailPage;
+  return (
+    <Suspense
+      fallback={
+        <Flex role="status" aria-label="Loading quotation workspace" justify="center">
+          <Spin size="large" />
+        </Flex>
+      }
+    >
+      <Page />
+    </Suspense>
+  );
+}
+
+function PublicQuotationRoute() {
+  return (
+    <Suspense
+      fallback={
+        <Flex role="status" aria-label="Loading quotation" justify="center">
+          <Spin size="large" />
+        </Flex>
+      }
+    >
+      <PublicQuotationPage />
+    </Suspense>
+  );
+}
+
 export const router = createBrowserRouter([
   { path: '/', element: <Navigate to="/app" replace /> },
   { path: '/login', element: <LoginPage /> },
   { path: '/forbidden', element: <ForbiddenPage /> },
+  { path: '/portal/quotations/:publicToken', element: <PublicQuotationRoute /> },
   {
     element: <RequireAuthentication />,
     children: [
@@ -114,6 +169,10 @@ export const router = createBrowserRouter([
           { path: 'partners/:partnerId/edit', element: <PartnerRoute page="editor" /> },
           { path: 'partners/:partnerId', element: <PartnerRoute page="detail" /> },
           { path: 'catalog', element: <CatalogRoute /> },
+          { path: 'quotations', element: <QuotationRoute page="list" /> },
+          { path: 'quotations/new', element: <QuotationRoute page="editor" /> },
+          { path: 'quotations/:quotationId/edit', element: <QuotationRoute page="editor" /> },
+          { path: 'quotations/:quotationId', element: <QuotationRoute page="detail" /> },
         ],
       },
     ],
