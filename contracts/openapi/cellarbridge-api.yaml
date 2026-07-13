@@ -1,11 +1,11 @@
 openapi: 3.1.0
 info:
   title: CellarBridge API
-  version: 1.1.0
+  version: 1.2.0
   summary: Contract baseline for B2B wine quotation, order, inventory and fulfillment
   description: |
     This contract remains the design-first integration baseline for CellarBridge. All examples are synthetic.
-    The authenticated `/me` endpoint is implemented by the identity and tenant-access slice;
+    The authenticated `/me` endpoint and partner-onboarding endpoints are implemented;
     remaining business endpoints are delivered incrementally and retain their approved contracts.
     Internal commercial fields and customer-portal fields intentionally use separate schemas.
   license:
@@ -68,6 +68,15 @@ paths:
         - name: routeCode
           in: query
           schema: { $ref: '#/components/schemas/TradeRouteCode' }
+        - name: ownerId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: updatedFrom
+          in: query
+          schema: { type: string, format: date-time }
+        - name: updatedTo
+          in: query
+          schema: { type: string, format: date-time }
       responses:
         '200':
           description: Partner page
@@ -77,6 +86,7 @@ paths:
                 $ref: '#/components/schemas/PartnerPage'
         '401': { $ref: '#/components/responses/AuthenticationRequired' }
         '403': { $ref: '#/components/responses/AccessDenied' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
     post:
       tags: [Partners]
       operationId: createPartnerDraft
@@ -94,10 +104,13 @@ paths:
           headers:
             Location:
               schema: { type: string, format: uri-reference }
+            ETag: { $ref: '#/components/headers/ETag' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/PartnerDetail' }
         '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
         '409': { $ref: '#/components/responses/Conflict' }
   /partners/{partnerId}:
     parameters:
@@ -116,6 +129,8 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/PartnerDetail' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
     patch:
       tags: [Partners]
       operationId: updatePartnerDraft
@@ -137,6 +152,9 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/PartnerDetail' }
         '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '412': { $ref: '#/components/responses/VersionConflict' }
         '428': { $ref: '#/components/responses/PreconditionRequired' }
@@ -153,12 +171,18 @@ paths:
       responses:
         '200':
           description: Partner submitted
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/PartnerCommandResult' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '412': { $ref: '#/components/responses/VersionConflict' }
         '422': { $ref: '#/components/responses/BusinessUnprocessable' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
   /partners/{partnerId}/review:
     post:
       tags: [Partners]
@@ -177,12 +201,78 @@ paths:
       responses:
         '200':
           description: Review recorded
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/PartnerCommandResult' }
         '403': { $ref: '#/components/responses/AccessDenied' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '412': { $ref: '#/components/responses/VersionConflict' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+  /partners/{partnerId}/suspension:
+    post:
+      tags: [Partners]
+      operationId: suspendPartner
+      summary: Suspend an active partner while retaining eligibility history
+      x-requirements: [FR-PAR-005]
+      x-permissions: [partner:review]
+      parameters:
+        - $ref: '#/components/parameters/PartnerId'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PartnerReasonRequest' }
+      responses:
+        '200':
+          description: Partner suspended
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PartnerCommandResult' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/VersionConflict' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+  /partners/{partnerId}/reactivation:
+    post:
+      tags: [Partners]
+      operationId: requestPartnerReactivation
+      summary: Submit a suspended partner for independent reactivation review
+      x-requirements: [FR-PAR-005]
+      x-permissions: [partner:submit]
+      parameters:
+        - $ref: '#/components/parameters/PartnerId'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PartnerReasonRequest' }
+      responses:
+        '200':
+          description: Reactivation review requested
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PartnerCommandResult' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/VersionConflict' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
   /catalog/skus:
     get:
       tags: [Catalog]
@@ -1032,10 +1122,10 @@ components:
       properties:
         id: { type: string, format: uuid }
         number: { type: string }
-        legalName: { type: string }
-        displayName: { type: string }
+        legalName: { type: [string, 'null'] }
+        displayName: { type: [string, 'null'] }
         status: { $ref: '#/components/schemas/PartnerStatus' }
-        defaultCurrency: { type: string }
+        defaultCurrency: { type: [string, 'null'] }
         routeEligibility:
           type: array
           items: { $ref: '#/components/schemas/TradeRouteCode' }
@@ -1058,50 +1148,142 @@ components:
         email: { type: string, format: email, maxLength: 254 }
         phone: { type: string, maxLength: 40 }
         primary: { type: boolean, default: false }
+    PartnerDraftContact:
+      type: object
+      properties:
+        name: { type: [string, 'null'], maxLength: 100 }
+        email:
+          anyOf:
+            - { type: string, pattern: '^$' }
+            - { type: string, format: email, maxLength: 254 }
+            - { type: 'null' }
+        phone: { type: [string, 'null'], maxLength: 40 }
+        primary: { type: boolean, default: false }
+    PartnerDraftAddress:
+      type: object
+      properties:
+        countryCode:
+          anyOf:
+            - { type: string, pattern: '^$|^[A-Z]{2}$' }
+            - { type: 'null' }
+        province: { type: [string, 'null'], maxLength: 100 }
+        city: { type: [string, 'null'], maxLength: 100 }
+        district: { type: [string, 'null'], maxLength: 100 }
+        line1: { type: [string, 'null'], maxLength: 200 }
+        postalCode: { type: [string, 'null'], maxLength: 20 }
     CreatePartnerRequest:
       type: object
-      required: [legalName, displayName, type, defaultCurrency, contact, billingAddress]
       properties:
-        legalName: { type: string, minLength: 2, maxLength: 200 }
-        displayName: { type: string, minLength: 2, maxLength: 100 }
+        legalName: { type: string, maxLength: 200 }
+        displayName: { type: string, maxLength: 100 }
         registrationIdentifier: { type: string, maxLength: 100 }
         type: { type: string, enum: [RESTAURANT_GROUP, DISTRIBUTOR, RETAILER, CORPORATE_BUYER, OTHER] }
-        defaultCurrency: { type: string, pattern: '^[A-Z]{3}$' }
+        defaultCurrency: { type: string, pattern: '^$|^[A-Z]{3}$' }
         requestedPaymentTermDays: { type: integer, minimum: 0, maximum: 180 }
         requestedRouteCodes:
           type: array
           items: { $ref: '#/components/schemas/TradeRouteCode' }
           uniqueItems: true
-        contact: { $ref: '#/components/schemas/ContactInput' }
-        billingAddress: { $ref: '#/components/schemas/Address' }
+        requestedServiceRegions:
+          type: array
+          items: { type: string, minLength: 1, maxLength: 80 }
+          uniqueItems: true
+        requestedCurrencies:
+          type: array
+          items: { type: string, pattern: '^[A-Z]{3}$' }
+          uniqueItems: true
+        contact: { $ref: '#/components/schemas/PartnerDraftContact' }
+        billingAddress: { $ref: '#/components/schemas/PartnerDraftAddress' }
+        duplicateResolutionNote: { type: string, maxLength: 500 }
     UpdatePartnerRequest:
       type: object
       properties:
-        displayName: { type: string, minLength: 2, maxLength: 100 }
-        defaultCurrency: { type: string, pattern: '^[A-Z]{3}$' }
+        legalName: { type: string, maxLength: 200 }
+        displayName: { type: string, maxLength: 100 }
+        registrationIdentifier: { type: string, maxLength: 100 }
+        type: { type: string, enum: [RESTAURANT_GROUP, DISTRIBUTOR, RETAILER, CORPORATE_BUYER, OTHER] }
+        defaultCurrency: { type: string, pattern: '^$|^[A-Z]{3}$' }
         requestedPaymentTermDays: { type: integer, minimum: 0, maximum: 180 }
         requestedRouteCodes:
           type: array
           items: { $ref: '#/components/schemas/TradeRouteCode' }
-        contact: { $ref: '#/components/schemas/ContactInput' }
-        billingAddress: { $ref: '#/components/schemas/Address' }
+        requestedServiceRegions:
+          type: array
+          items: { type: string, minLength: 1, maxLength: 80 }
+        requestedCurrencies:
+          type: array
+          items: { type: string, pattern: '^[A-Z]{3}$' }
+        contact: { $ref: '#/components/schemas/PartnerDraftContact' }
+        billingAddress: { $ref: '#/components/schemas/PartnerDraftAddress' }
+        duplicateResolutionNote: { type: string, maxLength: 500 }
     PartnerDetail:
       allOf:
         - $ref: '#/components/schemas/PartnerSummary'
         - type: object
-          required: [type, contacts, billingAddress, allowedActions]
+          required: [type, contacts, billingAddress, allowedActions, requestedServiceRegions, requestedCurrencies, duplicateWarnings, timeline]
           properties:
-            type: { type: string }
-            registrationIdentifierMasked: { type: string }
+            type:
+              type: [string, 'null']
+              enum: [RESTAURANT_GROUP, DISTRIBUTOR, RETAILER, CORPORATE_BUYER, OTHER, null]
+            registrationIdentifierMasked: { type: [string, 'null'] }
             contacts:
               type: array
-              items: { $ref: '#/components/schemas/ContactInput' }
-            billingAddress: { $ref: '#/components/schemas/Address' }
-            paymentTermDays: { type: integer }
-            creditLimit: { $ref: '#/components/schemas/Money' }
+              items: { $ref: '#/components/schemas/PartnerDraftContact' }
+            billingAddress:
+              oneOf:
+                - { $ref: '#/components/schemas/PartnerDraftAddress' }
+                - { type: 'null' }
+            paymentTermDays: { type: [integer, 'null'] }
+            creditLimit:
+              oneOf: [{ $ref: '#/components/schemas/Money' }, { type: 'null' }]
+            eligibility:
+              oneOf: [{ $ref: '#/components/schemas/PartnerEligibility' }, { type: 'null' }]
+            requestedServiceRegions:
+              type: array
+              items: { type: string }
+            requestedCurrencies:
+              type: array
+              items: { type: string, pattern: '^[A-Z]{3}$' }
             allowedActions:
               type: array
               items: { type: string }
+            duplicateWarnings:
+              type: array
+              items: { type: string }
+            timeline:
+              type: array
+              items: { $ref: '#/components/schemas/PartnerTimelineEntry' }
+    PartnerEligibility:
+      type: object
+      required: [version, routeCodes, serviceRegions, currencies, paymentTermDays, effectiveFrom]
+      properties:
+        version: { type: integer, minimum: 1 }
+        routeCodes:
+          type: array
+          items: { $ref: '#/components/schemas/TradeRouteCode' }
+        serviceRegions:
+          type: array
+          items: { type: string }
+        currencies:
+          type: array
+          items: { type: string, pattern: '^[A-Z]{3}$' }
+        paymentTermDays: { type: integer, minimum: 0, maximum: 180 }
+        creditLimit:
+          oneOf: [{ $ref: '#/components/schemas/Money' }, { type: 'null' }]
+        effectiveFrom: { type: string, format: date-time }
+    PartnerTimelineEntry:
+      type: object
+      required: [id, occurredAt, action, changedFields]
+      properties:
+        id: { type: string, format: uuid }
+        occurredAt: { type: string, format: date-time }
+        action: { type: string }
+        previousState: { type: [string, 'null'] }
+        newState: { type: [string, 'null'] }
+        safeReason: { type: [string, 'null'] }
+        changedFields:
+          type: array
+          items: { type: string }
     PartnerReviewRequest:
       type: object
       required: [decision, reason]
@@ -1114,6 +1296,19 @@ components:
           type: array
           items: { $ref: '#/components/schemas/TradeRouteCode' }
           uniqueItems: true
+        approvedServiceRegions:
+          type: array
+          items: { type: string, minLength: 1, maxLength: 80 }
+          uniqueItems: true
+        approvedCurrencies:
+          type: array
+          items: { type: string, pattern: '^[A-Z]{3}$' }
+          uniqueItems: true
+    PartnerReasonRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 5, maxLength: 500 }
     PartnerCommandResult:
       type: object
       required: [partnerId, number, status, version, allowedActions]
