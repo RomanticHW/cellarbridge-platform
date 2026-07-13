@@ -1,6 +1,4 @@
 export const plannedModules = [
-  { key: 'catalog', label: 'Catalog', requiredPermission: 'catalog:read' },
-  { key: 'inventory', label: 'Inventory', requiredPermission: 'inventory:read' },
   { key: 'quotations', label: 'Quotations', requiredPermission: 'quotation:read' },
   { key: 'trade-planning', label: 'Trade planning', requiredPermission: 'quotation:read' },
   { key: 'trade-orders', label: 'Trade orders', requiredPermission: 'order:read' },

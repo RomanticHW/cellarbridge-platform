@@ -28,6 +28,9 @@ function createMenuItems(permissions: ReadonlyArray<string>): MenuProps['items']
     { key: '/app', label: 'System status' },
     { key: '/app/profile', label: 'Identity & access' },
     ...(permissions.includes('partner:read') ? [{ key: '/app/partners', label: 'Partners' }] : []),
+    ...(permissions.includes('catalog:read') && permissions.includes('inventory:read')
+      ? [{ key: '/app/catalog', label: 'Catalog & supply' }]
+      : []),
     ...(plannedItems.length === 0
       ? []
       : [
@@ -83,7 +86,9 @@ export function AppShell() {
   const menuItems = createMenuItems(currentUser.data.permissions);
   const selectedPath = location.pathname.startsWith('/app/partners')
     ? '/app/partners'
-    : location.pathname;
+    : location.pathname.startsWith('/app/catalog')
+      ? '/app/catalog'
+      : location.pathname;
 
   return (
     <Layout className="app-shell">

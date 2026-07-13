@@ -27,11 +27,14 @@ jobs:
   partner-onboarding:
     uses: ./.github/workflows/partner-onboarding.yml
 
+  catalog-supply-search:
+    uses: ./.github/workflows/catalog-supply-search.yml
+
   required:
     name: Required quality gate
     runs-on: ubuntu-latest
     if: always()
-    needs: [docs-contracts, backend, frontend, security, identity-access, partner-onboarding]
+    needs: [docs-contracts, backend, frontend, security, identity-access, partner-onboarding, catalog-supply-search]
     steps:
       - name: Require every quality workflow
         env:
@@ -41,6 +44,7 @@ jobs:
           SECURITY_RESULT: ${{ needs.security.result }}
           IDENTITY_RESULT: ${{ needs['identity-access'].result }}
           PARTNER_RESULT: ${{ needs['partner-onboarding'].result }}
+          CATALOG_RESULT: ${{ needs['catalog-supply-search'].result }}
         run: |
           test "${DOCS_RESULT}" = "success"
           test "${BACKEND_RESULT}" = "success"
@@ -48,3 +52,4 @@ jobs:
           test "${SECURITY_RESULT}" = "success"
           test "${IDENTITY_RESULT}" = "success"
           test "${PARTNER_RESULT}" = "success"
+          test "${CATALOG_RESULT}" = "success"

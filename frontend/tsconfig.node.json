@@ -12,6 +12,7 @@
     "playwright.config.ts",
     "playwright.live.config.ts",
     "playwright.partner.config.ts",
+    "playwright.catalog.config.ts",
     "eslint.config.js",
     "e2e/**/*.ts"
   ]

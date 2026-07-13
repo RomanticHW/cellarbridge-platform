@@ -17,7 +17,8 @@
     "build": "tsc -b && vite build",
     "test:e2e": "playwright test",
     "test:e2e:identity": "playwright test --config playwright.live.config.ts",
-    "test:e2e:partner": "playwright test --config playwright.partner.config.ts"
+    "test:e2e:partner": "playwright test --config playwright.partner.config.ts",
+    "test:e2e:catalog": "playwright test --config playwright.catalog.config.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "5.4.0",
