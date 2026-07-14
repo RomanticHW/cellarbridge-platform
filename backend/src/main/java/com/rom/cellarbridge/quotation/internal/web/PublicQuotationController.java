@@ -157,7 +157,9 @@ final class PublicQuotationController {
       String termsVersion,
       List<String> termsSummary,
       List<String> allowedActions,
+      UUID orderId,
       String orderNumber,
+      String orderCreationStatus,
       DecisionReceiptResponse decisionReceipt) {
     static PublicQuotationResponse from(PublicView view) {
       return new PublicQuotationResponse(
@@ -178,7 +180,9 @@ final class PublicQuotationController {
           view.termsVersion(),
           view.termsSummary(),
           view.allowedActions(),
-          null,
+          view.orderId(),
+          view.orderNumber(),
+          view.orderCreationStatus(),
           DecisionReceiptResponse.from(view.decisionReceipt()));
     }
   }

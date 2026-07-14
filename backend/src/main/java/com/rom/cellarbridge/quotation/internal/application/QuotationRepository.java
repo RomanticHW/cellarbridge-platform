@@ -105,6 +105,17 @@ public interface QuotationRepository {
   void completeExpiration(
       TenantId tenantId, ExpirationWorkItem workItem, Instant now, UUID systemActorId);
 
+  Optional<OrderLink> findOrderLink(TenantId tenantId, UUID quotationId);
+
+  Optional<AcceptedOrderSource> findAcceptedOrderSource(TenantId tenantId, UUID quotationId);
+
+  void saveOrderConversion(
+      TenantId tenantId,
+      QuotationAggregate before,
+      QuotationAggregate after,
+      OrderLink orderLink,
+      UUID systemActorId);
+
   record RevisionHistory(
       int revision,
       QuotationStatus status,
@@ -173,4 +184,16 @@ public interface QuotationRepository {
 
   record ExpirationWorkItem(
       UUID id, TenantId tenantId, UUID quotationId, UUID revisionId, Instant dueAt) {}
+
+  record OrderLink(
+      UUID quotationId,
+      UUID revisionId,
+      UUID acceptanceId,
+      UUID orderId,
+      String orderNumber,
+      String snapshotHash,
+      UUID sourceEventId,
+      Instant convertedAt) {}
+
+  record AcceptedOrderSource(UUID acceptanceId, UUID revisionId, String snapshotHash) {}
 }

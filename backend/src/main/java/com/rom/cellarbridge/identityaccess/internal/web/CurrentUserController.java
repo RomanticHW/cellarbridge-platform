@@ -28,6 +28,7 @@ final class CurrentUserController {
         new CurrentUserResponse(
             context.userId(),
             context.displayName(),
+            context.partnerId(),
             new TenantResponse(
                 context.tenantId().value(), context.tenantName(), context.tenantStatus()),
             context.roles().stream().sorted().toList(),
@@ -38,6 +39,7 @@ final class CurrentUserController {
   record CurrentUserResponse(
       UUID userId,
       String displayName,
+      UUID partnerId,
       TenantResponse tenant,
       List<String> roles,
       List<String> permissions) {}

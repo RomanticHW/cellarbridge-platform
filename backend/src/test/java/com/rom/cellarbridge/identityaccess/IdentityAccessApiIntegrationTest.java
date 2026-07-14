@@ -82,6 +82,18 @@ class IdentityAccessApiIntegrationTest extends PostgresIntegrationTestSupport {
   }
 
   @Test
+  void returnsTheServerMappedPartnerScopeForABuyer() throws Exception {
+    HttpResponse<String> response = send("/api/v1/me", "north-buyer");
+
+    assertThat(response.statusCode()).isEqualTo(200);
+    assertThat(response.body())
+        .contains("\"partnerId\":\"53000000-0000-4000-8000-000000000001\"")
+        .contains("Customer Buyer")
+        .contains("order:read")
+        .doesNotContain("11100000-0000-4000-8000-000000000002");
+  }
+
+  @Test
   void ignoresClientSuppliedTenantSelectors() throws Exception {
     HttpRequest request =
         request("/api/v1/me?tenantId=20000000-0000-4000-8000-000000000001")
@@ -183,6 +195,7 @@ class IdentityAccessApiIntegrationTest extends PostgresIntegrationTestSupport {
         }
         return switch (token) {
           case "north-valid" -> jwt(token, "11000000-0000-4000-8000-000000000001", "north-cellars");
+          case "north-buyer" -> jwt(token, "11000000-0000-4000-8000-000000000002", "north-cellars");
           case "harbor-valid" ->
               jwt(token, "22000000-0000-4000-8000-000000000001", "harbor-cellars");
           case "suspended-user" ->

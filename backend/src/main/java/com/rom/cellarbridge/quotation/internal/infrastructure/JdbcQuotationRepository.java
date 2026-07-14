@@ -4,12 +4,14 @@ import com.rom.cellarbridge.identityaccess.GlobalRegistryAccess;
 import com.rom.cellarbridge.identityaccess.TenantId;
 import com.rom.cellarbridge.quotation.QuotationStatus;
 import com.rom.cellarbridge.quotation.internal.application.QuotationRepository;
+import com.rom.cellarbridge.quotation.internal.application.QuotationRepository.AcceptedOrderSource;
 import com.rom.cellarbridge.quotation.internal.application.QuotationRepository.CustomerDecision;
 import com.rom.cellarbridge.quotation.internal.application.QuotationRepository.CustomerDecisionType;
 import com.rom.cellarbridge.quotation.internal.application.QuotationRepository.CustomerOperation;
 import com.rom.cellarbridge.quotation.internal.application.QuotationRepository.ExpirationWorkItem;
 import com.rom.cellarbridge.quotation.internal.application.QuotationRepository.IdempotencyRecord;
 import com.rom.cellarbridge.quotation.internal.application.QuotationRepository.IdempotencyWrite;
+import com.rom.cellarbridge.quotation.internal.application.QuotationRepository.OrderLink;
 import com.rom.cellarbridge.quotation.internal.application.QuotationRepository.PortalContext;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationAggregate;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationAggregate.Address;
@@ -605,6 +607,100 @@ public class JdbcQuotationRepository implements QuotationRepository {
             .addValue("id", workItem.id())
             .addValue("now", timestamp(now))
             .addValue("actorId", systemActorId));
+  }
+
+  @Override
+  public Optional<OrderLink> findOrderLink(TenantId tenantId, UUID quotationId) {
+    List<OrderLink> rows =
+        jdbc.query(
+            """
+            SELECT quotation_id, revision_id, acceptance_id, order_id, order_number,
+                   snapshot_hash, source_event_id, converted_at
+              FROM quotation.order_link
+             WHERE tenant_id = :tenantId AND quotation_id = :quotationId
+            """,
+            ids(tenantId, "quotationId", quotationId),
+            (resultSet, rowNumber) ->
+                new OrderLink(
+                    resultSet.getObject("quotation_id", UUID.class),
+                    resultSet.getObject("revision_id", UUID.class),
+                    resultSet.getObject("acceptance_id", UUID.class),
+                    resultSet.getObject("order_id", UUID.class),
+                    resultSet.getString("order_number"),
+                    resultSet.getString("snapshot_hash"),
+                    resultSet.getObject("source_event_id", UUID.class),
+                    instant(resultSet, "converted_at")));
+    return rows.stream().findFirst();
+  }
+
+  @Override
+  public Optional<AcceptedOrderSource> findAcceptedOrderSource(
+      TenantId tenantId, UUID quotationId) {
+    List<AcceptedOrderSource> rows =
+        jdbc.query(
+            """
+            SELECT id, revision_id, snapshot_hash
+              FROM quotation.customer_decision
+             WHERE tenant_id = :tenantId
+               AND quotation_id = :quotationId
+               AND decision = 'ACCEPTED'
+            """,
+            ids(tenantId, "quotationId", quotationId),
+            (resultSet, rowNumber) ->
+                new AcceptedOrderSource(
+                    resultSet.getObject("id", UUID.class),
+                    resultSet.getObject("revision_id", UUID.class),
+                    "sha256:" + resultSet.getString("snapshot_hash")));
+    return rows.stream().findFirst();
+  }
+
+  @Override
+  public void saveOrderConversion(
+      TenantId tenantId,
+      QuotationAggregate before,
+      QuotationAggregate after,
+      OrderLink orderLink,
+      UUID systemActorId) {
+    requireTenant(tenantId, before.tenantId(), after.tenantId());
+    if (!before.id().equals(orderLink.quotationId())
+        || !before.revision().id().equals(orderLink.revisionId())) {
+      throw new IllegalArgumentException("Order link does not match the quotation revision");
+    }
+    updateQuotation(after, before.version(), systemActorId);
+    int inserted =
+        jdbc.update(
+            """
+            INSERT INTO quotation.order_link
+              (id, tenant_id, quotation_id, revision_id, acceptance_id, order_id, order_number,
+               snapshot_hash, source_event_id, converted_at, created_at, created_by,
+               updated_at, updated_by, version)
+            VALUES
+              (:sourceEventId, :tenantId, :quotationId, :revisionId, :acceptanceId,
+               :orderId, :orderNumber, :snapshotHash, :sourceEventId, :convertedAt,
+               :convertedAt, :actorId, :convertedAt, :actorId, 0)
+            ON CONFLICT (tenant_id, quotation_id) DO NOTHING
+            """,
+            new MapSqlParameterSource()
+                .addValue("tenantId", tenantId.value())
+                .addValue("quotationId", orderLink.quotationId())
+                .addValue("revisionId", orderLink.revisionId())
+                .addValue("acceptanceId", orderLink.acceptanceId())
+                .addValue("orderId", orderLink.orderId())
+                .addValue("orderNumber", orderLink.orderNumber())
+                .addValue("snapshotHash", orderLink.snapshotHash())
+                .addValue("sourceEventId", orderLink.sourceEventId())
+                .addValue("convertedAt", timestamp(orderLink.convertedAt()))
+                .addValue("actorId", systemActorId));
+    if (inserted != 1) {
+      throw new IllegalStateException("Quotation already has a different order link");
+    }
+    insertAudit(
+        before,
+        after,
+        systemActorId,
+        "SYSTEM",
+        "QUOTATION_CONVERTED_TO_ORDER",
+        orderLink.orderNumber());
   }
 
   private Optional<CustomerDecision> findCustomerDecision(TenantId tenantId, UUID quotationId) {

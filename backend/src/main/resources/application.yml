@@ -37,3 +37,12 @@ cellarbridge:
     cursor-secret: ${CELLARBRIDGE_PARTNER_CURSOR_SECRET:local-demo-partner-cursor-key-change-me}
   catalog:
     cursor-secret: ${CELLARBRIDGE_CATALOG_CURSOR_SECRET:local-demo-catalog-cursor-key-change-me}
+  order:
+    cursor-secret: ${CELLARBRIDGE_ORDER_CURSOR_SECRET:local-demo-order-cursor-key-change-me}
+  platform:
+    local-events:
+      enabled: ${CELLARBRIDGE_LOCAL_EVENTS_ENABLED:false}
+      batch-size: ${CELLARBRIDGE_LOCAL_EVENTS_BATCH_SIZE:50}
+      max-attempts: ${CELLARBRIDGE_LOCAL_EVENTS_MAX_ATTEMPTS:5}
+      base-delay-seconds: ${CELLARBRIDGE_LOCAL_EVENTS_BASE_DELAY_SECONDS:5}
+      max-delay-seconds: ${CELLARBRIDGE_LOCAL_EVENTS_MAX_DELAY_SECONDS:300}

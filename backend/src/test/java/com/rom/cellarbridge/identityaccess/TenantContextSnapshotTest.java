@@ -52,7 +52,9 @@ class TenantContextSnapshotTest {
             TenantId.of(UUID.fromString("20000000-0000-4000-8000-000000000001")),
             "Harbor Cellars",
             "ACTIVE",
+            null,
             Set.of("Sales Manager"),
+            Set.of("sales-manager"),
             Set.of(PermissionCode.PARTNER_REVIEW),
             "subject-two",
             "tenant-two");
@@ -73,7 +75,9 @@ class TenantContextSnapshotTest {
         TenantId.of(UUID.fromString("10000000-0000-4000-8000-000000000001")),
         "North Cellars",
         "ACTIVE",
+        null,
         Set.of("Sales Representative"),
+        Set.of("sales-representative"),
         Set.of(PermissionCode.PARTNER_READ),
         "subject-one",
         "tenant-one");

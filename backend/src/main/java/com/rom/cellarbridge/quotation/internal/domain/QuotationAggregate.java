@@ -162,6 +162,20 @@ public record QuotationAggregate(
     return with(QuotationStatus.ACCEPTED, submittedById, version + 1, now, revision, approvals);
   }
 
+  public QuotationAggregate convert(UUID boundRevisionId, Instant now) {
+    requireCurrentPortalRevision(boundRevisionId);
+    if (status == QuotationStatus.CONVERTED) {
+      return this;
+    }
+    if (status != QuotationStatus.ACCEPTED) {
+      throw problem(
+          HttpStatus.CONFLICT,
+          "INVALID_STATE_TRANSITION",
+          "Only an accepted quotation can be converted to an order");
+    }
+    return with(QuotationStatus.CONVERTED, submittedById, version + 1, now, revision, approvals);
+  }
+
   public QuotationAggregate reject(UUID boundRevisionId, Instant now) {
     requireCurrentPortalRevision(boundRevisionId);
     requireOpenCustomerDecision(now);
