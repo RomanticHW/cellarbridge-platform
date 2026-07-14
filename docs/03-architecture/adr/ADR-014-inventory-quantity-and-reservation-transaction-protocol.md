@@ -6,7 +6,7 @@
 
 ## 数量与供给模式
 
-Lot、Reservation 请求和 allocation 都保存 `quantityUnit`；P1 只按相同 `CASE`/`BOTTLE` 分配，不自动换算。仅 `DOMESTIC_ON_HAND`、`BONDED_ON_HAND`、`HONG_KONG_ON_HAND` 自动预占，pool 类型须与事件冻结的 `line.supplyType` 相同。`supplyPoolId != null` 是 `FIXED_POOL`：指定 pool 必须匹配 tenant、SKU、单位、route、类型和有效状态，不合格以 `INVENTORY_FIXED_POOL_INELIGIBLE` 整单失败且禁止回退；空值是 `ROUTE_ELIGIBLE_AUTO`：只选同 tenant、route、SKU、单位、类型的 active pool/warehouse 与 `AVAILABLE` lot，可跨 lot、不可跨 route。
+Lot、Reservation 请求和 allocation 都保存 `quantityUnit`；P1 只按相同 `CASE`/`BOTTLE` 分配，不拆箱、合箱或自动换算。Trade Planning 的 route MOQ 可使用有版本证据的 case-equivalent，但精确库存 availability 必须保留原始数量单位，二者不得复用。仅 `DOMESTIC_ON_HAND`、`BONDED_ON_HAND`、`HONG_KONG_ON_HAND` 自动预占，pool 类型须与事件冻结的 `line.supplyType` 相同。`supplyPoolId != null` 是 `FIXED_POOL`：指定 pool 必须匹配 tenant、SKU、单位、route、类型和有效状态，不合格以 `INVENTORY_FIXED_POOL_INELIGIBLE` 整单失败且禁止回退；空值是 `ROUTE_ELIGIBLE_AUTO`：必须在最终 `selectedRoute` 确定后选择并冻结 route-compatible `supplyType`，Draft 供给列表第一项从不构成权威决策，再只选同 tenant、route、SKU、单位、类型的 active pool/warehouse 与 `AVAILABLE` lot，可跨 lot、不可跨 route。
 `IN_TRANSIT_PRESALE`、`OVERSEAS_SOURCING` 是 manual type：整单不进入数量 savepoint，不修改 lot 或保留 allocation，以 `MANUAL_CONFIRMATION_REQUIRED` / `SUPPLY_NOT_AUTOMATICALLY_RESERVABLE` 保存可见结果；不足、并发失败或 fixed pool 不合格不得伪装成 manual。Inventory 不读 Catalog、Quotation 或 Trade Order 内部表；入站事件须携带 SKU、数量、单位、供给模式、供给池、supply type、route 和稳定业务标识等决策快照，缺失或冲突按永久契约错误处理。
 
 ## 前置数据与确定性
