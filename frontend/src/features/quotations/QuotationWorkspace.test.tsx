@@ -470,6 +470,64 @@ describe('quotation workspace', () => {
     expect(requests.filter((request) => request.method === 'GET').length).toBeGreaterThanOrEqual(2);
   });
 
+  it('refreshes an accepted receipt until the secured order link is available', async () => {
+    const orderId = '51000000-0000-4000-8000-000000000001';
+    const orderNumber = 'ORD-202607-000001';
+    let accepted = false;
+    const requests: Request[] = [];
+    const receipt = {
+      decisionId: '61000000-0000-4000-8000-000000000003',
+      decision: 'ACCEPTED' as const,
+      decidedAt: '2026-07-14T01:08:00Z',
+      reference: 'ACC-202607-000003',
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const request = incoming(input);
+      requests.push(request);
+      if (new URL(request.url).pathname.endsWith('/acceptance')) {
+        accepted = true;
+        return response(
+          {
+            acceptanceId: receipt.decisionId,
+            quotationNumber: publicDetail.number,
+            status: 'ACCEPTED',
+            acceptedAt: receipt.decidedAt,
+            orderCreationStatus: 'PENDING',
+            orderId: null,
+            orderNumber: null,
+            replayed: false,
+          },
+          201,
+        );
+      }
+      return response(
+        accepted
+          ? {
+              ...publicDetail,
+              status: 'CONVERTED',
+              allowedActions: ['VIEW_ORDER'],
+              decisionReceipt: receipt,
+              orderCreationStatus: 'CREATED',
+              orderId,
+              orderNumber,
+            }
+          : publicDetail,
+      );
+    });
+    await router.navigate('/portal/quotations/customer-safe-token');
+    const user = userEvent.setup();
+    renderApplication();
+
+    await user.click(await screen.findByRole('checkbox', { name: /reviewed and agree/i }));
+    await user.click(screen.getByRole('button', { name: 'Accept quotation' }));
+
+    expect(
+      await screen.findByRole('link', { name: `Sign in to view ${orderNumber}` }),
+    ).toHaveAttribute('href', `/app/orders/${orderId}`);
+    expect(screen.getByText('CREATED')).toBeVisible();
+    expect(requests.some((request) => new URL(request.url).pathname.endsWith('/me'))).toBe(false);
+  });
+
   it('reuses the same idempotency key when an unchanged acceptance is retried', async () => {
     let acceptanceAttempts = 0;
     let accepted = false;

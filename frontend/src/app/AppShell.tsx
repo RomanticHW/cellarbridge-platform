@@ -34,6 +34,7 @@ function createMenuItems(permissions: ReadonlyArray<string>): MenuProps['items']
     ...(permissions.includes('quotation:read')
       ? [{ key: '/app/quotations', label: 'Quotations & trade planning' }]
       : []),
+    ...(permissions.includes('order:read') ? [{ key: '/app/orders', label: 'Trade orders' }] : []),
     ...(plannedItems.length === 0
       ? []
       : [
@@ -93,7 +94,9 @@ export function AppShell() {
       ? '/app/catalog'
       : location.pathname.startsWith('/app/quotations')
         ? '/app/quotations'
-        : location.pathname;
+        : location.pathname.startsWith('/app/orders')
+          ? '/app/orders'
+          : location.pathname;
 
   return (
     <Layout className="app-shell">

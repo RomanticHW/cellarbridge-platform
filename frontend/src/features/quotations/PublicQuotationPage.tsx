@@ -13,7 +13,7 @@ import {
   type TableProps,
 } from 'antd';
 import { useRef, useState, type RefObject } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import {
   acceptPublicQuotation,
   getPublicQuotation,
@@ -99,6 +99,18 @@ function decisionReceipt(detail: PublicQuotation) {
       {detail.orderNumber ? (
         <Descriptions.Item label="Order number">{detail.orderNumber}</Descriptions.Item>
       ) : null}
+      {detail.orderCreationStatus ? (
+        <Descriptions.Item label="Order creation">
+          {detail.orderCreationStatus.replaceAll('_', ' ')}
+        </Descriptions.Item>
+      ) : null}
+      {detail.orderId ? (
+        <Descriptions.Item label="Order">
+          <Link to={`/app/orders/${detail.orderId}`}>
+            Sign in to view {detail.orderNumber ?? 'the order'}
+          </Link>
+        </Descriptions.Item>
+      ) : null}
     </Descriptions>
   );
 }
@@ -110,7 +122,13 @@ function terminalResult(detail: PublicQuotation) {
         <Result
           status="success"
           title="Quotation accepted"
-          subTitle="Your decision is recorded. Refreshing this page will not submit it again."
+          subTitle={
+            detail.orderId
+              ? 'Your order is ready to review in the secured operations portal.'
+              : detail.orderCreationStatus === 'FAILED_RETRYING'
+                ? 'Your decision is recorded. Order creation is retrying safely.'
+                : 'Your decision is recorded. Order creation is in progress.'
+          }
           extra={decisionReceipt(detail)}
         />
       </Card>
@@ -169,6 +187,7 @@ export function PublicQuotationPage() {
     queryFn: ({ signal }) => getPublicQuotation(publicToken, signal),
     enabled: publicToken !== '',
     retry: false,
+    refetchInterval: (query) => (shouldPollForOrder(query.state.data) ? 2_000 : false),
   });
 
   const refreshQuotation = () => queryClient.invalidateQueries({ queryKey, refetchType: 'active' });
@@ -425,9 +444,19 @@ function updateAcceptedQuotation(
             decidedAt: result.acceptedAt,
             reference: result.acceptanceId,
           },
+          orderId: result.orderId,
           orderNumber: result.orderNumber,
+          orderCreationStatus: result.orderCreationStatus,
         }
       : current,
+  );
+}
+
+export function shouldPollForOrder(detail: PublicQuotation | undefined): boolean {
+  return (
+    detail !== undefined &&
+    (detail.status === 'ACCEPTED' || detail.status === 'CONVERTED') &&
+    !detail.orderId
   );
 }
 
