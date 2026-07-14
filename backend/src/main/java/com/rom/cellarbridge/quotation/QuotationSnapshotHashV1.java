@@ -9,6 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.NullNode;
@@ -17,6 +18,9 @@ import tools.jackson.databind.node.NullNode;
 public final class QuotationSnapshotHashV1 {
 
   private static final JsonMapper JSON = JsonMapper.builder().build();
+  private static final String LEGACY_PREFIX = "sha256:";
+  private static final Pattern CURRENT_FORMAT = Pattern.compile("^[0-9a-f]{64}$");
+  private static final Pattern LEGACY_PREFIXED_FORMAT = Pattern.compile("^sha256:[0-9a-f]{64}$");
 
   private QuotationSnapshotHashV1() {}
 
@@ -29,6 +33,32 @@ public final class QuotationSnapshotHashV1 {
     } catch (JacksonException | NoSuchAlgorithmException exception) {
       throw new IllegalStateException("Snapshot Hash V1 calculation failed", exception);
     }
+  }
+
+  public static boolean isCurrentFormat(String value) {
+    return value != null && CURRENT_FORMAT.matcher(value).matches();
+  }
+
+  public static boolean isLegacyPrefixedFormat(String value) {
+    return value != null && LEGACY_PREFIXED_FORMAT.matcher(value).matches();
+  }
+
+  public static String normalizeIncomingHash(String value) {
+    return normalize(value);
+  }
+
+  public static String normalizeStoredHash(String value) {
+    return normalize(value);
+  }
+
+  private static String normalize(String value) {
+    if (isCurrentFormat(value)) {
+      return value;
+    }
+    if (isLegacyPrefixedFormat(value)) {
+      return value.substring(LEGACY_PREFIX.length());
+    }
+    throw new InvalidSnapshotHashFormatException();
   }
 
   private static Map<String, Object> canonical(Snapshot snapshot) {
@@ -136,6 +166,14 @@ public final class QuotationSnapshotHashV1 {
           payload.requestedDeliveryDate(),
           payload.deliveryAddress(),
           payload.lines());
+    }
+  }
+
+  /** Raised when a snapshot hash is neither current bare V1 nor the exact historical prefix. */
+  public static final class InvalidSnapshotHashFormatException extends IllegalArgumentException {
+
+    private InvalidSnapshotHashFormatException() {
+      super("Snapshot hash format is not supported");
     }
   }
 }

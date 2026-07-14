@@ -83,24 +83,25 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
   @Override
   public EventHandlingResult handle(EventDelivery delivery) {
     try {
-      QuotationAcceptedV1.Payload payload = parse(delivery);
+      AcceptedEvent accepted = parse(delivery);
+      QuotationAcceptedV1.Payload payload = accepted.payload();
       TenantId tenantId = new TenantId(delivery.tenantId());
       TradeOrder existing =
           repository.findBySourceQuotation(tenantId, payload.quotationId()).orElse(null);
       if (existing != null) {
-        requireSameSource(existing, payload);
+        requireSameSource(existing, payload, accepted.snapshotHash());
         return result(existing);
       }
 
       Instant now = max(clock.instant(), payload.acceptedAt());
-      TradeOrder order = createOrder(tenantId, delivery, payload, now);
+      TradeOrder order = createOrder(tenantId, delivery, payload, accepted.snapshotHash(), now);
       if (!repository.insertIfAbsent(tenantId, order, SYSTEM_ACTOR_ID)) {
         TradeOrder winner =
             repository
                 .findBySourceQuotation(tenantId, payload.quotationId())
                 .orElseThrow(
                     () -> EventHandlingException.finalFailure("ORDER_SOURCE_EVENT_REUSED"));
-        requireSameSource(winner, payload);
+        requireSameSource(winner, payload, accepted.snapshotHash());
         return result(winner);
       }
 
@@ -129,7 +130,7 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
     }
   }
 
-  private QuotationAcceptedV1.Payload parse(EventDelivery delivery) throws JacksonException {
+  private AcceptedEvent parse(EventDelivery delivery) throws JacksonException {
     if (!EVENT_TYPE.equals(delivery.eventType()) || delivery.eventVersion() != 1) {
       throw invalid();
     }
@@ -140,12 +141,17 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
     QuotationAcceptedV1.Payload payload =
         jsonMapper.readValue(body.toString(), QuotationAcceptedV1.Payload.class);
     validate(delivery, payload);
-    if (!payload
-        .snapshotHash()
-        .equals(QuotationSnapshotHashV1.hash(QuotationSnapshotHashV1.Snapshot.from(payload)))) {
+    String normalizedHash;
+    try {
+      normalizedHash = QuotationSnapshotHashV1.normalizeIncomingHash(payload.snapshotHash());
+    } catch (QuotationSnapshotHashV1.InvalidSnapshotHashFormatException exception) {
+      throw invalid();
+    }
+    if (!normalizedHash.equals(
+        QuotationSnapshotHashV1.hash(QuotationSnapshotHashV1.Snapshot.from(payload)))) {
       throw EventHandlingException.finalFailure("QUOTATION_ACCEPTED_SNAPSHOT_HASH_MISMATCH");
     }
-    return payload;
+    return new AcceptedEvent(payload, normalizedHash);
   }
 
   private static void validate(EventDelivery delivery, QuotationAcceptedV1.Payload payload) {
@@ -182,7 +188,6 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
             && payload.requestedDeliveryDate() != null
             && payload.deliveryAddress() != null);
     address(payload.deliveryAddress());
-    required(payload.snapshotHash() != null && payload.snapshotHash().matches("^[0-9a-f]{64}$"));
     required(payload.lines() != null && !payload.lines().isEmpty() && payload.lines().size() <= 50);
     Set<UUID> lineIds = new HashSet<>();
     BigDecimal sum = BigDecimal.ZERO;
@@ -239,7 +244,11 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
   }
 
   private TradeOrder createOrder(
-      TenantId tenantId, EventDelivery delivery, QuotationAcceptedV1.Payload payload, Instant now) {
+      TenantId tenantId,
+      EventDelivery delivery,
+      QuotationAcceptedV1.Payload payload,
+      String snapshotHash,
+      Instant now) {
     List<Line> lines =
         payload.lines().stream()
             .map(
@@ -295,26 +304,29 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
         payload.acceptedAt(),
         payload.sourceOwnerId(),
         snapshot,
-        payload.snapshotHash(),
+        snapshotHash,
         delivery.correlationId(),
         delivery.eventId(),
         UUID.randomUUID(),
         now);
   }
 
-  private static void requireSameSource(TradeOrder existing, QuotationAcceptedV1.Payload payload) {
+  private static void requireSameSource(
+      TradeOrder existing, QuotationAcceptedV1.Payload payload, String snapshotHash) {
     if (!existing.sourceRevisionId().equals(payload.revisionId())
         || existing.sourceRevision() != payload.revision()
         || !existing.sourceQuotationNumber().equals(payload.quotationNumber())
         || !existing.acceptanceId().equals(payload.acceptanceId())
-        || !existing.snapshotHash().equals(payload.snapshotHash())) {
+        || !QuotationSnapshotHashV1.normalizeStoredHash(existing.snapshotHash())
+            .equals(snapshotHash)) {
       throw EventHandlingException.finalFailure("ORDER_SOURCE_QUOTATION_CONFLICT");
     }
   }
 
   private static EventHandlingResult result(TradeOrder order) {
+    String snapshotHash = QuotationSnapshotHashV1.normalizeStoredHash(order.snapshotHash());
     return EventHandlingResult.processed(
-        order.id().toString(), sha256(order.id() + "|" + order.snapshotHash()));
+        order.id().toString(), sha256(order.id() + "|" + snapshotHash));
   }
 
   private static TradeOrderCreatedV1 createdEvent(TradeOrder order) {
@@ -401,6 +413,8 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
       throw new IllegalStateException("SHA-256 is unavailable", exception);
     }
   }
+
+  private record AcceptedEvent(QuotationAcceptedV1.Payload payload, String snapshotHash) {}
 
   private static final class ContractViolation extends RuntimeException {}
 }

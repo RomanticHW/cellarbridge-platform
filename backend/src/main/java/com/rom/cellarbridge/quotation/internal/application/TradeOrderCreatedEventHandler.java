@@ -5,6 +5,7 @@ import com.rom.cellarbridge.platform.EventDelivery;
 import com.rom.cellarbridge.platform.EventHandlingException;
 import com.rom.cellarbridge.platform.EventHandlingResult;
 import com.rom.cellarbridge.platform.LocalEventHandler;
+import com.rom.cellarbridge.quotation.QuotationSnapshotHashV1;
 import com.rom.cellarbridge.quotation.QuotationStatus;
 import com.rom.cellarbridge.quotation.internal.application.QuotationRepository.AcceptedOrderSource;
 import com.rom.cellarbridge.quotation.internal.application.QuotationRepository.OrderLink;
@@ -55,7 +56,9 @@ public class TradeOrderCreatedEventHandler implements LocalEventHandler {
       OrderLink existing = repository.findOrderLink(tenantId, payload.quotationId()).orElse(null);
       if (existing != null) {
         requireSameLink(existing, payload, delivery.eventId());
-        return processed(existing.orderId(), existing.snapshotHash());
+        return processed(
+            existing.orderId(),
+            QuotationSnapshotHashV1.normalizeStoredHash(existing.snapshotHash()));
       }
 
       QuotationAggregate before =
@@ -72,7 +75,8 @@ public class TradeOrderCreatedEventHandler implements LocalEventHandler {
       if (!source.revisionId().equals(payload.revisionId())
           || (payload.acceptanceId() != null
               && !source.acceptanceId().equals(payload.acceptanceId()))
-          || !source.snapshotHash().equals(payload.snapshotHash())) {
+          || !QuotationSnapshotHashV1.normalizeStoredHash(source.snapshotHash())
+              .equals(payload.snapshotHash())) {
         throw EventHandlingException.finalFailure("ORDER_ACCEPTANCE_CONFLICT");
       }
       QuotationAggregate after = before.convert(payload.revisionId(), delivery.occurredAt());
@@ -115,7 +119,7 @@ public class TradeOrderCreatedEventHandler implements LocalEventHandler {
         uuid(payload, "sourceQuotationId"),
         uuid(payload, "sourceRevisionId"),
         optionalUuid(payload, "acceptanceId"),
-        text(payload, "snapshotHash"));
+        QuotationSnapshotHashV1.normalizeIncomingHash(text(payload, "snapshotHash")));
   }
 
   private static UUID uuid(JsonNode node, String field) {
@@ -142,7 +146,8 @@ public class TradeOrderCreatedEventHandler implements LocalEventHandler {
             && !existing.acceptanceId().equals(payload.acceptanceId()))
         || !existing.orderId().equals(payload.orderId())
         || !existing.orderNumber().equals(payload.orderNumber())
-        || !existing.snapshotHash().equals(payload.snapshotHash())
+        || !QuotationSnapshotHashV1.normalizeStoredHash(existing.snapshotHash())
+            .equals(payload.snapshotHash())
         || !existing.sourceEventId().equals(sourceEventId)) {
       throw EventHandlingException.finalFailure("ORDER_LINK_CONFLICT");
     }
