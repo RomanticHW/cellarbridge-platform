@@ -55,10 +55,8 @@ public class TradeOrderCreatedEventHandler implements LocalEventHandler {
       TenantId tenantId = new TenantId(delivery.tenantId());
       OrderLink existing = repository.findOrderLink(tenantId, payload.quotationId()).orElse(null);
       if (existing != null) {
-        requireSameLink(existing, payload, delivery.eventId());
-        return processed(
-            existing.orderId(),
-            QuotationSnapshotHashV1.normalizeStoredHash(existing.snapshotHash()));
+        String existingHash = requireSameLink(existing, payload, delivery.eventId());
+        return processed(existing.orderId(), existingHash);
       }
 
       QuotationAggregate before =
@@ -72,11 +70,11 @@ public class TradeOrderCreatedEventHandler implements LocalEventHandler {
           repository
               .findAcceptedOrderSource(tenantId, payload.quotationId())
               .orElseThrow(() -> EventHandlingException.finalFailure("ORDER_ACCEPTANCE_NOT_FOUND"));
+      String sourceHash = normalizeStoredHash(source.snapshotHash(), "ORDER_ACCEPTANCE_CONFLICT");
       if (!source.revisionId().equals(payload.revisionId())
           || (payload.acceptanceId() != null
               && !source.acceptanceId().equals(payload.acceptanceId()))
-          || !QuotationSnapshotHashV1.normalizeStoredHash(source.snapshotHash())
-              .equals(payload.snapshotHash())) {
+          || !sourceHash.equals(payload.snapshotHash())) {
         throw EventHandlingException.finalFailure("ORDER_ACCEPTANCE_CONFLICT");
       }
       QuotationAggregate after = before.convert(payload.revisionId(), delivery.occurredAt());
@@ -139,17 +137,26 @@ public class TradeOrderCreatedEventHandler implements LocalEventHandler {
     return value;
   }
 
-  private static void requireSameLink(
+  private static String requireSameLink(
       OrderLink existing, OrderCreatedPayload payload, UUID sourceEventId) {
+    String existingHash = normalizeStoredHash(existing.snapshotHash(), "ORDER_LINK_CONFLICT");
     if (!existing.revisionId().equals(payload.revisionId())
         || (payload.acceptanceId() != null
             && !existing.acceptanceId().equals(payload.acceptanceId()))
         || !existing.orderId().equals(payload.orderId())
         || !existing.orderNumber().equals(payload.orderNumber())
-        || !QuotationSnapshotHashV1.normalizeStoredHash(existing.snapshotHash())
-            .equals(payload.snapshotHash())
+        || !existingHash.equals(payload.snapshotHash())
         || !existing.sourceEventId().equals(sourceEventId)) {
       throw EventHandlingException.finalFailure("ORDER_LINK_CONFLICT");
+    }
+    return existingHash;
+  }
+
+  private static String normalizeStoredHash(String snapshotHash, String failureCode) {
+    try {
+      return QuotationSnapshotHashV1.normalizeStoredHash(snapshotHash);
+    } catch (QuotationSnapshotHashV1.InvalidSnapshotHashFormatException exception) {
+      throw EventHandlingException.finalFailure(failureCode);
     }
   }
 

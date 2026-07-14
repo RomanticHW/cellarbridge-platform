@@ -89,8 +89,8 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
       TradeOrder existing =
           repository.findBySourceQuotation(tenantId, payload.quotationId()).orElse(null);
       if (existing != null) {
-        requireSameSource(existing, payload, accepted.snapshotHash());
-        return result(existing);
+        String existingHash = requireSameSource(existing, payload, accepted.snapshotHash());
+        return result(existing, existingHash);
       }
 
       Instant now = max(clock.instant(), payload.acceptedAt());
@@ -101,8 +101,8 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
                 .findBySourceQuotation(tenantId, payload.quotationId())
                 .orElseThrow(
                     () -> EventHandlingException.finalFailure("ORDER_SOURCE_EVENT_REUSED"));
-        requireSameSource(winner, payload, accepted.snapshotHash());
-        return result(winner);
+        String winnerHash = requireSameSource(winner, payload, accepted.snapshotHash());
+        return result(winner, winnerHash);
       }
 
       TradeOrderCreatedV1 created = createdEvent(order);
@@ -120,7 +120,7 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
               created.causationId(),
               created.payload(),
               created.metadata()));
-      return result(order);
+      return result(order, accepted.snapshotHash());
     } catch (EventHandlingException exception) {
       throw exception;
     } catch (JacksonException | ContractViolation exception) {
@@ -311,22 +311,31 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
         now);
   }
 
-  private static void requireSameSource(
+  private static String requireSameSource(
       TradeOrder existing, QuotationAcceptedV1.Payload payload, String snapshotHash) {
+    String existingHash =
+        normalizeStoredHash(existing.snapshotHash(), "ORDER_SOURCE_QUOTATION_CONFLICT");
     if (!existing.sourceRevisionId().equals(payload.revisionId())
         || existing.sourceRevision() != payload.revision()
         || !existing.sourceQuotationNumber().equals(payload.quotationNumber())
         || !existing.acceptanceId().equals(payload.acceptanceId())
-        || !QuotationSnapshotHashV1.normalizeStoredHash(existing.snapshotHash())
-            .equals(snapshotHash)) {
+        || !existingHash.equals(snapshotHash)) {
       throw EventHandlingException.finalFailure("ORDER_SOURCE_QUOTATION_CONFLICT");
     }
+    return existingHash;
   }
 
-  private static EventHandlingResult result(TradeOrder order) {
-    String snapshotHash = QuotationSnapshotHashV1.normalizeStoredHash(order.snapshotHash());
+  private static EventHandlingResult result(TradeOrder order, String snapshotHash) {
     return EventHandlingResult.processed(
         order.id().toString(), sha256(order.id() + "|" + snapshotHash));
+  }
+
+  private static String normalizeStoredHash(String snapshotHash, String failureCode) {
+    try {
+      return QuotationSnapshotHashV1.normalizeStoredHash(snapshotHash);
+    } catch (QuotationSnapshotHashV1.InvalidSnapshotHashFormatException exception) {
+      throw EventHandlingException.finalFailure(failureCode);
+    }
   }
 
   private static TradeOrderCreatedV1 createdEvent(TradeOrder order) {

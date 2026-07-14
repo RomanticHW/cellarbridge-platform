@@ -13,6 +13,7 @@ public interface TradeOrderRepository {
 
   String nextNumber(TenantId tenantId, Instant now);
 
+  /** The supplied {@code order.snapshotHash} must use the current bare Snapshot Hash V1 format. */
   boolean insertIfAbsent(TenantId tenantId, TradeOrder order, UUID actorId);
 
   Optional<TradeOrder> findBySourceQuotation(TenantId tenantId, UUID sourceQuotationId);

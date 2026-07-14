@@ -1,6 +1,7 @@
 package com.rom.cellarbridge.tradeorder.internal.infrastructure;
 
 import com.rom.cellarbridge.identityaccess.TenantId;
+import com.rom.cellarbridge.quotation.QuotationSnapshotHashV1;
 import com.rom.cellarbridge.tradeorder.TradeOrderStatus;
 import com.rom.cellarbridge.tradeorder.internal.application.TradeOrderRepository;
 import com.rom.cellarbridge.tradeorder.internal.application.TradeOrderRepository.CursorPosition;
@@ -69,6 +70,9 @@ public class JdbcTradeOrderRepository implements TradeOrderRepository {
   @Override
   public boolean insertIfAbsent(TenantId tenantId, TradeOrder order, UUID actorId) {
     requireTenant(tenantId, order.tenantId());
+    if (!QuotationSnapshotHashV1.isCurrentFormat(order.snapshotHash())) {
+      throw new IllegalArgumentException("New order snapshot hash must use current bare V1 format");
+    }
     List<UUID> inserted =
         jdbc.query(
             """

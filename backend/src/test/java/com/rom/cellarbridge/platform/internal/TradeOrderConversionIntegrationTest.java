@@ -216,6 +216,11 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
         .isEqualTo(LocalEventDeliveryService.DeliveryOutcome.PROCESSED);
     assertThat(snapshotHash("trade_order.trade_order", orderId)).isEqualTo("sha256:" + bareHash);
     assertOrderGraph(quotationId, 1, 1, 1);
+
+    overwriteSnapshotHashForHistory(
+        "trade_order.trade_order", "trade_order_commercial_snapshot_immutable", orderId, "invalid");
+    assertFinalCode("ORDER_SOURCE_QUOTATION_CONFLICT", () -> handler.handle(bareReplay));
+    assertThat(snapshotHash("trade_order.trade_order", orderId)).isEqualTo("invalid");
   }
 
   @Test
@@ -505,13 +510,7 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
         mutate(
             createdDelivery,
             payload -> payload.put("snapshotHash", "sha512:" + acceptedPayload.snapshotHash()));
-    assertThatThrownBy(() -> quotationHandler.handle(invalidCreated))
-        .isInstanceOfSatisfying(
-            EventHandlingException.class,
-            failure -> {
-              assertThat(failure.failureCode()).isEqualTo("ORDER_CREATED_EVENT_INVALID");
-              assertThat(failure.retryable()).isFalse();
-            });
+    assertFinalCode("ORDER_CREATED_EVENT_INVALID", () -> quotationHandler.handle(invalidCreated));
 
     EventDelivery legacyCreatedDelivery =
         legacySnapshotHash(withoutPayloadField(createdDelivery, "acceptanceId"));
@@ -531,6 +530,14 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
         .isEqualTo(orderId.toString());
     assertThat(snapshotHash("quotation.order_link", createdDelivery.eventId()))
         .isEqualTo("sha256:" + acceptedPayload.snapshotHash());
+    overwriteSnapshotHashForHistory(
+        "quotation.order_link",
+        "quotation_order_link_append_only",
+        createdDelivery.eventId(),
+        "invalid");
+    assertFinalCode("ORDER_LINK_CONFLICT", () -> quotationHandler.handle(createdDelivery));
+    assertThat(snapshotHash("quotation.order_link", createdDelivery.eventId()))
+        .isEqualTo("invalid");
 
     ApiResponse converted = get(issued.publicPath(), null);
     assertThat(converted.status()).withFailMessage(converted.raw()).isEqualTo(200);
@@ -1204,6 +1211,16 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
     } catch (RuntimeException failure) {
       return failure;
     }
+  }
+
+  private static void assertFinalCode(String code, Runnable action) {
+    assertThatThrownBy(action::run)
+        .isInstanceOfSatisfying(
+            EventHandlingException.class,
+            failure -> {
+              assertThat(failure.failureCode()).isEqualTo(code);
+              assertThat(failure.retryable()).isFalse();
+            });
   }
 
   private static void await(CountDownLatch latch) {
