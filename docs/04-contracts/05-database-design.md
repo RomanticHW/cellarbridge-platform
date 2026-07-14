@@ -9,7 +9,7 @@
 - UUID primary key + human business number；
 - tenant_id 每业务表；
 - UTC `timestamptz`；
-- 金额 `numeric(19,4)`（显示精度由币种控制）；
+- 金额列名以 amount/price/cost/charge(s)/fee(s)/tax/balance/total/subtotal 结尾并使用 `numeric(19,4)`（显示精度由币种控制）；
 - quantity `numeric(19,6)`；
 - mutable aggregate `version bigint`；
 - created/updated metadata；
@@ -137,4 +137,4 @@ CHECK (version >= 0)
 
 ## 9. 详细 DDL
 
-Design Baseline 提供逻辑设计；实际 migration 在对应纵向切片创建。当前 V2～V9 可由 Flyway/Testcontainers 执行；通用 PostgreSQL catalog fitness tests 在可执行测试落地前仍为 Planned，Inventory 专属约束留给 Task 08/V10 migration 阶段。不得用逻辑表清单暗示尚未创建的表已经 Available。
+Design Baseline 提供逻辑设计；实际 migration 在对应纵向切片创建。当前 V2～V9 可由 Flyway/Testcontainers 执行，通用 PostgreSQL catalog fitness tests 已 Available；Inventory 专属约束留给 Inventory readiness PR 和 V10 migration。不得用逻辑表清单暗示尚未创建的表已经 Available。

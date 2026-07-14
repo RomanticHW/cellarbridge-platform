@@ -20,7 +20,7 @@
 2. 本地 dispatcher 查询 ready publication 并调用 `LocalEventHandler`；当前没有 publication lease/claim，重复并发由 Consumer Inbox 与业务唯一约束消除副作用；
 3. 每个 Consumer 以 `(consumer_name, event_id)` 的 Inbox 状态独立去重；
 4. 业务副作用、Inbox 完成和后继 publication 在同一本地事务提交；
-5. 重复投递无害，基础设施保存 `FAILED_RETRYABLE` 或 `FAILED_FINAL`。当前两个 handler 仍把宽泛 `NullPointerException` 误归为契约失败，这是本 core correction 达到 Ready 前必须修复的已知偏差。
+5. 重复投递无害，基础设施保存 `FAILED_RETRYABLE` 或 `FAILED_FINAL`。订单转换 consumer 已改为显式校验；`TradeOrderCreatedEventHandler` 仍把宽泛 `NullPointerException` 归为契约失败，是尚未清理的已知偏差。
 
 语义是 at-least-once，不宣称 exactly-once。retention、reconciliation、人工 replay 和完整指标仍需后续交付。
 

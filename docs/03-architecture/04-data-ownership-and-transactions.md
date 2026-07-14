@@ -92,7 +92,7 @@ WHERE tenant_id = :tenant_id
 
 - 当前仓库 migration 从 V2 到 V9 使用简单递增版本；V8/V9 是冻结的多 owner 历史协调例外；
 - 从 V10 起，一个文件只允许修改一个 owner Schema；跨模块任务拆为多个连续、前向兼容的 migration；
-- 计划中的 ownership manifest 必须覆盖全部 V2+ 文件并冻结 SHA-256；落地后，V10+ 另由高信号语句 scanner 和 PostgreSQL catalog test 验证；
+- ownership manifest 已覆盖全部 V2+ 文件并记录 SHA-256；V10+ 另由高信号语句 scanner 和 PostgreSQL catalog test 验证，历史差异仍需 PR 基线门禁/评审；
 - 合并后不可修改；
 - schema 建立、约束和索引在迁移中；
 - 大数据迁移拆 expand/backfill/contract；

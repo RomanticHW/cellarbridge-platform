@@ -35,7 +35,7 @@ Status date: **2026-07-14**
 | Quote-to-order conversion | Available | transactional Inbox consumer, immutable Trade Order snapshot, unique quotation conversion, reliable `TradeOrderCreatedV1`, eventual Quotation link, tenant/Buyer-scoped query UI and real OIDC E2E |
 | Inventory reservation | Designed | orders intentionally remain `PENDING_RESERVATION`; atomic allocation and reservation outcome handling remain Task 08 |
 | Fulfillment/exception/settlement/reporting | Designed | implementation not started |
-| Architecture fitness functions | Partially available | Modulith cycles/internal boundaries and selected ArchUnit rules run now；remaining domain/controller/public-contract/catalog/migration rules are tracked in the fitness status table |
+| Architecture fitness functions | Partially available | Modulith、domain/controller/public-contract、catalog 与 migration 核心规则已执行；shared-kernel、运行和性能门禁仍按 fitness status 分为 Partially available/Planned |
 | Kafka/Redis/OTel/Prometheus/Grafana full profile | Planned | no current runtime dependency or compose service |
 | ECharts dashboards | Planned | ECharts is not installed；dashboard slice remains Task 12 |
 | Performance/security/release evidence | Planned | tasks 13–15 |

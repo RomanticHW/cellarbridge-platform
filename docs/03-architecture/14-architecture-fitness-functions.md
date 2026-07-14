@@ -6,59 +6,90 @@
 
 ## 2. 模块边界
 
-| FF ID | 规则 | 状态 | 当前证据/计划工具 |
-|---|---|---|---|
-| FF-ARC-001 | Spring Modulith 无循环和非法模块依赖 | Available | `ApplicationModules.verify()` |
-| FF-ARC-002 | 任一模块不得引用其他模块 `..internal..` | Available | ArchUnit |
-| FF-ARC-003 | domain 不依赖 Spring/Jakarta/web/application/infrastructure | Partially available | 当前 ArchUnit 只覆盖部分框架；完整规则尚待实现 |
-| FF-ARC-004 | controller 不依赖 repository | Planned | ArchUnit 规则尚待实现 |
-| FF-ARC-005 | 公开事件/DTO 不包含 persistence entity | Planned | ArchUnit/reflection test 尚待实现 |
-| FF-ARC-006 | shared-kernel 只含白名单类型 | Partially available | package review；完整自动白名单待补 |
+| FF ID | 规则 | 工具 |
+|---|---|---|
+| FF-ARC-001 | Spring Modulith 无循环和非法模块依赖 | `ApplicationModules.verify()` |
+| FF-ARC-002 | 任一模块不得引用其他模块 `..internal..` | ArchUnit |
+| FF-ARC-003 | domain 不依赖 Spring/Jakarta/web/application/infrastructure | ArchUnit + 反向 fixture |
+| FF-ARC-004 | controller 不依赖 repository | ArchUnit |
+| FF-ARC-005 | 公开事件/DTO 不包含 persistence entity | ArchUnit |
+| FF-ARC-006 | shared-kernel 只含白名单类型 | package rule/review |
+
+状态：FF-ARC-001～005 **Available**；FF-ARC-006 **Partially available**，完整自动白名单待补。
 
 ## 3. 数据边界
 
-| FF ID | 规则 | 状态 | 当前证据/计划验证 |
-|---|---|---|---|
-| FF-DATA-001 | V10+ 每个 migration 只修改一个 owner Schema | Planned | manifest + statement scanner |
-| FF-DATA-002 | 无跨模块 FK | Planned | PostgreSQL catalog integration test |
-| FF-DATA-003 | 所有业务表有 tenant_id（例外白名单） | Planned | catalog test |
-| FF-DATA-004 | mutable aggregate 表有 version | Planned | catalog test |
-| FF-DATA-005 | migration 文件合并后不可改 | Partially available | Flyway 历史；完整 SHA-256 manifest 门禁待补 |
-| FF-DATA-006 | 金额/数量列 precision/scale 符合规范 | Planned | catalog test |
+| FF ID | 规则 | 验证 |
+|---|---|---|
+| FF-DATA-001 | V10+ 每个 migration 只修改一个 owner Schema | manifest + 高信号 statement scanner |
+| FF-DATA-002 | 无跨模块 FK | PostgreSQL catalog integration test |
+| FF-DATA-003 | 所有业务表有 tenant_id（例外白名单） | catalog test |
+| FF-DATA-004 | mutable aggregate 表有 version | catalog test（显式 mutable root 集合） |
+| FF-DATA-005 | migration 文件合并后不可改 | V2+ SHA-256 manifest；PR 基线差异仍需 CI/评审 |
+| FF-DATA-006 | 金额/数量列 precision/scale 符合规范 | catalog test（numeric 分类与命名约束） |
+| FF-DATA-007 | inventory quantity unit / allocation priority | Inventory readiness PR 的 V10 与 catalog test |
+
+状态：FF-DATA-001～004、006 **Available**；FF-DATA-005 **Partially available**；FF-DATA-007 **Planned**。
 
 ## 4. 契约
 
-- **Available**：OpenAPI/AsyncAPI parse、examples validate、generated TypeScript types no diff；
-- **Partially available**：event schema/fixture compatibility；
-- **Planned**：Problem Details error code registry completeness、endpoint metadata completeness、command idempotency/If-Match 自动检查。
+- OpenAPI/AsyncAPI parse；
+- examples validate；
+- generated TypeScript types no diff；
+- event schema compatibility；
+- Problem Details error code registry complete；
+- every public endpoint has operationId/security/response errors；
+- every command endpoint declares idempotency/If-Match rule where needed。
+
+状态：前三项及 QuotationAccepted Schema 的 producer/consumer fixture **Available**；其余完整性门禁 **Planned**。
 
 ## 5. 正确性
 
-| FF ID | 声明 | 状态 | 自动证据 |
-|---|---|---|---|
-| FF-COR-001 | quote → one order | Available | unique constraint + concurrent integration test |
-| FF-COR-002 | no oversell | Planned | Task 08 DB constraints + concurrent test |
-| FF-COR-003 | duplicate event harmless | Available | Inbox duplicate tests |
-| FF-COR-004 | commercial snapshots immutable | Available | domain/API/persistence tests |
-| FF-COR-005 | tenant isolation | Available | two-tenant matrix tests |
-| FF-COR-006 | money deterministic | Available | property/rounding tests |
+| FF ID | 声明 | 自动证据 |
+|---|---|---|
+| FF-COR-001 | quote → one order | unique constraint + concurrent integration test |
+| FF-COR-002 | no oversell | DB constraints + concurrent test |
+| FF-COR-003 | duplicate event harmless | Inbox duplicate tests |
+| FF-COR-004 | commercial snapshots immutable | domain/API/persistence tests |
+| FF-COR-005 | tenant isolation | two-tenant matrix tests |
+| FF-COR-006 | money deterministic；zero-price order invariant | domain/event/rounding tests |
+
+状态：FF-COR-001、003～006 **Available**；FF-COR-002 **Planned**，由 Task 08 提供真实并发证据。
 
 ## 6. 运行与文档
 
-- **Available**：`docker compose config`、README link validation、公开仓库 secret scan、YAML/JSON parse；
-- **Partially available**：core smoke、私有路径黑名单、Mermaid fence（不等于 Mermaid 编译）、README/baseline/changelog status 一致性；
-- **Planned**：发布文档 future-work 结构化校验。
+- `docker compose config` 有效；
+- core smoke health/login；
+- README link/status validation；
+- 不存在 TODO/TBD/XXX 在发布文档（允许 issue link 的明确 future work）；
+- 公开仓库 secret scan；
+- raw screenshots/private prompts 路径黑名单；
+- Mermaid fence 和 YAML/JSON schema parse；
+- docs baseline version 与 changelog/status 一致。
+
+状态：compose、README link、secret scan、YAML/JSON parse **Available**；core smoke、私有路径、Mermaid 与跨文档状态校验 **Partially available**；future-work 结构化校验 **Planned**。
 
 ## 7. 性能预算
 
-- **Partially available**：Catalog 查询 benchmark；
-- **Planned**：API P95 release gate、frontend bundle budget、query count/N+1 designated tests、event backlog recovery benchmark、inventory concurrency invariant。
+- API P95 预算由可重复 benchmark 检查（release workflow）；
+- frontend bundle budget；
+- query count/N+1 designated tests；
+- event backlog recovery benchmark；
+- inventory concurrency invariant always gating，吞吐目标为报告而非硬失败初期。
+
+状态：Catalog 查询 benchmark **Partially available**；其余 **Planned**。
 
 ## 8. 安全门槛
 
-- **Available**：security headers、customer-safe schema field allowlist；
-- **Partially available**：依赖审计、demo profile 凭据隔离和日志脱敏测试；
-- **Planned**：统一 high/critical vulnerability gate、container scan、SBOM 和覆盖所有日志入口的统一脱敏门禁。
+- dependency high/critical vulnerability gate（允许有到期 waiver 文件）；
+- container scan；
+- SBOM；
+- default demo credentials only demo profile；
+- security headers test；
+- customer schema field allowlist；
+- log redaction test。
+
+状态：security headers 与 customer-safe field allowlist **Available**；依赖审计、demo profile 和日志脱敏 **Partially available**；统一漏洞门禁、container scan 与 SBOM **Planned**。
 
 ## 9. 例外机制
 

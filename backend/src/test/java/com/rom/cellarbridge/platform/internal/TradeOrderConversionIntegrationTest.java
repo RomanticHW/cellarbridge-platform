@@ -533,6 +533,74 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
   }
 
   @Test
+  void databaseCatalogMatchesTheCurrentFitnessBaseline() {
+    assertThat(
+            jdbc.queryForList(
+                """
+                WITH application_schema(name) AS (VALUES
+                  ('identity_access'),('partner'),('catalog'),('inventory'),('trade_planning'),
+                  ('quotation'),('trade_order'),('platform_event')
+                ), mutable(table_schema,table_name) AS (VALUES
+                  ('identity_access','tenant'),('identity_access','user_mapping'),
+                  ('partner','partner'),('catalog','wine_product'),('catalog','sku'),
+                  ('inventory','warehouse'),('inventory','supply_pool'),('inventory','inventory_lot'),
+                  ('trade_planning','evaluation'),('quotation','quotation'),
+                  ('quotation','quotation_revision'),('trade_order','trade_order')
+                ), owned AS (
+                  SELECT table_schema, table_name FROM information_schema.tables
+                   WHERE table_type = 'BASE TABLE'
+                     AND table_schema IN (SELECT name FROM application_schema)
+                ), violations AS (
+                  SELECT 'unmanaged-schema:'||n.nspname problem FROM pg_namespace n
+                   WHERE n.nspname NOT IN (SELECT name FROM application_schema)
+                     AND n.nspname NOT IN ('public','information_schema','pg_catalog') AND n.nspname !~ '^pg_'
+                  UNION ALL SELECT 'unmanaged:'||t.table_schema||'.'||t.table_name
+                    FROM information_schema.tables t WHERE t.table_type='BASE TABLE'
+                     AND t.table_schema NOT IN (SELECT name FROM application_schema)
+                     AND t.table_schema NOT IN ('information_schema','pg_catalog')
+                     AND t.table_schema !~ '^pg_'
+                     AND (t.table_schema,t.table_name) <> ('public','flyway_schema_history')
+                  UNION ALL SELECT 'tenant:'||o.table_schema||'.'||o.table_name FROM owned o
+                   WHERE (o.table_schema,o.table_name) <> ('identity_access','tenant') AND NOT EXISTS
+                     (SELECT FROM information_schema.columns c WHERE c.table_schema=o.table_schema
+                       AND c.table_name=o.table_name AND c.column_name='tenant_id' AND c.is_nullable='NO')
+                  UNION ALL SELECT 'version:'||m.table_schema||'.'||m.table_name FROM mutable m WHERE NOT EXISTS
+                    (SELECT FROM information_schema.columns c WHERE c.table_schema=m.table_schema
+                      AND c.table_name=m.table_name AND c.column_name='version' AND c.is_nullable='NO')
+                  UNION ALL SELECT 'foreign-key:'||sn.nspname||'.'||s.relname FROM pg_constraint k
+                    JOIN pg_class s ON s.oid=k.conrelid JOIN pg_namespace sn ON sn.oid=s.relnamespace
+                    JOIN pg_class r ON r.oid=k.confrelid JOIN pg_namespace rn ON rn.oid=r.relnamespace
+                   WHERE k.contype='f' AND sn.nspname<>rn.nspname
+                     AND (sn.nspname IN (SELECT table_schema FROM owned)
+                       OR rn.nspname IN (SELECT table_schema FROM owned))
+                  UNION ALL SELECT 'money:'||c.table_schema||'.'||c.table_name||'.'||c.column_name
+                    FROM information_schema.columns c JOIN owned o USING (table_schema,table_name)
+                   WHERE c.column_name ~ '(^|_)(amount|price|cost|charge|charges|fee|fees|tax|balance|total|subtotal)$'
+                     AND NOT (c.column_name='manual_price' AND c.data_type='boolean')
+                     AND (c.data_type IS DISTINCT FROM 'numeric'
+                       OR c.numeric_precision IS DISTINCT FROM 19 OR c.numeric_scale IS DISTINCT FROM 4)
+                  UNION ALL SELECT 'quantity:'||c.table_schema||'.'||c.table_name||'.'||c.column_name
+                    FROM information_schema.columns c JOIN owned o USING (table_schema,table_name)
+                   WHERE c.column_name LIKE '%quantity'
+                     AND (c.data_type IS DISTINCT FROM 'numeric'
+                       OR c.numeric_precision IS DISTINCT FROM 19 OR c.numeric_scale IS DISTINCT FROM 6)
+                  UNION ALL SELECT 'numeric-unclassified:'||c.table_schema||'.'||c.table_name||'.'||c.column_name
+                    FROM information_schema.columns c JOIN owned o USING (table_schema,table_name)
+                   WHERE c.data_type='numeric' AND c.column_name NOT LIKE '%quantity'
+                     AND c.column_name !~ '(^|_)(amount|price|cost|charge|charges|fee|fees|tax|balance|total|subtotal|score|rate)$'
+                  UNION ALL SELECT 'inventory-reservation-check' WHERE NOT EXISTS
+                    (SELECT FROM pg_constraint k JOIN pg_class t ON t.oid=k.conrelid
+                      JOIN pg_namespace n ON n.oid=t.relnamespace WHERE n.nspname='inventory'
+                      AND t.relname='inventory_lot' AND k.contype='c' AND k.convalidated
+                      AND k.conname='ck_inventory_lot_reservation'
+                      AND pg_get_constraintdef(k.oid) LIKE '%reserved_quantity <= on_hand_quantity%')
+                ) SELECT problem FROM violations
+                """,
+                String.class))
+        .isEmpty();
+  }
+
+  @Test
   void rejectsInvalidAndMismatchedSnapshotsBeforeCreatingOrders() throws Exception {
     for (String field :
         List.of(
