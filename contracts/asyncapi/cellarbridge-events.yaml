@@ -96,7 +96,7 @@ operations:
     action: receive
     channel:
       $ref: '#/channels/tradeOrderCreated'
-    summary: Inventory and reporting consume the event.
+    summary: Quotation conversion tracking, inventory and reporting consume the event independently.
     messages:
       - $ref: '#/channels/tradeOrderCreated/messages/tradeOrderCreated'
   sendReservationConfirmed:
@@ -209,6 +209,7 @@ components:
               revisionId: 22000000-0000-4000-8000-000000000001
               quotationNumber: QUO-202607-000001
               revision: 1
+              sourceOwnerId: 11200000-0000-4000-8000-000000000003
               acceptanceId: 23000000-0000-4000-8000-000000000001
               acceptedAt: '2026-07-20T10:15:30Z'
               customer:

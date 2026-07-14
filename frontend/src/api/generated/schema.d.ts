@@ -352,6 +352,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/buyer/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List safe order projections for the authenticated buyer's organization
+         * @description The partner scope is resolved exclusively from the authenticated identity mapping.
+         */
+        get: operations["listBuyerOrders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/buyer/orders/{orderId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a safe order projection for the authenticated buyer's organization
+         * @description The partner scope is resolved before lookup; out-of-scope orders return not found.
+         */
+        get: operations["getBuyerOrder"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/orders/{orderId}/cancellation": {
         parameters: {
             query?: never;
@@ -598,6 +638,11 @@ export interface components {
             /** Format: uuid */
             userId: string;
             displayName: string;
+            /**
+             * Format: uuid
+             * @description Identity-mapped buyer organization; null for non-partner-scoped internal actors.
+             */
+            partnerId: string | null;
             tenant: {
                 /** Format: uuid */
                 id: string;
@@ -1047,7 +1092,14 @@ export interface components {
             termsSummary: string[];
             allowedActions: ("ACCEPT" | "REJECT" | "VIEW_ORDER")[];
             decisionReceipt: components["schemas"]["PublicQuotationDecisionReceipt"] | null;
+            /** Format: uuid */
+            orderId?: string | null;
             orderNumber?: string | null;
+            /**
+             * @description Eventual order-conversion state; absence or null means conversion has not started.
+             * @enum {string|null}
+             */
+            orderCreationStatus?: "PENDING" | "CREATED" | "FAILED_RETRYING" | null;
         };
         PublicMoney: {
             amount: string;
@@ -1117,15 +1169,30 @@ export interface components {
         };
         /** @enum {string} */
         OrderStatus: "PENDING_RESERVATION" | "RESERVED" | "RESERVATION_FAILED" | "READY_FOR_FULFILLMENT" | "IN_FULFILLMENT" | "FULFILLED" | "CANCELLATION_PENDING" | "CANCELLATION_FAILED" | "CANCELLED";
+        OrderMoney: {
+            amount: string;
+            currency: string;
+        };
+        OrderQuantity: {
+            value: string;
+            /** @enum {string} */
+            unit: "CASE" | "BOTTLE";
+        };
+        OrderPageInfo: {
+            nextCursor: string | null;
+            hasNext: boolean;
+            pageSize: number;
+        };
         OrderSummary: {
             /** Format: uuid */
             id: string;
             number: string;
+            sourceQuotationNumber: string;
             /** Format: uuid */
             partnerId: string;
             partnerName: string;
             status: components["schemas"]["OrderStatus"];
-            total: components["schemas"]["Money"];
+            total: components["schemas"]["OrderMoney"];
             routeCode: components["schemas"]["TradeRouteCode"];
             /** Format: date-time */
             createdAt: string;
@@ -1134,34 +1201,183 @@ export interface components {
         };
         OrderPage: {
             items: components["schemas"]["OrderSummary"][];
-            pageInfo: components["schemas"]["PageInfo"];
+            pageInfo: components["schemas"]["OrderPageInfo"];
         };
-        OrderDetail: components["schemas"]["OrderSummary"] & {
-            sourceQuotation: {
-                /** Format: uuid */
-                id: string;
-                number: string;
-                revision: number;
-            };
-            commercialSnapshot: {
-                customer: {
-                    [key: string]: unknown;
-                };
-                lines: components["schemas"]["PriceLine"][];
-                paymentTermDays: number;
-                /** Format: date-time */
-                capturedAt: string;
-                snapshotHash: string;
-            };
-            reservation: {
-                [key: string]: unknown;
-            } | null;
-            fulfillment: {
-                [key: string]: unknown;
-            } | null;
-            settlement: {
-                [key: string]: unknown;
-            } | null;
+        OrderSourceQuotation: {
+            /** Format: uuid */
+            id: string;
+            number: string;
+            /** Format: uuid */
+            revisionId: string;
+            revision: number;
+        };
+        OrderCustomerSnapshot: {
+            /** Format: uuid */
+            partnerId: string;
+            partnerNumber: string;
+            displayName: string;
+            sourceVersion: number;
+        };
+        OrderDeliveryAddress: {
+            countryCode: string;
+            province: string;
+            city: string;
+            district: string | null;
+            line1: string;
+            postalCode: string | null;
+        };
+        OrderRouteSnapshot: {
+            code: components["schemas"]["TradeRouteCode"];
+            policyVersion: string;
+            /** Format: date */
+            estimatedDeliveryDate: string;
+        };
+        OrderLineSnapshot: {
+            /** Format: uuid */
+            orderLineId: string;
+            /** Format: uuid */
+            sourceQuotationLineId: string;
+            /** Format: uuid */
+            skuId: string;
+            skuCode: string;
+            description: string;
+            quantity: components["schemas"]["OrderQuantity"];
+            netUnitPrice: components["schemas"]["OrderMoney"];
+            lineTotal: components["schemas"]["OrderMoney"];
+            /** Format: uuid */
+            supplyPoolId: string | null;
+            /** @enum {string} */
+            supplyType: "DOMESTIC_ON_HAND" | "BONDED_ON_HAND" | "HONG_KONG_ON_HAND" | "IN_TRANSIT_PRESALE" | "OVERSEAS_SOURCING";
+        };
+        OrderCommercialSnapshot: {
+            customer: components["schemas"]["OrderCustomerSnapshot"];
+            lines: components["schemas"]["OrderLineSnapshot"][];
+            paymentTermDays: number;
+            acceptedTermsVersion: string | null;
+            /** Format: date */
+            requestedDeliveryDate: string | null;
+            deliveryAddress: components["schemas"]["OrderDeliveryAddress"] | null;
+            route: components["schemas"]["OrderRouteSnapshot"];
+            /** Format: date-time */
+            capturedAt: string;
+            snapshotHash: string;
+        };
+        OrderProcessProjection: {
+            /** @enum {string} */
+            status: "PENDING" | "NOT_STARTED";
+            message: string;
+        };
+        OrderTimelineEntry: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            occurredAt: string;
+            action: string;
+            previousState: string | null;
+            newState: components["schemas"]["OrderStatus"];
+            safeReason: string | null;
+            /** @enum {string} */
+            visibility: "INTERNAL" | "CUSTOMER";
+        };
+        OrderDetail: {
+            /** Format: uuid */
+            id: string;
+            number: string;
+            sourceQuotationNumber: string;
+            /** Format: uuid */
+            partnerId: string;
+            partnerName: string;
+            status: components["schemas"]["OrderStatus"];
+            total: components["schemas"]["OrderMoney"];
+            routeCode: components["schemas"]["TradeRouteCode"];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: int64 */
+            version: number;
+            sourceQuotation: components["schemas"]["OrderSourceQuotation"];
+            commercialSnapshot: components["schemas"]["OrderCommercialSnapshot"];
+            reservation: components["schemas"]["OrderProcessProjection"];
+            fulfillment: components["schemas"]["OrderProcessProjection"];
+            settlement: components["schemas"]["OrderProcessProjection"];
+            timeline: components["schemas"]["OrderTimelineEntry"][];
+            allowedActions: string[];
+        };
+        BuyerOrderSummary: {
+            /** Format: uuid */
+            id: string;
+            number: string;
+            sourceQuotationNumber: string;
+            partnerName: string;
+            status: components["schemas"]["OrderStatus"];
+            total: components["schemas"]["OrderMoney"];
+            routeCode: components["schemas"]["TradeRouteCode"];
+            /** Format: date-time */
+            createdAt: string;
+        };
+        BuyerOrderPage: {
+            items: components["schemas"]["BuyerOrderSummary"][];
+            pageInfo: components["schemas"]["OrderPageInfo"];
+        };
+        BuyerOrderSourceQuotation: {
+            number: string;
+            revision: number;
+        };
+        BuyerOrderCustomerSnapshot: {
+            partnerNumber: string;
+            displayName: string;
+        };
+        BuyerOrderRouteSnapshot: {
+            code: components["schemas"]["TradeRouteCode"];
+            /** Format: date */
+            estimatedDeliveryDate: string;
+        };
+        BuyerOrderLineSnapshot: {
+            skuCode: string;
+            description: string;
+            quantity: components["schemas"]["OrderQuantity"];
+            netUnitPrice: components["schemas"]["OrderMoney"];
+            lineTotal: components["schemas"]["OrderMoney"];
+        };
+        BuyerOrderCommercialSnapshot: {
+            customer: components["schemas"]["BuyerOrderCustomerSnapshot"];
+            lines: components["schemas"]["BuyerOrderLineSnapshot"][];
+            paymentTermDays: number;
+            acceptedTermsVersion: string | null;
+            /** Format: date */
+            requestedDeliveryDate: string | null;
+            deliveryAddress: components["schemas"]["OrderDeliveryAddress"] | null;
+            route: components["schemas"]["BuyerOrderRouteSnapshot"];
+            /** Format: date-time */
+            capturedAt: string;
+        };
+        BuyerOrderProcessProjection: {
+            /** @enum {string} */
+            status: "PENDING" | "NOT_STARTED";
+            message: string;
+        };
+        BuyerOrderTimelineEntry: {
+            /** Format: date-time */
+            occurredAt: string;
+            action: string;
+            newState: components["schemas"]["OrderStatus"];
+        };
+        BuyerOrderDetail: {
+            /** Format: uuid */
+            id: string;
+            number: string;
+            sourceQuotationNumber: string;
+            partnerName: string;
+            status: components["schemas"]["OrderStatus"];
+            total: components["schemas"]["OrderMoney"];
+            routeCode: components["schemas"]["TradeRouteCode"];
+            /** Format: date-time */
+            createdAt: string;
+            sourceQuotation: components["schemas"]["BuyerOrderSourceQuotation"];
+            commercialSnapshot: components["schemas"]["BuyerOrderCommercialSnapshot"];
+            reservation: components["schemas"]["BuyerOrderProcessProjection"];
+            fulfillment: components["schemas"]["BuyerOrderProcessProjection"];
+            settlement: components["schemas"]["BuyerOrderProcessProjection"];
+            timeline: components["schemas"]["BuyerOrderTimelineEntry"][];
             allowedActions: string[];
         };
         OrderCommandResult: {
@@ -2282,6 +2498,9 @@ export interface operations {
                     "application/json": components["schemas"]["OrderPage"];
                 };
             };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
         };
     };
     getOrder: {
@@ -2305,6 +2524,60 @@ export interface operations {
                     "application/json": components["schemas"]["OrderDetail"];
                 };
             };
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listBuyerOrders: {
+        parameters: {
+            query?: {
+                pageSize?: components["parameters"]["PageSize"];
+                cursor?: components["parameters"]["Cursor"];
+                status?: components["schemas"]["OrderStatus"][];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Buyer-safe order page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuyerOrderPage"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
+        };
+    };
+    getBuyerOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orderId: components["parameters"]["OrderId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Buyer-safe order detail */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuyerOrderDetail"];
+                };
+            };
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
             404: components["responses"]["NotFound"];
         };
     };

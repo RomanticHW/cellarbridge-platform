@@ -1,12 +1,12 @@
 openapi: 3.1.0
 info:
   title: CellarBridge API
-  version: 1.3.0
+  version: 1.4.0
   summary: Contract baseline for B2B wine quotation, order, inventory and fulfillment
   description: |
     This contract remains the design-first integration baseline for CellarBridge. All examples are synthetic.
-    The authenticated `/me`, partner-onboarding and catalog supply-search endpoints are implemented;
-    remaining business endpoints are delivered incrementally and retain their approved contracts.
+    The authenticated `/me`, partner-onboarding, catalog supply-search, quotation and trade-order
+    endpoints are delivered as vertical slices; remaining business endpoints retain their approved contracts.
     Internal commercial fields and customer-portal fields intentionally use separate schemas.
   license:
     name: Apache-2.0
@@ -677,6 +677,9 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/OrderPage' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
   /orders/{orderId}:
     get:
       tags: [Orders]
@@ -693,6 +696,51 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/OrderDetail' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /buyer/orders:
+    get:
+      tags: [Orders]
+      operationId: listBuyerOrders
+      summary: List safe order projections for the authenticated buyer's organization
+      description: The partner scope is resolved exclusively from the authenticated identity mapping.
+      x-permissions: [order:read]
+      parameters:
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Cursor'
+        - name: status
+          in: query
+          schema:
+            type: array
+            items: { $ref: '#/components/schemas/OrderStatus' }
+          explode: false
+      responses:
+        '200':
+          description: Buyer-safe order page
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BuyerOrderPage' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
+  /buyer/orders/{orderId}:
+    get:
+      tags: [Orders]
+      operationId: getBuyerOrder
+      summary: Get a safe order projection for the authenticated buyer's organization
+      description: The partner scope is resolved before lookup; out-of-scope orders return not found.
+      x-permissions: [order:read]
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Buyer-safe order detail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BuyerOrderDetail' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
         '404': { $ref: '#/components/responses/NotFound' }
   /orders/{orderId}/cancellation:
     post:
@@ -1159,10 +1207,14 @@ components:
   schemas:
     CurrentUser:
       type: object
-      required: [userId, displayName, tenant, permissions, roles]
+      required: [userId, displayName, tenant, partnerId, permissions, roles]
       properties:
         userId: { type: string, format: uuid }
         displayName: { type: string }
+        partnerId:
+          type: [string, 'null']
+          format: uuid
+          description: Identity-mapped buyer organization; null for non-partner-scoped internal actors.
         tenant:
           type: object
           required: [id, name, status]
@@ -1758,7 +1810,14 @@ components:
           oneOf:
             - $ref: '#/components/schemas/PublicQuotationDecisionReceipt'
             - type: 'null'
+        orderId:
+          type: [string, 'null']
+          format: uuid
         orderNumber: { type: [string, 'null'] }
+        orderCreationStatus:
+          type: [string, 'null']
+          enum: [PENDING, CREATED, FAILED_RETRYING, null]
+          description: Eventual order-conversion state; absence or null means conversion has not started.
     PublicMoney:
       type: object
       additionalProperties: false
@@ -1846,63 +1905,286 @@ components:
     OrderStatus:
       type: string
       enum: [PENDING_RESERVATION, RESERVED, RESERVATION_FAILED, READY_FOR_FULFILLMENT, IN_FULFILLMENT, FULFILLED, CANCELLATION_PENDING, CANCELLATION_FAILED, CANCELLED]
+    OrderMoney:
+      type: object
+      additionalProperties: false
+      required: [amount, currency]
+      properties:
+        amount: { type: string, pattern: '^[0-9]+(\.[0-9]{1,4})?$' }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+    OrderQuantity:
+      type: object
+      additionalProperties: false
+      required: [value, unit]
+      properties:
+        value: { type: string, pattern: '^[0-9]+(\.[0-9]{1,6})?$' }
+        unit: { type: string, enum: [CASE, BOTTLE] }
+    OrderPageInfo:
+      type: object
+      additionalProperties: false
+      required: [nextCursor, hasNext, pageSize]
+      properties:
+        nextCursor: { type: [string, 'null'] }
+        hasNext: { type: boolean }
+        pageSize: { type: integer, minimum: 1, maximum: 100 }
     OrderSummary:
       type: object
-      required: [id, number, partnerId, partnerName, status, total, routeCode, createdAt, version]
+      additionalProperties: false
+      required: [id, number, sourceQuotationNumber, partnerId, partnerName, status, total, routeCode, createdAt, version]
       properties:
         id: { type: string, format: uuid }
         number: { type: string }
+        sourceQuotationNumber: { type: string }
         partnerId: { type: string, format: uuid }
         partnerName: { type: string }
         status: { $ref: '#/components/schemas/OrderStatus' }
-        total: { $ref: '#/components/schemas/Money' }
+        total: { $ref: '#/components/schemas/OrderMoney' }
         routeCode: { $ref: '#/components/schemas/TradeRouteCode' }
         createdAt: { type: string, format: date-time }
         version: { type: integer, format: int64 }
     OrderPage:
       type: object
+      additionalProperties: false
       required: [items, pageInfo]
       properties:
         items:
           type: array
           items: { $ref: '#/components/schemas/OrderSummary' }
-        pageInfo: { $ref: '#/components/schemas/PageInfo' }
+        pageInfo: { $ref: '#/components/schemas/OrderPageInfo' }
+    OrderSourceQuotation:
+      type: object
+      additionalProperties: false
+      required: [id, number, revisionId, revision]
+      properties:
+        id: { type: string, format: uuid }
+        number: { type: string }
+        revisionId: { type: string, format: uuid }
+        revision: { type: integer, minimum: 1 }
+    OrderCustomerSnapshot:
+      type: object
+      additionalProperties: false
+      required: [partnerId, partnerNumber, displayName, sourceVersion]
+      properties:
+        partnerId: { type: string, format: uuid }
+        partnerNumber: { type: string }
+        displayName: { type: string }
+        sourceVersion: { type: integer, minimum: 0 }
+    OrderDeliveryAddress:
+      type: object
+      additionalProperties: false
+      required: [countryCode, province, city, district, line1, postalCode]
+      properties:
+        countryCode: { type: string, pattern: '^[A-Z]{2}$' }
+        province: { type: string, maxLength: 100 }
+        city: { type: string, maxLength: 100 }
+        district: { type: [string, 'null'], maxLength: 100 }
+        line1: { type: string, maxLength: 200 }
+        postalCode: { type: [string, 'null'], maxLength: 20 }
+    OrderRouteSnapshot:
+      type: object
+      additionalProperties: false
+      required: [code, policyVersion, estimatedDeliveryDate]
+      properties:
+        code: { $ref: '#/components/schemas/TradeRouteCode' }
+        policyVersion: { type: string }
+        estimatedDeliveryDate: { type: string, format: date }
+    OrderLineSnapshot:
+      type: object
+      additionalProperties: false
+      required: [orderLineId, sourceQuotationLineId, skuId, skuCode, description, quantity, netUnitPrice, lineTotal, supplyPoolId, supplyType]
+      properties:
+        orderLineId: { type: string, format: uuid }
+        sourceQuotationLineId: { type: string, format: uuid }
+        skuId: { type: string, format: uuid }
+        skuCode: { type: string }
+        description: { type: string }
+        quantity: { $ref: '#/components/schemas/OrderQuantity' }
+        netUnitPrice: { $ref: '#/components/schemas/OrderMoney' }
+        lineTotal: { $ref: '#/components/schemas/OrderMoney' }
+        supplyPoolId: { type: [string, 'null'], format: uuid }
+        supplyType:
+          type: string
+          enum: [DOMESTIC_ON_HAND, BONDED_ON_HAND, HONG_KONG_ON_HAND, IN_TRANSIT_PRESALE, OVERSEAS_SOURCING]
+    OrderCommercialSnapshot:
+      type: object
+      additionalProperties: false
+      required: [customer, lines, paymentTermDays, acceptedTermsVersion, requestedDeliveryDate, deliveryAddress, route, capturedAt, snapshotHash]
+      properties:
+        customer: { $ref: '#/components/schemas/OrderCustomerSnapshot' }
+        lines:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items: { $ref: '#/components/schemas/OrderLineSnapshot' }
+        paymentTermDays: { type: integer, minimum: 0, maximum: 180 }
+        acceptedTermsVersion: { type: [string, 'null'], maxLength: 50 }
+        requestedDeliveryDate: { type: [string, 'null'], format: date }
+        deliveryAddress:
+          oneOf:
+            - $ref: '#/components/schemas/OrderDeliveryAddress'
+            - type: 'null'
+        route: { $ref: '#/components/schemas/OrderRouteSnapshot' }
+        capturedAt: { type: string, format: date-time }
+        snapshotHash: { type: string, minLength: 1 }
+    OrderProcessProjection:
+      type: object
+      additionalProperties: false
+      required: [status, message]
+      properties:
+        status: { type: string, enum: [PENDING, NOT_STARTED] }
+        message: { type: string, minLength: 1, maxLength: 240 }
+    OrderTimelineEntry:
+      type: object
+      additionalProperties: false
+      required: [id, occurredAt, action, previousState, newState, safeReason, visibility]
+      properties:
+        id: { type: string, format: uuid }
+        occurredAt: { type: string, format: date-time }
+        action: { type: string, pattern: '^[A-Z][A-Z0-9_]{1,79}$' }
+        previousState: { type: [string, 'null'] }
+        newState: { $ref: '#/components/schemas/OrderStatus' }
+        safeReason: { type: [string, 'null'], maxLength: 500 }
+        visibility: { type: string, enum: [INTERNAL, CUSTOMER] }
     OrderDetail:
-      allOf:
-        - $ref: '#/components/schemas/OrderSummary'
-        - type: object
-          required: [sourceQuotation, commercialSnapshot, reservation, fulfillment, settlement, allowedActions]
-          properties:
-            sourceQuotation:
-              type: object
-              required: [id, number, revision]
-              properties:
-                id: { type: string, format: uuid }
-                number: { type: string }
-                revision: { type: integer }
-            commercialSnapshot:
-              type: object
-              required: [customer, lines, paymentTermDays, capturedAt, snapshotHash]
-              properties:
-                customer: { type: object, additionalProperties: true }
-                lines:
-                  type: array
-                  items: { $ref: '#/components/schemas/PriceLine' }
-                paymentTermDays: { type: integer }
-                capturedAt: { type: string, format: date-time }
-                snapshotHash: { type: string }
-            reservation:
-              type: [object, 'null']
-              additionalProperties: true
-            fulfillment:
-              type: [object, 'null']
-              additionalProperties: true
-            settlement:
-              type: [object, 'null']
-              additionalProperties: true
-            allowedActions:
-              type: array
-              items: { type: string }
+      type: object
+      additionalProperties: false
+      required: [id, number, sourceQuotationNumber, partnerId, partnerName, status, total, routeCode, createdAt, version, sourceQuotation, commercialSnapshot, reservation, fulfillment, settlement, timeline, allowedActions]
+      properties:
+        id: { type: string, format: uuid }
+        number: { type: string }
+        sourceQuotationNumber: { type: string }
+        partnerId: { type: string, format: uuid }
+        partnerName: { type: string }
+        status: { $ref: '#/components/schemas/OrderStatus' }
+        total: { $ref: '#/components/schemas/OrderMoney' }
+        routeCode: { $ref: '#/components/schemas/TradeRouteCode' }
+        createdAt: { type: string, format: date-time }
+        version: { type: integer, format: int64 }
+        sourceQuotation: { $ref: '#/components/schemas/OrderSourceQuotation' }
+        commercialSnapshot: { $ref: '#/components/schemas/OrderCommercialSnapshot' }
+        reservation: { $ref: '#/components/schemas/OrderProcessProjection' }
+        fulfillment: { $ref: '#/components/schemas/OrderProcessProjection' }
+        settlement: { $ref: '#/components/schemas/OrderProcessProjection' }
+        timeline:
+          type: array
+          items: { $ref: '#/components/schemas/OrderTimelineEntry' }
+        allowedActions:
+          type: array
+          uniqueItems: true
+          items: { type: string, pattern: '^[A-Z][A-Z0-9_]{1,79}$' }
+    BuyerOrderSummary:
+      type: object
+      additionalProperties: false
+      required: [id, number, sourceQuotationNumber, partnerName, status, total, routeCode, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        number: { type: string }
+        sourceQuotationNumber: { type: string }
+        partnerName: { type: string }
+        status: { $ref: '#/components/schemas/OrderStatus' }
+        total: { $ref: '#/components/schemas/OrderMoney' }
+        routeCode: { $ref: '#/components/schemas/TradeRouteCode' }
+        createdAt: { type: string, format: date-time }
+    BuyerOrderPage:
+      type: object
+      additionalProperties: false
+      required: [items, pageInfo]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/BuyerOrderSummary' }
+        pageInfo: { $ref: '#/components/schemas/OrderPageInfo' }
+    BuyerOrderSourceQuotation:
+      type: object
+      additionalProperties: false
+      required: [number, revision]
+      properties:
+        number: { type: string }
+        revision: { type: integer, minimum: 1 }
+    BuyerOrderCustomerSnapshot:
+      type: object
+      additionalProperties: false
+      required: [partnerNumber, displayName]
+      properties:
+        partnerNumber: { type: string }
+        displayName: { type: string }
+    BuyerOrderRouteSnapshot:
+      type: object
+      additionalProperties: false
+      required: [code, estimatedDeliveryDate]
+      properties:
+        code: { $ref: '#/components/schemas/TradeRouteCode' }
+        estimatedDeliveryDate: { type: string, format: date }
+    BuyerOrderLineSnapshot:
+      type: object
+      additionalProperties: false
+      required: [skuCode, description, quantity, netUnitPrice, lineTotal]
+      properties:
+        skuCode: { type: string }
+        description: { type: string }
+        quantity: { $ref: '#/components/schemas/OrderQuantity' }
+        netUnitPrice: { $ref: '#/components/schemas/OrderMoney' }
+        lineTotal: { $ref: '#/components/schemas/OrderMoney' }
+    BuyerOrderCommercialSnapshot:
+      type: object
+      additionalProperties: false
+      required: [customer, lines, paymentTermDays, acceptedTermsVersion, requestedDeliveryDate, deliveryAddress, route, capturedAt]
+      properties:
+        customer: { $ref: '#/components/schemas/BuyerOrderCustomerSnapshot' }
+        lines:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items: { $ref: '#/components/schemas/BuyerOrderLineSnapshot' }
+        paymentTermDays: { type: integer, minimum: 0, maximum: 180 }
+        acceptedTermsVersion: { type: [string, 'null'], maxLength: 50 }
+        requestedDeliveryDate: { type: [string, 'null'], format: date }
+        deliveryAddress:
+          oneOf:
+            - $ref: '#/components/schemas/OrderDeliveryAddress'
+            - type: 'null'
+        route: { $ref: '#/components/schemas/BuyerOrderRouteSnapshot' }
+        capturedAt: { type: string, format: date-time }
+    BuyerOrderProcessProjection:
+      type: object
+      additionalProperties: false
+      required: [status, message]
+      properties:
+        status: { type: string, enum: [PENDING, NOT_STARTED] }
+        message: { type: string, minLength: 1, maxLength: 240 }
+    BuyerOrderTimelineEntry:
+      type: object
+      additionalProperties: false
+      required: [occurredAt, action, newState]
+      properties:
+        occurredAt: { type: string, format: date-time }
+        action: { type: string, pattern: '^[A-Z][A-Z0-9_]{1,79}$' }
+        newState: { $ref: '#/components/schemas/OrderStatus' }
+    BuyerOrderDetail:
+      type: object
+      additionalProperties: false
+      required: [id, number, sourceQuotationNumber, partnerName, status, total, routeCode, createdAt, sourceQuotation, commercialSnapshot, reservation, fulfillment, settlement, timeline, allowedActions]
+      properties:
+        id: { type: string, format: uuid }
+        number: { type: string }
+        sourceQuotationNumber: { type: string }
+        partnerName: { type: string }
+        status: { $ref: '#/components/schemas/OrderStatus' }
+        total: { $ref: '#/components/schemas/OrderMoney' }
+        routeCode: { $ref: '#/components/schemas/TradeRouteCode' }
+        createdAt: { type: string, format: date-time }
+        sourceQuotation: { $ref: '#/components/schemas/BuyerOrderSourceQuotation' }
+        commercialSnapshot: { $ref: '#/components/schemas/BuyerOrderCommercialSnapshot' }
+        reservation: { $ref: '#/components/schemas/BuyerOrderProcessProjection' }
+        fulfillment: { $ref: '#/components/schemas/BuyerOrderProcessProjection' }
+        settlement: { $ref: '#/components/schemas/BuyerOrderProcessProjection' }
+        timeline:
+          type: array
+          items: { $ref: '#/components/schemas/BuyerOrderTimelineEntry' }
+        allowedActions:
+          type: array
+          uniqueItems: true
+          items: { type: string, pattern: '^[A-Z][A-Z0-9_]{1,79}$' }
     OrderCommandResult:
       type: object
       required: [orderId, number, status, version, processStatus]
