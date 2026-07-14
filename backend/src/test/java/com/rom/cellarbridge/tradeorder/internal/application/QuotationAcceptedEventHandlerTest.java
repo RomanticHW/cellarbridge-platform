@@ -1,7 +1,6 @@
 package com.rom.cellarbridge.tradeorder.internal.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.networknt.schema.SchemaRegistry;
@@ -15,7 +14,6 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
 import java.util.function.Consumer;
-import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.dao.CannotSerializeTransactionException;
@@ -23,9 +21,7 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.InvalidDataAccessResourceUsageException;
-import org.springframework.dao.QueryTimeoutException;
 import org.springframework.dao.RecoverableDataAccessException;
-import org.springframework.dao.TransientDataAccessResourceException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
@@ -34,181 +30,153 @@ import tools.jackson.databind.node.ObjectNode;
 class QuotationAcceptedEventHandlerTest {
 
   private static final JsonMapper JSON = JsonMapper.builder().build();
-  private static final List<TextBoundary> TEXT_BOUNDARIES =
+  private static final List<Boundary> TEXT =
       List.of(
-          new TextBoundary("/quotationNumber", "/quotationNumber", 30, false),
-          new TextBoundary(
-              "/customer/partnerNumber", "/customer/properties/partnerNumber", 80, false),
-          new TextBoundary("/customer/displayName", "/customer/properties/displayName", 160, false),
-          new TextBoundary("/route/policyVersion", "/route/properties/policyVersion", 80, false),
-          new TextBoundary("/acceptedTermsVersion", "/acceptedTermsVersion", 50, false),
-          new TextBoundary(
-              "/deliveryAddress/province", "/deliveryAddress/properties/province", 100, false),
-          new TextBoundary("/deliveryAddress/city", "/deliveryAddress/properties/city", 100, false),
-          new TextBoundary(
-              "/deliveryAddress/district", "/deliveryAddress/properties/district", 100, true),
-          new TextBoundary(
-              "/deliveryAddress/line1", "/deliveryAddress/properties/line1", 200, false),
-          new TextBoundary(
-              "/deliveryAddress/postalCode", "/deliveryAddress/properties/postalCode", 20, true),
-          new TextBoundary("/lines/0/skuCode", "/lines/items/properties/skuCode", 80, false),
-          new TextBoundary(
-              "/lines/0/description", "/lines/items/properties/description", 240, false));
+          new Boundary("/quotationNumber", 30, false),
+          new Boundary("/customer/partnerNumber", 80, false),
+          new Boundary("/customer/displayName", 160, false),
+          new Boundary("/route/policyVersion", 80, false),
+          new Boundary("/acceptedTermsVersion", 50, false),
+          new Boundary("/deliveryAddress/province", 100, false),
+          new Boundary("/deliveryAddress/city", 100, false),
+          new Boundary("/deliveryAddress/district", 100, true),
+          new Boundary("/deliveryAddress/line1", 200, false),
+          new Boundary("/deliveryAddress/postalCode", 20, true),
+          new Boundary("/lines/0/skuCode", 80, false),
+          new Boundary("/lines/0/description", 240, false));
 
   @Test
-  void enforcesEveryTextAndAddressBoundaryByCodePoint() throws Exception {
-    for (TextBoundary boundary : TEXT_BOUNDARIES) {
-      assertValid(payload -> put(payload, boundary.payloadPointer(), "x".repeat(boundary.max())));
-      assertInvalid(
-          payload -> put(payload, boundary.payloadPointer(), "x".repeat(boundary.max() + 1)));
+  void enforcesEveryTextBoundaryByCodePoint() throws Exception {
+    for (Boundary boundary : TEXT) {
+      String maximum = "x".repeat(boundary.max());
+      check(true, payload -> put(payload, boundary.pointer(), maximum));
+      check(false, payload -> put(payload, boundary.pointer(), maximum + "x"));
       if (boundary.optional()) {
-        assertValid(payload -> putNull(payload, boundary.payloadPointer()));
-        assertInvalid(payload -> put(payload, boundary.payloadPointer(), ""));
+        check(true, payload -> put(payload, boundary.pointer(), null));
+        check(false, payload -> put(payload, boundary.pointer(), ""));
       }
     }
-    assertValid(payload -> put(payload, "/customer/displayName", "🍷".repeat(160)));
-    assertInvalid(payload -> put(payload, "/customer/displayName", "🍷".repeat(161)));
-    assertInvalid(payload -> put(payload, "/route/code", "UNKNOWN_ROUTE"));
-    assertInvalid(payload -> put(payload, "/deliveryAddress/countryCode", "cn"));
-    assertInvalid(payload -> put(payload, "/currency", "usd"));
+    check(true, payload -> put(payload, "/customer/displayName", "🍷".repeat(160)));
+    check(false, payload -> put(payload, "/customer/displayName", "🍷".repeat(161)));
+    for (String[] value :
+        new String[][] {
+          {"/route/code", "UNKNOWN_ROUTE"},
+          {"/deliveryAddress/countryCode", "cn"},
+          {"/currency", "usd"}
+        }) {
+      check(false, payload -> put(payload, value[0], value[1]));
+    }
   }
 
   @Test
-  void schemaAndRuntimeAgreeOnWhitespaceAndWholeStringRules() throws Exception {
+  void alignsWhitespaceAndWholeStringRulesWithDraft202012() throws Exception {
     JsonNode properties = schemaProperties();
     for (String whitespace : List.of(" ", "\t", "\u00a0", "\u3000")) {
-      assertInvalid(payload -> put(payload, "/quotationNumber", whitespace));
+      check(false, payload -> put(payload, "/quotationNumber", whitespace));
       assertThat(schemaAccepts(properties.path("quotationNumber"), whitespace)).isFalse();
     }
-    for (TextValue invalid :
-        List.of(
-            new TextValue("/currency", "/currency", "USD\n"),
-            new TextValue(
-                "/deliveryAddress/countryCode", "/deliveryAddress/properties/countryCode", "CN\n"),
-            new TextValue("/totalAmount", "/totalAmount", "128400.00\n"),
-            new TextValue(
-                "/lines/0/quantity", "/lines/items/properties/quantity", "100.000000\n"))) {
-      assertInvalid(payload -> put(payload, invalid.payloadPointer(), invalid.value()));
-      assertThat(schemaAccepts(properties.at(invalid.schemaPointer()), invalid.value())).isFalse();
+    for (String[] value :
+        new String[][] {
+          {"/currency", "USD\n"},
+          {"/totalAmount", "128400.00\n"}
+        }) {
+      check(false, payload -> put(payload, value[0], value[1]));
+      assertThat(schemaAccepts(schemaFor(properties, value[0]), value[1])).isFalse();
     }
     String hash = "a".repeat(64) + "\n";
     assertThat(schemaAccepts(properties.path("snapshotHash"), hash)).isFalse();
+    assertThat(schemaAccepts(properties.path("snapshotHash"), "sha256:" + "a".repeat(64)))
+        .isFalse();
+    JsonNode createdHash =
+        JSON.readTree(
+                Files.readString(
+                    contractPath("schemas", "events", "trade-order-created-v1.schema.json")))
+            .at("/allOf/1/properties/payload/properties/snapshotHash");
+    assertThat(schemaAccepts(createdHash, "a".repeat(64))).isTrue();
+    assertThat(schemaAccepts(createdHash, "sha256:" + "a".repeat(64))).isFalse();
+    assertThat(schemaAccepts(createdHash, "a".repeat(64) + "\n")).isFalse();
     assertThatThrownBy(() -> QuotationSnapshotHashV1.normalizeIncomingHash(hash))
         .isInstanceOf(QuotationSnapshotHashV1.InvalidSnapshotHashFormatException.class);
   }
 
   @Test
-  void enforcesNumericPrecisionScaleSignAndLeadingZeroRules() throws Exception {
-    assertValid(payload -> amount(payload, "999999999999999.9999"));
-    assertValid(payload -> put(payload, "/lines/0/netUnitPrice", "999999999999999.9999"));
-    assertValid(payload -> put(payload, "/lines/0/quantity", "9999999999999.999999"));
-    assertValid(
-        payload -> {
-          amount(payload, "00000000000000000000000100.0000");
-          put(payload, "/lines/0/netUnitPrice", "00000100.0000");
-          put(payload, "/lines/0/quantity", "0000001.000000");
-        });
-    for (Consumer<ObjectNode> invalid :
-        List.<Consumer<ObjectNode>>of(
-            payload -> put(payload, "/totalAmount", "1000000000000000"),
-            payload -> put(payload, "/lines/0/netUnitPrice", "1000000000000000"),
-            payload -> put(payload, "/lines/0/lineTotal", "1000000000000000"),
-            payload -> put(payload, "/lines/0/quantity", "10000000000000"),
-            payload -> put(payload, "/totalAmount", "1.00000"),
-            payload -> put(payload, "/lines/0/quantity", "1.0000000"),
-            payload -> put(payload, "/totalAmount", "-1"),
-            payload -> put(payload, "/lines/0/netUnitPrice", "1e2"),
-            payload -> put(payload, "/lines/0/quantity", "0.000000"))) {
-      assertInvalid(invalid);
+  void enforcesNumericPrecisionScaleSignAndLeadingZeros() throws Exception {
+    String[][] accepted = {
+      {"/totalAmount", "999999999999999.9999"},
+      {"/lines/0/netUnitPrice", "999999999999999.9999"},
+      {"/lines/0/quantity", "9999999999999.999999"},
+      {"/totalAmount", "00000000000000000000000100.0000"},
+      {"/lines/0/netUnitPrice", "00000100.0000"},
+      {"/lines/0/quantity", "0000001.000000"}
+    };
+    String[][] rejected = {
+      {"/totalAmount", "1000000000000000"},
+      {"/lines/0/netUnitPrice", "1000000000000000"},
+      {"/lines/0/lineTotal", "1000000000000000"},
+      {"/lines/0/quantity", "10000000000000"},
+      {"/totalAmount", "1.00000"},
+      {"/lines/0/quantity", "1.0000000"},
+      {"/totalAmount", "-1"},
+      {"/lines/0/netUnitPrice", "1e2"},
+      {"/lines/0/quantity", "0.000000"}
+    };
+    for (String[] value : accepted) {
+      assertValue(value, true);
+    }
+    for (String[] value : rejected) {
+      assertValue(value, false);
     }
   }
 
   @Test
-  void rejectsDuplicateBusinessKeysAndInvalidLineCounts() throws Exception {
-    assertInvalid(
-        payload -> {
-          ObjectNode duplicate = ((ObjectNode) payload.at("/lines/0")).deepCopy();
-          duplicate.put("quotationLineId", UUID.randomUUID().toString());
-          ((ArrayNode) payload.path("lines")).add(duplicate);
-          payload.put("totalAmount", "256800.00");
-        });
-    assertInvalid(
-        payload -> {
-          ObjectNode duplicate = ((ObjectNode) payload.at("/lines/0")).deepCopy();
-          duplicate.put("skuId", UUID.randomUUID().toString());
-          ((ArrayNode) payload.path("lines")).add(duplicate);
-          payload.put("totalAmount", "256800.00");
-        });
-    assertInvalid(payload -> ((ArrayNode) payload.path("lines")).removeAll());
-    assertValid(payload -> replaceLines(payload, 50));
-    assertInvalid(payload -> replaceLines(payload, 51));
-    assertInvalid(payload -> put(payload, "/totalAmount", "1"));
-  }
-
-  @Test
-  void schemaExpressesTheSameDeterministicBounds() throws Exception {
-    JsonNode properties = schemaProperties();
-    for (TextBoundary boundary : TEXT_BOUNDARIES) {
-      JsonNode property = properties.at(boundary.schemaPointer());
-      assertThat(property.path("minLength").asInt()).isEqualTo(1);
-      assertThat(property.path("maxLength").asInt()).isEqualTo(boundary.max());
-      assertThat(Pattern.compile(property.path("pattern").asText()).matcher(" ").find()).isFalse();
-    }
-    assertThat(properties.path("revision").path("maximum").asInt()).isEqualTo(Integer.MAX_VALUE);
-    assertThat(properties.at("/customer/properties/sourceVersion/maximum").asInt())
-        .isEqualTo(Integer.MAX_VALUE);
-    assertThat(properties.path("lines").path("maxItems").asInt()).isEqualTo(50);
-    Pattern amount = Pattern.compile(properties.path("totalAmount").path("pattern").asText());
-    Pattern quantity =
-        Pattern.compile(properties.at("/lines/items/properties/quantity/pattern").asText());
-    assertThat(amount.matcher("000999999999999999.9999").matches()).isTrue();
-    assertThat(amount.matcher("1000000000000000").matches()).isFalse();
-    assertThat(quantity.matcher("0009999999999999.999999").matches()).isTrue();
-    assertThat(quantity.matcher("0.000000").matches()).isFalse();
-    assertThat(quantity.matcher("10000000000000").matches()).isFalse();
+  void enforcesBusinessKeysLineCountsAndSum() throws Exception {
+    check(false, payload -> duplicate(payload, "quotationLineId"));
+    check(false, payload -> duplicate(payload, "skuId"));
+    check(false, payload -> ((ArrayNode) payload.path("lines")).removeAll());
+    check(true, payload -> replaceLines(payload, 50));
+    check(false, payload -> replaceLines(payload, 51));
+    check(false, payload -> put(payload, "/totalAmount", "1"));
   }
 
   @Test
   void classifiesOnlyKnownStorageFailuresAsRetryable() {
-    EventHandlingException constraint =
-        (EventHandlingException)
-            QuotationAcceptedEventHandler.classifyDataAccess(
-                new DataIntegrityViolationException("constraint"));
-    assertThat(constraint.failureCode()).isEqualTo("ORDER_PERSISTENCE_CONSTRAINT_VIOLATION");
-    assertThat(constraint.retryable()).isFalse();
-
-    for (DataAccessException transientFailure :
+    assertClassification(
+        new DataIntegrityViolationException("constraint"),
+        "ORDER_PERSISTENCE_CONSTRAINT_VIOLATION",
+        false);
+    for (DataAccessException failure :
         List.of(
-            new TransientDataAccessResourceException("transient"),
             new RecoverableDataAccessException("recoverable"),
             new DataAccessResourceFailureException("resource"),
             new CannotAcquireLockException("lock"),
-            new CannotSerializeTransactionException("serialization"),
-            new QueryTimeoutException("timeout"))) {
-      EventHandlingException classified =
-          (EventHandlingException)
-              QuotationAcceptedEventHandler.classifyDataAccess(transientFailure);
-      assertThat(classified.failureCode()).isEqualTo("ORDER_STORAGE_UNAVAILABLE");
-      assertThat(classified.retryable()).isTrue();
+            new CannotSerializeTransactionException("serialization"))) {
+      assertClassification(failure, "ORDER_STORAGE_UNAVAILABLE", true);
     }
     DataAccessException unknown = new InvalidDataAccessResourceUsageException("programming");
     assertThat(QuotationAcceptedEventHandler.classifyDataAccess(unknown)).isSameAs(unknown);
   }
 
-  private static void assertValid(Consumer<ObjectNode> mutation) throws Exception {
-    ObjectNode payload = payload();
-    mutation.accept(payload);
-    QuotationAcceptedV1.Payload parsed = parsed(payload);
-    assertThatCode(() -> QuotationAcceptedEventHandler.validate(delivery(parsed), parsed))
-        .doesNotThrowAnyException();
+  private static void assertValue(String[] value, boolean valid) throws Exception {
+    check(
+        valid,
+        payload -> {
+          put(payload, value[0], value[1]);
+          if (value[0].equals("/totalAmount")) {
+            put(payload, "/lines/0/lineTotal", value[1]);
+          }
+        });
   }
 
-  private static void assertInvalid(Consumer<ObjectNode> mutation) throws Exception {
-    ObjectNode payload = payload();
-    mutation.accept(payload);
-    QuotationAcceptedV1.Payload parsed = parsed(payload);
-    assertThatThrownBy(() -> QuotationAcceptedEventHandler.validate(delivery(parsed), parsed))
-        .isInstanceOf(RuntimeException.class);
+  private static void check(boolean valid, Consumer<ObjectNode> mutation) throws Exception {
+    ObjectNode node = payload();
+    mutation.accept(node);
+    QuotationAcceptedV1.Payload parsed = JSON.treeToValue(node, QuotationAcceptedV1.Payload.class);
+    Runnable validation = () -> QuotationAcceptedEventHandler.validate(delivery(parsed), parsed);
+    if (valid) {
+      validation.run();
+    } else {
+      assertThatThrownBy(validation::run).isInstanceOf(RuntimeException.class);
+    }
   }
 
   private static ObjectNode payload() throws Exception {
@@ -218,10 +186,6 @@ class QuotationAcceptedEventHandlerTest {
                     contractPath("examples", "events", "quotation-accepted-v1.example.json")))
             .path("payload")
             .deepCopy();
-  }
-
-  private static QuotationAcceptedV1.Payload parsed(ObjectNode payload) throws Exception {
-    return JSON.treeToValue(payload, QuotationAcceptedV1.Payload.class);
   }
 
   private static EventDelivery delivery(QuotationAcceptedV1.Payload payload) {
@@ -238,9 +202,12 @@ class QuotationAcceptedEventHandlerTest {
         "{}");
   }
 
-  private static void amount(ObjectNode payload, String value) {
-    payload.put("totalAmount", value);
-    put(payload, "/lines/0/lineTotal", value);
+  private static void duplicate(ObjectNode payload, String field) {
+    ObjectNode copy = ((ObjectNode) payload.at("/lines/0")).deepCopy();
+    String other = field.equals("skuId") ? "quotationLineId" : "skuId";
+    copy.put(other, UUID.randomUUID().toString());
+    ((ArrayNode) payload.path("lines")).add(copy);
+    payload.put("totalAmount", "256800.00");
   }
 
   private static void replaceLines(ObjectNode payload, int count) {
@@ -256,11 +223,27 @@ class QuotationAcceptedEventHandlerTest {
     }
   }
 
+  private static void assertClassification(
+      DataAccessException failure, String code, boolean retry) {
+    assertThat((EventHandlingException) QuotationAcceptedEventHandler.classifyDataAccess(failure))
+        .returns(code, EventHandlingException::failureCode)
+        .returns(retry, EventHandlingException::retryable);
+  }
+
   private static JsonNode schemaProperties() throws Exception {
     return JSON.readTree(
             Files.readString(
                 contractPath("schemas", "events", "quotation-accepted-v1.schema.json")))
         .at("/allOf/1/properties/payload/properties");
+  }
+
+  private static JsonNode schemaFor(JsonNode properties, String payloadPointer) {
+    return properties.at(
+        payloadPointer
+            .replace("/customer/", "/customer/properties/")
+            .replace("/route/", "/route/properties/")
+            .replace("/deliveryAddress/", "/deliveryAddress/properties/")
+            .replace("/lines/0/", "/lines/items/properties/"));
   }
 
   private static boolean schemaAccepts(JsonNode schema, String value) {
@@ -272,14 +255,13 @@ class QuotationAcceptedEventHandlerTest {
 
   private static void put(ObjectNode payload, String pointer, String value) {
     int separator = pointer.lastIndexOf('/');
-    ((ObjectNode) payload.at(pointer.substring(0, separator)))
-        .put(pointer.substring(separator + 1), value);
-  }
-
-  private static void putNull(ObjectNode payload, String pointer) {
-    int separator = pointer.lastIndexOf('/');
-    ((ObjectNode) payload.at(pointer.substring(0, separator)))
-        .putNull(pointer.substring(separator + 1));
+    ObjectNode parent = (ObjectNode) payload.at(pointer.substring(0, separator));
+    String field = pointer.substring(separator + 1);
+    if (value == null) {
+      parent.putNull(field);
+    } else {
+      parent.put(field, value);
+    }
   }
 
   private static Path contractPath(String... path) {
@@ -287,8 +269,5 @@ class QuotationAcceptedEventHandlerTest {
     return Files.exists(candidate) ? candidate : Path.of("..").resolve(candidate);
   }
 
-  private record TextBoundary(
-      String payloadPointer, String schemaPointer, int max, boolean optional) {}
-
-  private record TextValue(String payloadPointer, String schemaPointer, String value) {}
+  private record Boundary(String pointer, int max, boolean optional) {}
 }

@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -57,6 +58,9 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
           "HONG_KONG_ON_HAND",
           "IN_TRANSIT_PRESALE",
           "OVERSEAS_SOURCING");
+  private static final Pattern TEXT_CONTENT =
+      Pattern.compile(
+          "[^\\u0009-\\u000d\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]");
 
   private final TradeOrderRepository repository;
   private final ReliableEventPublisher eventPublisher;
@@ -235,22 +239,8 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
   private static void text(String value, int maxLength) {
     required(
         value != null
-            && value.codePoints().anyMatch(codePoint -> !contractWhitespace(codePoint))
+            && TEXT_CONTENT.matcher(value).find()
             && value.codePointCount(0, value.length()) <= maxLength);
-  }
-
-  private static boolean contractWhitespace(int codePoint) {
-    return (codePoint >= 0x0009 && codePoint <= 0x000d)
-        || codePoint == 0x0020
-        || codePoint == 0x0085
-        || codePoint == 0x00a0
-        || codePoint == 0x1680
-        || (codePoint >= 0x2000 && codePoint <= 0x200a)
-        || codePoint == 0x2028
-        || codePoint == 0x2029
-        || codePoint == 0x202f
-        || codePoint == 0x205f
-        || codePoint == 0x3000;
   }
 
   private static void optionalText(String value, int maxLength) {

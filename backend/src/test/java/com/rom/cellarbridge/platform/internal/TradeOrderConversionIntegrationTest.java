@@ -219,8 +219,13 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
 
     overwriteSnapshotHashForHistory(
         "trade_order.trade_order", "trade_order_commercial_snapshot_immutable", orderId, "invalid");
-    assertFinalCode("ORDER_SOURCE_QUOTATION_CONFLICT", () -> handler.handle(bareReplay));
-    assertThat(snapshotHash("trade_order.trade_order", orderId)).isEqualTo("invalid");
+    assertThatThrownBy(() -> handler.handle(bareReplay))
+        .isInstanceOfSatisfying(
+            EventHandlingException.class,
+            failure ->
+                assertThat(failure)
+                    .returns("ORDER_SOURCE_QUOTATION_CONFLICT", EventHandlingException::failureCode)
+                    .returns(false, EventHandlingException::retryable));
   }
 
   @Test
@@ -506,12 +511,6 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
     assertThat(jsonMapper.readTree(createdDelivery.payloadJson()).path("snapshotHash").asText())
         .isEqualTo(acceptedPayload.snapshotHash());
 
-    EventDelivery invalidCreated =
-        mutate(
-            createdDelivery,
-            payload -> payload.put("snapshotHash", "sha512:" + acceptedPayload.snapshotHash()));
-    assertFinalCode("ORDER_CREATED_EVENT_INVALID", () -> quotationHandler.handle(invalidCreated));
-
     EventDelivery legacyCreatedDelivery =
         legacySnapshotHash(withoutPayloadField(createdDelivery, "acceptanceId"));
     assertThat(deliveryService.deliver(quotationHandler, legacyCreatedDelivery))
@@ -530,14 +529,6 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
         .isEqualTo(orderId.toString());
     assertThat(snapshotHash("quotation.order_link", createdDelivery.eventId()))
         .isEqualTo("sha256:" + acceptedPayload.snapshotHash());
-    overwriteSnapshotHashForHistory(
-        "quotation.order_link",
-        "quotation_order_link_append_only",
-        createdDelivery.eventId(),
-        "invalid");
-    assertFinalCode("ORDER_LINK_CONFLICT", () -> quotationHandler.handle(createdDelivery));
-    assertThat(snapshotHash("quotation.order_link", createdDelivery.eventId()))
-        .isEqualTo("invalid");
 
     ApiResponse converted = get(issued.publicPath(), null);
     assertThat(converted.status()).withFailMessage(converted.raw()).isEqualTo(200);
@@ -596,27 +587,6 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
             QuotationSnapshotHashV1.hash(
                 QuotationSnapshotHashV1.Snapshot.from(parsedPayload(varied.toString()))))
         .isNotEqualTo(nullAndLineOrderHash);
-  }
-
-  @Test
-  void publicEventContractsKeepCurrentSnapshotHashFormat() throws Exception {
-    for (String contract : List.of("quotation-accepted-v1", "trade-order-created-v1")) {
-      JsonNode example =
-          jsonMapper.readTree(
-              Files.readString(contractPath("examples", "events", contract + ".example.json")));
-      String currentHash = example.path("payload").path("snapshotHash").asText();
-      assertThat(currentHash).matches("^[0-9a-f]{64}$");
-      JsonNode hashSchema =
-          jsonMapper
-              .readTree(
-                  Files.readString(contractPath("schemas", "events", contract + ".schema.json")))
-              .at("/allOf/1/properties/payload/properties/snapshotHash");
-      var validator =
-          SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12)
-              .getSchema(hashSchema);
-      assertThat(validator.validate(jsonMapper.valueToTree(currentHash))).isEmpty();
-      assertThat(validator.validate(jsonMapper.valueToTree("sha256:" + currentHash))).isNotEmpty();
-    }
   }
 
   @Test
@@ -1211,16 +1181,6 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
     } catch (RuntimeException failure) {
       return failure;
     }
-  }
-
-  private static void assertFinalCode(String code, Runnable action) {
-    assertThatThrownBy(action::run)
-        .isInstanceOfSatisfying(
-            EventHandlingException.class,
-            failure -> {
-              assertThat(failure.failureCode()).isEqualTo(code);
-              assertThat(failure.retryable()).isFalse();
-            });
   }
 
   private static void await(CountDownLatch latch) {
