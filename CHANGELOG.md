@@ -13,6 +13,7 @@ All notable changes to this project are documented in this file. The project fol
 - idempotent accepted-quotation conversion into one immutable Trade Order, backed by reliable local publication and Consumer Inbox handling;
 - accepted decisions clarifying SQL-first persistence, reliable local event delivery, the designed Task 08 reservation protocol, and V10+ migration ownership;
 - public documentation that distinguishes the executable core from designed capabilities and planned full-profile infrastructure.
+- pre-1.0 accepted-quotation contract correction with canonical Snapshot Hash V1 validation.
 
 ### Planned
 

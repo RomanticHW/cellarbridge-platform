@@ -39,7 +39,7 @@ Contract release: **OpenAPI 1.4.0**
 ## 4. 数据、边界与安全字段
 
 - `trade_order` schema 只通过逻辑 ID 引用 Quotation、Partner、Catalog、Inventory 和 IAM；不存在跨模块外键。订单行与时间线只使用 Trade Order 自己 schema 内的外键。
-- 商业快照、订单行和创建时间线不可变；deferred database constraint 在事务提交时要求关系订单行数量与 sealed JSON 快照完全一致，创建完成后不能追加、更新或删除行。Task 07 的 consumer 当前仍把 `snapshotHash` 当作生产者提供的 identity；Task 07A 已将“按 QuotationAccepted payload 的 Snapshot Hash V1 canonical projection 独立重算”列为本 core PR 达到 Ready 前必须完成的 correction gate。
+- 商业快照、订单行和创建时间线不可变；consumer 在查询数据库前校验 `QuotationAcceptedV1` 并按共享的 Snapshot Hash V1 projection 重算，格式错误终止为 `QUOTATION_ACCEPTED_EVENT_INVALID`，合法 payload 的 hash 不一致终止为 `QUOTATION_ACCEPTED_SNAPSHOT_HASH_MISMATCH`。
 - V9 允许历史 `QuotationAcceptedV1` 缺少新增的可选 `sourceOwnerId`：新订单仍保留完整商业快照，但 owner 为 null 的记录不会进入 Sales Representative 的本人范围，只有具有全租户读取范围的内部角色可见。当前生产者始终写入 owner。
 - Quotation 消费历史 `TradeOrderCreatedV1` 时允许缺少可选 `acceptanceId`；它使用自己持久化的接受事实补齐不可变链接，若事件显式携带该字段则必须与权威接受记录一致。
 - `north.buyer` 的 nullable identity mapping 绑定到合成 active Partner。`partnerId` 由可信身份映射进入 `TenantContext` 和 `/me`；普通内部用户保持 null。映射列不建立跨 schema 外键。
@@ -51,7 +51,7 @@ Contract release: **OpenAPI 1.4.0**
 
 此前 1.3.0 中 Order response 仍是未实现的设计契约，部分嵌套对象开放且复用了无法由冻结接受事件可靠构造的报价行结构。本切片将其收敛为显式的 `OrderLineSnapshot`、closed commercial/timeline/process schemas，并拆分内部与 Buyer DTO；同时为 portal 回执和 `/me` 增加可选订单链接/nullable Partner scope。
 
-这是 API contract 的显式 minor release **1.4.0**：已实现的既有 quotation/portal 行为保持兼容，Order 设计响应在首次实现时被严格化。`QuotationAcceptedV1` 与 `TradeOrderCreatedV1` 只增加可选 v1 字段，既有 required 集合未收紧。该调整没有改变模块化单体、数据归属、事件可靠发布或安全架构，所以不需要 ADR，也没有修改已批准架构基线。
+这是 API contract 的显式 minor release **1.4.0**：已实现的既有 quotation/portal 行为保持兼容；Task 07A 同时完成 pre-1.0 v1 specification correction，收紧三个订单必需快照字段并统一裸小写 64 位 snapshot hash，`sourceOwnerId` 继续可选。
 
 ## 6. 验证与操作
 

@@ -47,7 +47,7 @@
       "policyVersion": "TRP-2026-01",
       "estimatedDeliveryDate": "2026-08-15"
     },
-    "snapshotHash": "sha256:synthetic-example",
+    "snapshotHash": "a61b70c8847bbc58e64fa9d3dacdcf1277868166ea2c6af5762e89a010a96fad",
     "lines": [
       {
         "orderLineId": "52000000-0000-4000-8000-000000000001",

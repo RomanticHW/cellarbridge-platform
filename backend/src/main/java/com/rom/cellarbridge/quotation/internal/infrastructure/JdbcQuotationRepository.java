@@ -650,7 +650,7 @@ public class JdbcQuotationRepository implements QuotationRepository {
                 new AcceptedOrderSource(
                     resultSet.getObject("id", UUID.class),
                     resultSet.getObject("revision_id", UUID.class),
-                    "sha256:" + resultSet.getString("snapshot_hash")));
+                    resultSet.getString("snapshot_hash")));
     return rows.stream().findFirst();
   }
 

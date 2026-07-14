@@ -178,7 +178,8 @@
               }
             },
             "snapshotHash": {
-              "type": "string"
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
             },
             "lines": {
               "type": "array",
