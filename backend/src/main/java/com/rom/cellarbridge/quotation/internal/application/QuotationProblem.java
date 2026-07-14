@@ -1,4 +1,4 @@
-package com.rom.cellarbridge.quotation.internal.domain;
+package com.rom.cellarbridge.quotation.internal.application;
 
 import org.springframework.http.HttpStatus;
 

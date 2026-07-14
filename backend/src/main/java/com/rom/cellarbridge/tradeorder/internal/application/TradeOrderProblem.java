@@ -1,4 +1,4 @@
-package com.rom.cellarbridge.tradeorder.internal.domain;
+package com.rom.cellarbridge.tradeorder.internal.application;
 
 import org.springframework.http.HttpStatus;
 

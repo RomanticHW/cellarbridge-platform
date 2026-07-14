@@ -3,6 +3,7 @@ package com.rom.cellarbridge.quotation.internal.domain;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.rom.cellarbridge.quotation.internal.domain.QuotationDomainException.FailureKind;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.LineDraft;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.PriceReference;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.PricingResult;
@@ -71,8 +72,11 @@ class QuotationPricingPolicyTest {
                 QuotationPricingPolicy.price(
                     "CNY", List.of(line(BigDecimal.ONE, BigDecimal.ONE)), BigDecimal.ZERO))
         .isInstanceOfSatisfying(
-            QuotationProblem.class,
-            problem -> assertThat(problem.code()).isEqualTo("VALIDATION_FAILED"));
+            QuotationDomainException.class,
+            problem -> {
+              assertThat(problem.code()).isEqualTo("VALIDATION_FAILED");
+              assertThat(problem.kind()).isEqualTo(FailureKind.BUSINESS_RULE);
+            });
   }
 
   private static LineDraft line(BigDecimal quantity, BigDecimal discount) {

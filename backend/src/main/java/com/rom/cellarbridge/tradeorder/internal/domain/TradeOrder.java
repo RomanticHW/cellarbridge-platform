@@ -2,13 +2,14 @@ package com.rom.cellarbridge.tradeorder.internal.domain;
 
 import com.rom.cellarbridge.identityaccess.TenantId;
 import com.rom.cellarbridge.tradeorder.TradeOrderStatus;
+import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrderDomainException.FailureKind;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
-import org.springframework.http.HttpStatus;
 
 /** Immutable commercial snapshot with explicit lifecycle behavior. */
 public record TradeOrder(
@@ -182,11 +183,13 @@ public record TradeOrder(
         version + 1);
   }
 
-  private TradeOrderProblem invalidTransition(TradeOrderStatus target) {
-    return new TradeOrderProblem(
-        HttpStatus.CONFLICT,
+  private TradeOrderDomainException invalidTransition(TradeOrderStatus target) {
+    return new TradeOrderDomainException(
+        FailureKind.STATE_CONFLICT,
         "INVALID_STATE_TRANSITION",
-        "Trade order cannot move from " + status + " to " + target);
+        "Trade order cannot move from " + status + " to " + target,
+        status.name(),
+        Map.of("targetState", target.name()));
   }
 
   private static void requireText(String value, String name) {

@@ -3,6 +3,7 @@ package com.rom.cellarbridge.quotation.internal.domain;
 import com.rom.cellarbridge.identityaccess.TenantId;
 import com.rom.cellarbridge.quotation.QuotationStatus;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationApprovalPolicy.Requirement;
+import com.rom.cellarbridge.quotation.internal.domain.QuotationDomainException.FailureKind;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.PricingResult;
 import com.rom.cellarbridge.tradeplanning.TradePlanningService.RouteEvaluation;
 import com.rom.cellarbridge.tradeplanning.TradeRouteCode;
@@ -11,7 +12,6 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
-import org.springframework.http.HttpStatus;
 
 public record QuotationAggregate(
     UUID id,
@@ -91,7 +91,7 @@ public record QuotationAggregate(
       RouteEvaluation evaluation, PricingResult pricing, Instant now) {
     if (status != QuotationStatus.DRAFT) {
       throw problem(
-          HttpStatus.CONFLICT,
+          FailureKind.STATE_CONFLICT,
           "INVALID_STATE_TRANSITION",
           "Create a new draft revision before applying a route");
     }
@@ -103,12 +103,12 @@ public record QuotationAggregate(
     requireEditable();
     if (revision.routeEvaluationId() == null || revision.selectedRouteCode() == null) {
       throw problem(
-          HttpStatus.UNPROCESSABLE_ENTITY,
+          FailureKind.BUSINESS_RULE,
           "QUOTE_HAS_NO_ELIGIBLE_ROUTE",
           "Evaluate and select an eligible route before submission");
     }
     if (!now.isBefore(revision.terms().expiresAt())) {
-      throw problem(HttpStatus.CONFLICT, "QUOTE_EXPIRED", "Quotation has already expired");
+      throw problem(FailureKind.STATE_CONFLICT, "QUOTE_EXPIRED", "Quotation has already expired");
     }
     QuotationStatus next =
         requirements.isEmpty() ? QuotationStatus.APPROVED : QuotationStatus.PENDING_APPROVAL;
@@ -119,16 +119,18 @@ public record QuotationAggregate(
   public QuotationAggregate decide(Decision decision, UUID reviewerId, String reason, Instant now) {
     if (status != QuotationStatus.PENDING_APPROVAL) {
       throw problem(
-          HttpStatus.CONFLICT, "INVALID_STATE_TRANSITION", "Quotation is not awaiting approval");
+          FailureKind.STATE_CONFLICT,
+          "INVALID_STATE_TRANSITION",
+          "Quotation is not awaiting approval");
     }
     if (Objects.equals(submittedById, reviewerId)) {
       throw problem(
-          HttpStatus.CONFLICT,
+          FailureKind.STATE_CONFLICT,
           "QUOTE_REVIEWER_CONFLICT",
           "The quotation submitter cannot approve their own revision");
     }
     if (reason == null || reason.strip().length() < 5) {
-      throw problem(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", "Decision reason is required");
+      throw problem(FailureKind.VALIDATION, "VALIDATION_FAILED", "Decision reason is required");
     }
     QuotationStatus next =
         switch (decision) {
@@ -148,10 +150,12 @@ public record QuotationAggregate(
   public QuotationAggregate issue(Instant now) {
     if (status != QuotationStatus.APPROVED) {
       throw problem(
-          HttpStatus.CONFLICT, "QUOTE_NOT_ISSUABLE", "Only an approved quotation can be issued");
+          FailureKind.STATE_CONFLICT,
+          "QUOTE_NOT_ISSUABLE",
+          "Only an approved quotation can be issued");
     }
     if (!now.isBefore(revision.terms().expiresAt())) {
-      throw problem(HttpStatus.CONFLICT, "QUOTE_EXPIRED", "Quotation has expired");
+      throw problem(FailureKind.STATE_CONFLICT, "QUOTE_EXPIRED", "Quotation has expired");
     }
     return with(QuotationStatus.SENT, submittedById, version + 1, now, revision, approvals);
   }
@@ -169,7 +173,7 @@ public record QuotationAggregate(
     }
     if (status != QuotationStatus.ACCEPTED) {
       throw problem(
-          HttpStatus.CONFLICT,
+          FailureKind.STATE_CONFLICT,
           "INVALID_STATE_TRANSITION",
           "Only an accepted quotation can be converted to an order");
     }
@@ -186,24 +190,25 @@ public record QuotationAggregate(
   public QuotationAggregate expire(Instant now) {
     if (status != QuotationStatus.SENT) {
       throw problem(
-          HttpStatus.CONFLICT, "QUOTE_NOT_ACCEPTABLE", "Only a sent quotation can expire");
+          FailureKind.STATE_CONFLICT, "QUOTE_NOT_ACCEPTABLE", "Only a sent quotation can expire");
     }
     if (now.isBefore(revision.terms().expiresAt())) {
-      throw problem(HttpStatus.CONFLICT, "QUOTE_NOT_EXPIRED", "Quotation is still valid");
+      throw problem(FailureKind.STATE_CONFLICT, "QUOTE_NOT_EXPIRED", "Quotation is still valid");
     }
     return with(QuotationStatus.EXPIRED, submittedById, version + 1, now, revision, approvals);
   }
 
   public void requireOwnerOrManager(UUID actorId, boolean manager) {
     if (!ownerId.equals(actorId) && !manager) {
-      throw problem(HttpStatus.FORBIDDEN, "ACCESS_DENIED", "Quotation belongs to another owner");
+      throw problem(
+          FailureKind.ACCESS_DENIED, "ACCESS_DENIED", "Quotation belongs to another owner");
     }
   }
 
   private void requireEditable() {
     if (status != QuotationStatus.DRAFT && status != QuotationStatus.CHANGES_REQUESTED) {
       throw problem(
-          HttpStatus.CONFLICT,
+          FailureKind.STATE_CONFLICT,
           "INVALID_STATE_TRANSITION",
           "The current quotation revision is immutable");
     }
@@ -212,7 +217,7 @@ public record QuotationAggregate(
   private void requireCurrentPortalRevision(UUID boundRevisionId) {
     if (!revision.id().equals(boundRevisionId)) {
       throw problem(
-          HttpStatus.CONFLICT,
+          FailureKind.STATE_CONFLICT,
           "QUOTE_NOT_ACCEPTABLE",
           "The customer link is not bound to the current quotation revision");
     }
@@ -220,20 +225,20 @@ public record QuotationAggregate(
 
   private void requireOpenCustomerDecision(Instant now) {
     if (status == QuotationStatus.WITHDRAWN) {
-      throw problem(HttpStatus.CONFLICT, "QUOTE_WITHDRAWN", "Quotation has been withdrawn");
+      throw problem(FailureKind.STATE_CONFLICT, "QUOTE_WITHDRAWN", "Quotation has been withdrawn");
     }
     if (status == QuotationStatus.ACCEPTED || status == QuotationStatus.REJECTED_BY_CUSTOMER) {
       throw problem(
-          HttpStatus.CONFLICT,
+          FailureKind.STATE_CONFLICT,
           "QUOTE_ALREADY_DECIDED",
           "Quotation already has a customer decision");
     }
     if (status == QuotationStatus.EXPIRED || !now.isBefore(revision.terms().expiresAt())) {
-      throw problem(HttpStatus.CONFLICT, "QUOTE_EXPIRED", "Quotation has expired");
+      throw problem(FailureKind.STATE_CONFLICT, "QUOTE_EXPIRED", "Quotation has expired");
     }
     if (status != QuotationStatus.SENT) {
       throw problem(
-          HttpStatus.CONFLICT,
+          FailureKind.STATE_CONFLICT,
           "QUOTE_NOT_ACCEPTABLE",
           "Quotation is not open for a customer decision");
     }
@@ -263,8 +268,8 @@ public record QuotationAggregate(
         timeline);
   }
 
-  private static QuotationProblem problem(HttpStatus status, String code, String message) {
-    return new QuotationProblem(status, code, message);
+  private QuotationDomainException problem(FailureKind kind, String code, String message) {
+    return new QuotationDomainException(kind, code, message, status.name(), java.util.Map.of());
   }
 
   public enum Decision {

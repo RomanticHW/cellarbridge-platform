@@ -12,6 +12,7 @@ import com.rom.cellarbridge.partner.internal.application.PartnerRepository.Chang
 import com.rom.cellarbridge.partner.internal.application.PartnerRepository.EligibilityRecord;
 import com.rom.cellarbridge.partner.internal.application.PartnerRepository.PartnerPage;
 import com.rom.cellarbridge.partner.internal.application.PartnerRepository.PartnerSearch;
+import com.rom.cellarbridge.partner.internal.application.PartnerRepository.TimelineEntry;
 import com.rom.cellarbridge.partner.internal.domain.Partner;
 import com.rom.cellarbridge.partner.internal.domain.PartnerDomainException;
 import java.math.BigDecimal;
@@ -347,8 +348,10 @@ public class PartnerApplicationService implements PartnerEligibilityService {
   }
 
   private PartnerDetailView detail(Partner partner, TenantContext context) {
-    EligibilityRecord eligibility =
+    EligibilityRecord eligibilityRecord =
         repository.latestEligibility(context.tenantId(), partner.id()).orElse(null);
+    EligibilityView eligibility =
+        eligibilityRecord == null ? null : EligibilityView.from(eligibilityRecord);
     boolean duplicateWarning =
         repository.legalNameDuplicate(
             context.tenantId(), partner.profile().normalizedLegalName(), partner.id());
@@ -358,7 +361,9 @@ public class PartnerApplicationService implements PartnerEligibilityService {
         eligibility,
         allowedActions(partner, context),
         duplicateWarning,
-        repository.timeline(context.tenantId(), partner.id()));
+        repository.timeline(context.tenantId(), partner.id()).stream()
+            .map(TimelineView::from)
+            .toList());
   }
 
   private PartnerSummaryView summary(Partner partner, TenantContext context) {
@@ -701,13 +706,44 @@ public class PartnerApplicationService implements PartnerEligibilityService {
   public record PartnerDetailView(
       PartnerSummaryView summary,
       Partner.Profile profile,
-      EligibilityRecord eligibility,
+      EligibilityView eligibility,
       List<String> allowedActions,
       boolean potentialDuplicate,
-      List<PartnerRepository.TimelineEntry> timeline) {
+      List<TimelineView> timeline) {
     public PartnerDetailView {
       allowedActions = List.copyOf(allowedActions);
       timeline = List.copyOf(timeline);
+    }
+  }
+
+  public record EligibilityView(int version, Partner.Eligibility eligibility) {
+    private static EligibilityView from(EligibilityRecord source) {
+      return new EligibilityView(source.version(), source.eligibility());
+    }
+  }
+
+  public record TimelineView(
+      UUID id,
+      Instant occurredAt,
+      String action,
+      String previousState,
+      String newState,
+      String safeReason,
+      List<String> changedFields) {
+
+    public TimelineView {
+      changedFields = List.copyOf(changedFields);
+    }
+
+    private static TimelineView from(TimelineEntry source) {
+      return new TimelineView(
+          source.id(),
+          source.occurredAt(),
+          source.action(),
+          source.previousState(),
+          source.newState(),
+          source.safeReason(),
+          source.changedFields());
     }
   }
 

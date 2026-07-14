@@ -10,6 +10,7 @@ import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrder.Customer;
 import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrder.DeliveryAddress;
 import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrder.Line;
 import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrder.Route;
+import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrderDomainException.FailureKind;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -50,9 +51,16 @@ class TradeOrderTest {
     assertThat(fulfilled.status()).isEqualTo(TradeOrderStatus.FULFILLED);
     assertThat(fulfilled.version()).isEqualTo(4);
     assertThatThrownBy(() -> fulfilled.requestCancellation(CREATED_AT.plusSeconds(5)))
-        .isInstanceOf(TradeOrderProblem.class)
-        .extracting("code")
-        .isEqualTo("INVALID_STATE_TRANSITION");
+        .isInstanceOfSatisfying(
+            TradeOrderDomainException.class,
+            failure -> {
+              assertThat(failure.code()).isEqualTo("INVALID_STATE_TRANSITION");
+              assertThat(failure.kind()).isEqualTo(FailureKind.STATE_CONFLICT);
+              assertThat(failure.currentState()).isEqualTo("FULFILLED");
+              assertThat(failure.details()).containsEntry("targetState", "CANCELLATION_PENDING");
+              assertThatThrownBy(() -> failure.details().put("targetState", "PENDING"))
+                  .isInstanceOf(UnsupportedOperationException.class);
+            });
   }
 
   @Test

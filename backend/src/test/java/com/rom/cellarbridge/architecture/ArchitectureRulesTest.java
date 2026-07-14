@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.rom.cellarbridge.architecture.fixture.domain.IllegalWebDependency;
 import com.rom.cellarbridge.identityaccess.GlobalRegistryAccess;
 import com.rom.cellarbridge.identityaccess.TenantId;
+import com.tngtech.archunit.base.DescribedPredicate;
+import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.domain.JavaModifier;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
@@ -25,10 +27,25 @@ class ArchitectureRulesTest {
           .should()
           .dependOnClassesThat()
           .resideInAnyPackage(
-              "org.springframework.web..",
-              "jakarta.persistence..",
-              "org.springframework.kafka..",
-              "org.springframework.data.redis..");
+              "org.springframework..",
+              "jakarta..",
+              "java.sql..",
+              "javax.sql..",
+              "org.apache.kafka..",
+              "io.lettuce..",
+              "redis.clients..",
+              "..web..",
+              "..application..",
+              "..infrastructure..")
+          .as("FF-ARC-003 domain code is framework and adapter independent");
+  private static final DescribedPredicate<JavaClass> REPOSITORY_OR_REPOSITORY_NESTED_TYPE =
+      DescribedPredicate.describe(
+          "a Repository or a type nested in a Repository",
+          type ->
+              type.getSimpleName().endsWith("Repository")
+                  || type.getEnclosingClass()
+                      .map(owner -> owner.getSimpleName().endsWith("Repository"))
+                      .orElse(false));
 
   private final JavaClasses productionClasses =
       new ClassFileImporter()
@@ -36,12 +53,23 @@ class ArchitectureRulesTest {
           .importPackages(ROOT_PACKAGE);
 
   @Test
-  void keepsDomainIndependentFromWebPersistenceAndMessaging() {
+  void ffArc003KeepsDomainIndependentFromFrameworksAndAdapters() {
     DOMAIN_ISOLATION.allowEmptyShould(true).check(productionClasses);
   }
 
   @Test
-  void rejectsCrossModuleInternalDependencies() {
+  void ffArc004KeepsWebControllersIndependentFromRepositoriesAndTheirNestedTypes() {
+    noClasses()
+        .that()
+        .resideInAPackage("..web..")
+        .should()
+        .dependOnClassesThat(REPOSITORY_OR_REPOSITORY_NESTED_TYPE)
+        .as("FF-ARC-004 web code does not depend on repositories or repository nested types")
+        .check(productionClasses);
+  }
+
+  @Test
+  void ffArc002RejectsCrossModuleInternalDependencies() {
     List<String> violations = new ArrayList<>();
     productionClasses.forEach(
         origin ->
@@ -55,7 +83,23 @@ class ArchitectureRulesTest {
                             .equals(moduleName(dependency.getTargetClass().getPackageName())))
                 .forEach(dependency -> violations.add(dependency.getDescription())));
 
-    assertThat(violations).isEmpty();
+    assertThat(violations)
+        .as("FF-ARC-002 modules do not access another module's internals")
+        .isEmpty();
+  }
+
+  @Test
+  void ffArc005KeepsPublicContractsIndependentFromPersistenceTypes() {
+    noClasses()
+        .that()
+        .arePublic()
+        .and()
+        .resideOutsideOfPackage("..internal..")
+        .should()
+        .dependOnClassesThat()
+        .resideInAnyPackage("..internal.infrastructure..", "..persistence..")
+        .as("FF-ARC-005 public events and DTOs do not expose persistence types")
+        .check(productionClasses);
   }
 
   @Test

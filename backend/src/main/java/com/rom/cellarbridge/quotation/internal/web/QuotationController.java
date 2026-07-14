@@ -11,12 +11,12 @@ import com.rom.cellarbridge.quotation.internal.application.QuotationApplicationS
 import com.rom.cellarbridge.quotation.internal.application.QuotationApplicationService.ListCommand;
 import com.rom.cellarbridge.quotation.internal.application.QuotationApplicationService.ListView;
 import com.rom.cellarbridge.quotation.internal.application.QuotationApplicationService.SummaryView;
+import com.rom.cellarbridge.quotation.internal.application.QuotationProblem;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationAggregate;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationAggregate.ApprovalDecision;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationApprovalPolicy.Requirement;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.PricedLine;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.QuantityUnit;
-import com.rom.cellarbridge.quotation.internal.domain.QuotationProblem;
 import com.rom.cellarbridge.tradeplanning.TradePlanningService.RouteCandidate;
 import com.rom.cellarbridge.tradeplanning.TradePlanningService.RouteEvaluation;
 import com.rom.cellarbridge.tradeplanning.TradePlanningService.RouteRejection;

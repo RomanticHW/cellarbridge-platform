@@ -16,7 +16,6 @@ import com.rom.cellarbridge.quotation.internal.domain.QuotationAggregate.Address
 import com.rom.cellarbridge.quotation.internal.domain.QuotationAggregate.PartnerSnapshot;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.PricedLine;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.QuantityUnit;
-import com.rom.cellarbridge.quotation.internal.domain.QuotationProblem;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;

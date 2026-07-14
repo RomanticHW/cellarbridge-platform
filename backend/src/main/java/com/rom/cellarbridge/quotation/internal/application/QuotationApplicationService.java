@@ -29,7 +29,6 @@ import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.Pri
 import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.PricingResult;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.QuantityUnit;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.SkuSnapshot;
-import com.rom.cellarbridge.quotation.internal.domain.QuotationProblem;
 import com.rom.cellarbridge.tradeplanning.TradePlanningException;
 import com.rom.cellarbridge.tradeplanning.TradePlanningService;
 import com.rom.cellarbridge.tradeplanning.TradePlanningService.EvaluationCommand;

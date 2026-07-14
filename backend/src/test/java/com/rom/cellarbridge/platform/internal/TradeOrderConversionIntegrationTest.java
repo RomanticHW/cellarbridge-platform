@@ -333,6 +333,10 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
     assertThat(get("/api/v1/orders/" + managerOwnedOrderId, NORTH_TRADE).status()).isEqualTo(200);
     assertThat(get("/api/v1/buyer/orders/" + otherPartnerOrderId, NORTH_BUYER).status())
         .isEqualTo(404);
+    ApiResponse invalidPage = get("/api/v1/orders?pageSize=0", NORTH_MANAGER);
+    assertThat(invalidPage.status()).withFailMessage(invalidPage.raw()).isEqualTo(400);
+    assertThat(invalidPage.body().path("code").asText()).isEqualTo("VALIDATION_FAILED");
+    assertThat(invalidPage.body().path("retryable").asBoolean()).isFalse();
 
     ApiResponse buyerDetail = get("/api/v1/buyer/orders/" + buyerOrderId, NORTH_BUYER);
     assertThat(buyerDetail.status()).withFailMessage(buyerDetail.raw()).isEqualTo(200);
@@ -580,6 +584,32 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
     ApiResponse created = request("POST", "/api/v1/quotations", NORTH_SALES, null, null, body);
     assertThat(created.status()).withFailMessage(created.raw()).isEqualTo(201);
     UUID quotationId = UUID.fromString(created.body().path("id").asText());
+    assertProblem(
+        request(
+            "POST", "/api/v1/quotations/" + quotationId + "/issue", NORTH_SALES, null, null, null),
+        428,
+        "PRECONDITION_REQUIRED");
+    assertProblem(
+        request(
+            "POST",
+            "/api/v1/quotations/" + quotationId + "/submission",
+            NORTH_SALES,
+            "\"0\"",
+            null,
+            null),
+        422,
+        "QUOTE_HAS_NO_ELIGIBLE_ROUTE");
+    assertProblem(
+        request(
+            "POST",
+            "/api/v1/quotations/" + quotationId + "/issue",
+            NORTH_SALES,
+            "\"0\"",
+            null,
+            null),
+        409,
+        "QUOTE_ROUTE_NOT_ELIGIBLE");
+    assertProblem(get("/api/v1/quotations?pageSize=0", NORTH_SALES), 400, "VALIDATION_FAILED");
     ApiResponse evaluated =
         request(
             "POST",
@@ -589,6 +619,17 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
             null,
             null);
     assertThat(evaluated.status()).withFailMessage(evaluated.raw()).isEqualTo(200);
+    ApiResponse stale =
+        request(
+            "POST",
+            "/api/v1/quotations/" + quotationId + "/submission",
+            NORTH_SALES,
+            "\"0\"",
+            null,
+            null);
+    assertProblem(stale, 412, "RESOURCE_VERSION_CONFLICT");
+    assertThat(stale.body().path("currentVersion").asLong()).isEqualTo(1);
+    assertThat(stale.body().path("currentState").asText()).isEqualTo("DRAFT");
     ApiResponse submitted =
         request(
             "POST",
@@ -614,6 +655,16 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
 
   private ApiResponse get(String path, String token) throws Exception {
     return request("GET", path, token, null, null, null);
+  }
+
+  private static void assertProblem(ApiResponse response, int status, String code) {
+    assertThat(response.status()).withFailMessage(response.raw()).isEqualTo(status);
+    assertThat(response.body().path("status").asInt()).isEqualTo(status);
+    assertThat(response.body().path("code").asText()).isEqualTo(code);
+    assertThat(response.body().path("type").asText())
+        .endsWith(code.toLowerCase().replace('_', '-'));
+    assertThat(response.body().path("detail").asText()).isNotBlank();
+    assertThat(response.body().path("retryable").asBoolean()).isFalse();
   }
 
   private ApiResponse request(

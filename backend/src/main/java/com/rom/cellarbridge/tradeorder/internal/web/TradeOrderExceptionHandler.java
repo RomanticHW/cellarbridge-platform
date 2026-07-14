@@ -1,7 +1,8 @@
 package com.rom.cellarbridge.tradeorder.internal.web;
 
 import com.rom.cellarbridge.platform.ProblemDetailsFactory;
-import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrderProblem;
+import com.rom.cellarbridge.tradeorder.internal.application.TradeOrderProblem;
+import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrderDomainException;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
@@ -33,6 +34,15 @@ final class TradeOrderExceptionHandler {
     return ResponseEntity.status(exception.status()).body(problem);
   }
 
+  @ExceptionHandler(TradeOrderDomainException.class)
+  ResponseEntity<ProblemDetail> handleDomainProblem(TradeOrderDomainException exception) {
+    HttpStatus status = status(exception);
+    ProblemDetail problem =
+        problemDetailsFactory.create(
+            status, exception.code(), title(exception.code()), exception.safeMessage(), false);
+    return ResponseEntity.status(status).body(problem);
+  }
+
   @ExceptionHandler({MethodArgumentTypeMismatchException.class, IllegalArgumentException.class})
   ResponseEntity<ProblemDetail> handleBadRequest(Exception exception) {
     ProblemDetail problem =
@@ -50,6 +60,15 @@ final class TradeOrderExceptionHandler {
       case "RESOURCE_NOT_FOUND" -> "Trade Order not found";
       case "ACCESS_DENIED" -> "Order access denied";
       default -> "Order request rejected";
+    };
+  }
+
+  private static HttpStatus status(TradeOrderDomainException exception) {
+    return switch (exception.kind()) {
+      case VALIDATION -> HttpStatus.BAD_REQUEST;
+      case BUSINESS_RULE -> HttpStatus.UNPROCESSABLE_ENTITY;
+      case STATE_CONFLICT -> HttpStatus.CONFLICT;
+      case ACCESS_DENIED -> HttpStatus.FORBIDDEN;
     };
   }
 }
