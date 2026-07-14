@@ -33,6 +33,7 @@ public class JdbcIdentityAccessRepository implements IdentityAccessRepository {
              um.username,
              um.display_name,
              um.status AS user_status,
+             um.partner_id,
              t.id AS tenant_id,
              t.code AS tenant_code,
              t.display_name AS tenant_name,
@@ -65,6 +66,7 @@ public class JdbcIdentityAccessRepository implements IdentityAccessRepository {
                     resultSet.getString("username"),
                     resultSet.getString("display_name"),
                     UserStatus.valueOf(resultSet.getString("user_status")),
+                    resultSet.getObject("partner_id", UUID.class),
                     new Tenant(
                         TenantId.of(resultSet.getObject("tenant_id", UUID.class)),
                         resultSet.getString("tenant_code"),
@@ -127,6 +129,7 @@ public class JdbcIdentityAccessRepository implements IdentityAccessRepository {
         row.username(),
         row.displayName(),
         row.status(),
+        row.partnerId(),
         row.tenant(),
         loadRoles(row.tenant().id(), row.mappingId()));
   }
@@ -168,5 +171,6 @@ public class JdbcIdentityAccessRepository implements IdentityAccessRepository {
       String username,
       String displayName,
       UserStatus status,
+      UUID partnerId,
       Tenant tenant) {}
 }

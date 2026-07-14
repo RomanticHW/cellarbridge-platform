@@ -81,6 +81,7 @@ body {
 }
 
 .quotation-page-stack,
+.order-page-stack,
 .public-quotation-stack {
   width: 100%;
 }
@@ -90,6 +91,36 @@ body {
   align-items: flex-start;
   justify-content: space-between;
   gap: 24px;
+}
+
+.order-page-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.order-page-heading h2 {
+  margin-block: 8px 4px;
+}
+
+.order-filters {
+  display: grid;
+  grid-template-columns: minmax(280px, 520px);
+}
+
+.order-snapshot-terms {
+  margin-top: 24px;
+}
+
+.order-process-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.order-process-message {
+  margin-block: 12px 0;
 }
 
 .quotation-page-heading h2 {
@@ -337,6 +368,15 @@ body {
 
   .quotation-page-heading {
     flex-direction: column;
+  }
+
+  .order-page-heading {
+    flex-direction: column;
+  }
+
+  .order-filters,
+  .order-process-grid {
+    grid-template-columns: 1fr;
   }
 
   .quotation-line-editor,

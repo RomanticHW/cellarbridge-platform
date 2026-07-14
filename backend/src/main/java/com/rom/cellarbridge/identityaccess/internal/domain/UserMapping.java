@@ -12,6 +12,7 @@ public record UserMapping(
     String username,
     String displayName,
     UserStatus status,
+    UUID partnerId,
     Tenant tenant,
     List<RoleTemplate> roles) {
 

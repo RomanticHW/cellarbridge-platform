@@ -45,6 +45,29 @@
               "type": "string",
               "format": "uuid"
             },
+            "sourceQuotationNumber": {
+              "type": "string"
+            },
+            "sourceRevision": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "sourceOwnerId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "sourceEventId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "acceptanceId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "acceptedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
             "customer": {
               "type": "object",
               "additionalProperties": false,
@@ -81,6 +104,52 @@
             "paymentTermDays": {
               "type": "integer",
               "minimum": 0
+            },
+            "acceptedTermsVersion": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 50
+            },
+            "requestedDeliveryDate": {
+              "type": "string",
+              "format": "date"
+            },
+            "deliveryAddress": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "countryCode",
+                "province",
+                "city",
+                "line1"
+              ],
+              "properties": {
+                "countryCode": {
+                  "type": "string",
+                  "pattern": "^[A-Z]{2}$"
+                },
+                "province": {
+                  "type": "string"
+                },
+                "city": {
+                  "type": "string"
+                },
+                "district": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "line1": {
+                  "type": "string"
+                },
+                "postalCode": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
             },
             "route": {
               "type": "object",

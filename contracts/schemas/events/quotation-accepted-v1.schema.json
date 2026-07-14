@@ -46,6 +46,10 @@
               "type": "integer",
               "minimum": 1
             },
+            "sourceOwnerId": {
+              "type": "string",
+              "format": "uuid"
+            },
             "acceptanceId": {
               "type": "string",
               "format": "uuid"

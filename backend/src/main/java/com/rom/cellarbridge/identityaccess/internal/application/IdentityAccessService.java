@@ -54,6 +54,8 @@ public class IdentityAccessService {
         mapping.roles().stream()
             .map(RoleTemplate::displayName)
             .collect(Collectors.toUnmodifiableSet());
+    Set<String> roleCodes =
+        mapping.roles().stream().map(RoleTemplate::code).collect(Collectors.toUnmodifiableSet());
     Set<PermissionCode> permissions =
         mapping.roles().stream()
             .flatMap(role -> role.permissions().stream())
@@ -65,7 +67,9 @@ public class IdentityAccessService {
         mapping.tenant().id(),
         mapping.tenant().displayName(),
         mapping.tenant().status().name(),
+        mapping.partnerId(),
         roles,
+        roleCodes,
         permissions,
         hasher.hash(subject),
         hasher.hash(mapping.tenant().id().toString()));

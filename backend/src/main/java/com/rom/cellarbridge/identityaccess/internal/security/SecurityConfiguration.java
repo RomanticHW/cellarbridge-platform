@@ -40,6 +40,8 @@ class SecurityConfiguration {
                     .authenticated()
                     .requestMatchers(HttpMethod.GET, "/api/v1/catalog/skus/**")
                     .authenticated()
+                    .requestMatchers("/api/v1/orders/**", "/api/v1/buyer/orders/**")
+                    .authenticated()
                     .requestMatchers(HttpMethod.GET, "/api/v1/portal/quotations/*")
                     .permitAll()
                     .requestMatchers(

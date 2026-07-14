@@ -52,7 +52,9 @@ class DefaultAuthorizationServiceTest {
         TENANT_A,
         "North Cellars",
         "ACTIVE",
+        null,
         Set.of("Sales Representative"),
+        Set.of("sales-representative"),
         Set.of(PermissionCode.PARTNER_READ),
         "subject-one",
         "tenant-one");

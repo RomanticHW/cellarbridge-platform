@@ -17,6 +17,12 @@
     "orderNumber": "ORD-202607-000001",
     "sourceQuotationId": "21000000-0000-4000-8000-000000000001",
     "sourceRevisionId": "22000000-0000-4000-8000-000000000001",
+    "sourceQuotationNumber": "QUO-202607-000001",
+    "sourceRevision": 1,
+    "sourceOwnerId": "11200000-0000-4000-8000-000000000003",
+    "sourceEventId": "11000000-0000-4000-8000-000000000001",
+    "acceptanceId": "23000000-0000-4000-8000-000000000001",
+    "acceptedAt": "2026-07-20T10:15:30Z",
     "customer": {
       "partnerId": "24000000-0000-4000-8000-000000000001",
       "partnerNumber": "PAR-202607-000001",
@@ -26,6 +32,16 @@
     "currency": "CNY",
     "totalAmount": "128400.00",
     "paymentTermDays": 30,
+    "acceptedTermsVersion": "TERMS-2026-01",
+    "requestedDeliveryDate": "2026-08-15",
+    "deliveryAddress": {
+      "countryCode": "CN",
+      "province": "Shanghai",
+      "city": "Shanghai",
+      "district": "Pudong",
+      "line1": "88 Harbor Avenue",
+      "postalCode": "200120"
+    },
     "route": {
       "code": "NB_BONDED_B2B",
       "policyVersion": "TRP-2026-01",

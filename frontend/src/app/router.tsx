@@ -57,6 +57,16 @@ const PublicQuotationPage = lazy(() =>
     default: module.PublicQuotationPage,
   })),
 );
+const OrderListPage = lazy(() =>
+  import('../features/orders/OrderListPage').then((module) => ({
+    default: module.OrderListPage,
+  })),
+);
+const OrderDetailPage = lazy(() =>
+  import('../features/orders/OrderDetailPage').then((module) => ({
+    default: module.OrderDetailPage,
+  })),
+);
 
 function FoundationRoute() {
   return (
@@ -150,6 +160,21 @@ function PublicQuotationRoute() {
   );
 }
 
+function OrderRoute({ page }: { page: 'list' | 'detail' }) {
+  const Page = page === 'list' ? OrderListPage : OrderDetailPage;
+  return (
+    <Suspense
+      fallback={
+        <Flex role="status" aria-label="Loading order workspace" justify="center">
+          <Spin size="large" />
+        </Flex>
+      }
+    >
+      <Page />
+    </Suspense>
+  );
+}
+
 export const router = createBrowserRouter([
   { path: '/', element: <Navigate to="/app" replace /> },
   { path: '/login', element: <LoginPage /> },
@@ -174,6 +199,8 @@ export const router = createBrowserRouter([
           { path: 'quotations/new', element: <QuotationRoute page="editor" /> },
           { path: 'quotations/:quotationId/edit', element: <QuotationRoute page="editor" /> },
           { path: 'quotations/:quotationId', element: <QuotationRoute page="detail" /> },
+          { path: 'orders', element: <OrderRoute page="list" /> },
+          { path: 'orders/:orderId', element: <OrderRoute page="detail" /> },
         ],
       },
     ],

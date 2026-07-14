@@ -6,7 +6,8 @@ ENV_FILE ?= $(if $(wildcard .env),.env,.env.example)
 
 .PHONY: help validate validate-docs validate-contracts validate-public validate-backend \
 	validate-frontend validate-compose test test-backend test-frontend dev-core stop-core smoke-core \
-	identity-e2e partner-e2e catalog-e2e quotation-e2e acceptance-e2e catalog-benchmark generate-api-client
+	identity-e2e partner-e2e catalog-e2e quotation-e2e acceptance-e2e order-e2e \
+	catalog-benchmark generate-api-client
 
 help:
 	@printf '%s\n' \
@@ -21,6 +22,7 @@ help:
 	  '  make catalog-e2e         Verify catalog search and local quote selection' \
 	  '  make quotation-e2e       Verify quotation routing, approval, issue, and preview' \
 	  '  make acceptance-e2e      Verify customer acceptance idempotency and refresh safety' \
+	  '  make order-e2e           Verify quote-to-order conversion and Buyer-safe access' \
 	  '  make catalog-benchmark   Seed and benchmark PostgreSQL catalog search' \
 	  '  make generate-api-client Regenerate TypeScript API types from OpenAPI'
 
@@ -76,6 +78,9 @@ quotation-e2e:
 
 acceptance-e2e:
 	./scripts/customer_quotation_acceptance_e2e.sh
+
+order-e2e:
+	./scripts/trade_order_conversion_e2e.sh
 
 catalog-benchmark:
 	./scripts/catalog_search_benchmark.sh

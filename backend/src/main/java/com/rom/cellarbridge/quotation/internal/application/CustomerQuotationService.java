@@ -9,6 +9,7 @@ import com.rom.cellarbridge.quotation.internal.application.QuotationRepository.C
 import com.rom.cellarbridge.quotation.internal.application.QuotationRepository.CustomerOperation;
 import com.rom.cellarbridge.quotation.internal.application.QuotationRepository.IdempotencyRecord;
 import com.rom.cellarbridge.quotation.internal.application.QuotationRepository.IdempotencyWrite;
+import com.rom.cellarbridge.quotation.internal.application.QuotationRepository.OrderLink;
 import com.rom.cellarbridge.quotation.internal.application.QuotationRepository.PortalContext;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationAggregate;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationAggregate.Address;
@@ -95,6 +96,7 @@ public class CustomerQuotationService {
                     ? decision.buyerReference()
                     : decision.reasonCategory());
     String currency = quotation.revision().terms().currency();
+    OrderLink orderLink = repository.findOrderLink(context.tenantId(), quotation.id()).orElse(null);
     return new PublicView(
         quotation.number(),
         quotation.currentRevision(),
@@ -121,6 +123,9 @@ public class CustomerQuotationService {
         context.termsVersion(),
         termsSummary(quotation, context.termsVersion()),
         allowedActions,
+        orderLink == null ? null : orderLink.orderId(),
+        orderLink == null ? null : orderLink.orderNumber(),
+        orderLink == null ? (status == QuotationStatus.ACCEPTED ? "PENDING" : null) : "CREATED",
         receipt);
   }
 
@@ -456,6 +461,7 @@ public class CustomerQuotationService {
             snapshot.revision(),
             decision.id(),
             decision.decidedAt(),
+            quotation.ownerId(),
             snapshot.customer(),
             snapshot.currency(),
             snapshot.totalAmount(),
@@ -649,6 +655,9 @@ public class CustomerQuotationService {
       String termsVersion,
       List<String> termsSummary,
       List<String> allowedActions,
+      UUID orderId,
+      String orderNumber,
+      String orderCreationStatus,
       DecisionReceipt decisionReceipt) {
 
     public PublicView {

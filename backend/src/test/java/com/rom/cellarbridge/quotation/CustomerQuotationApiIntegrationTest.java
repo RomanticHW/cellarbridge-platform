@@ -78,7 +78,9 @@ class CustomerQuotationApiIntegrationTest extends PostgresIntegrationTestSupport
           "termsVersion",
           "termsSummary",
           "allowedActions",
+          "orderId",
           "orderNumber",
+          "orderCreationStatus",
           "decisionReceipt");
   private static final Set<String> INTERNAL_FIELDS =
       Set.of(

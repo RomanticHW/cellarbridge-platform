@@ -30,13 +30,14 @@ Status date: **2026-07-14**
 | Catalog and supply search | Available | Catalog/Inventory model, FTS + trigram search, field/warehouse permissions, React workspace, real OIDC E2E and reproducible benchmark |
 | Quotation and trade planning | Available | revisioned snapshots/pricing, deterministic explainable route policy, independent approval, issue token, customer-safe read-only preview, React workspace, Testcontainers and real OIDC E2E |
 | Customer quotation decision | Available | controlled portal context, strict customer DTO, accept/reject idempotency, immutable decision, leased expiry work, durable `QuotationAcceptedV1`, React receipt and refresh-safe E2E |
-| Order conversion/inventory reservation | Designed | accepted quotation publication is available; order consumer/Inbox, unique conversion and inventory commitment remain Tasks 07–08 |
+| Quote-to-order conversion | Available | transactional Inbox consumer, immutable Trade Order snapshot, unique quotation conversion, reliable `TradeOrderCreatedV1`, eventual Quotation link, tenant/Buyer-scoped query UI and real OIDC E2E |
+| Inventory reservation | Designed | orders intentionally remain `PENDING_RESERVATION`; atomic allocation and reservation outcome handling remain Task 08 |
 | Fulfillment/exception/settlement/reporting | Designed | implementation not started |
 | Performance/security/release evidence | Planned | tasks 13–15 |
 
 ## 3. 声明
 
-当前可运行范围包括 Task 01 工程骨架、Task 02 身份访问、Task 03 商业客户准入、Task 04 酒款/供给检索、Task 05 报价/贸易路径，以及 Task 06 客户安全报价决定。客户可在受控 portal context 查看严格 allow-list 报价，在有效期内幂等接受或拒绝，并在刷新后读取同一决定回执；接受会原子保存不可变事实和待发布事件。订单转换与库存预占仍保持 `Designed`；只有具备实现、测试与运行证据的能力标记为 `Available`。
+当前可运行范围包括 Task 01 工程骨架、Task 02 身份访问、Task 03 商业客户准入、Task 04 酒款/供给检索、Task 05 报价/贸易路径、Task 06 客户安全报价决定，以及 Task 07 幂等报价转订单。客户接受后，本地 at-least-once 消费器以事务 Inbox 和数据库唯一约束保证最多一个业务订单，可靠记录 `TradeOrderCreatedV1`，并由 Quotation 独立消费该事实、最终链接订单。Buyer 只能通过身份映射的 Partner scope 读取客户安全 DTO；库存预占仍保持 `Designed`，订单的 `PENDING_RESERVATION` 是明确的未完成状态。只有具备实现、测试与运行证据的能力标记为 `Available`。
 
 ## 4. 追踪模板
 

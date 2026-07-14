@@ -38,6 +38,7 @@ public record QuotationAcceptedV1(
       int revision,
       UUID acceptanceId,
       Instant acceptedAt,
+      UUID sourceOwnerId,
       Customer customer,
       String currency,
       String totalAmount,

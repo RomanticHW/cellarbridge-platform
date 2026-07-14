@@ -20,9 +20,9 @@ export function SystemStatusPage() {
             System status
           </Typography.Title>
           <Typography.Paragraph type="secondary" className="page-introduction">
-            Identity, partner onboarding, catalog search, and permission-aware supply visibility are
-            available. Remaining business workflows stay planned until their complete vertical
-            slices are verified.
+            Identity, partner onboarding, catalog supply visibility, quotations, and immutable
+            trade-order review are available. Remaining business workflows stay planned until their
+            complete vertical slices are verified.
           </Typography.Paragraph>
         </div>
 
@@ -40,6 +40,8 @@ export function SystemStatusPage() {
                     <Tag color="green">Identity access available</Tag>
                     <Tag color="green">Partner onboarding available</Tag>
                     <Tag color="green">Catalog supply search available</Tag>
+                    <Tag color="green">Quotation workflow available</Tag>
+                    <Tag color="green">Trade-order review available</Tag>
                   </Space>
                 </Descriptions.Item>
               </Descriptions>

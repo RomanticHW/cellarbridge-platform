@@ -22,6 +22,8 @@ class JdbcIdentityAccessRepositoryIntegrationTest extends PostgresIntegrationTes
   private static final TenantId TENANT_B =
       TenantId.of(UUID.fromString("20000000-0000-4000-8000-000000000001"));
   private static final UUID TENANT_B_USER = UUID.fromString("21200000-0000-4000-8000-000000000001");
+  private static final UUID NORTH_BUYER_PARTNER =
+      UUID.fromString("53000000-0000-4000-8000-000000000001");
 
   @Autowired private IdentityAccessRepository repository;
 
@@ -59,9 +61,23 @@ class JdbcIdentityAccessRepositoryIntegrationTest extends PostgresIntegrationTes
             .orElseThrow();
 
     assertThat(mapping.tenant().id()).isEqualTo(TENANT_A);
+    assertThat(mapping.partnerId()).isNull();
     assertThat(mapping.roles()).extracting("code").containsExactly("sales-representative");
     assertThat(mapping.roles().getFirst().permissions())
         .extracting(permission -> permission.code().value())
         .contains("partner:read", "quotation:create");
+  }
+
+  @Test
+  void resolvesOptionalBuyerPartnerScopeFromTheLocalMapping() {
+    var mapping =
+        repository
+            .findByIssuerAndSubject(
+                "http://localhost:8081/realms/cellarbridge", "11000000-0000-4000-8000-000000000002")
+            .orElseThrow();
+
+    assertThat(mapping.tenant().id()).isEqualTo(TENANT_A);
+    assertThat(mapping.partnerId()).isEqualTo(NORTH_BUYER_PARTNER);
+    assertThat(mapping.roles()).extracting("code").containsExactly("customer-buyer");
   }
 }
