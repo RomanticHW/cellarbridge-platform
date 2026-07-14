@@ -36,11 +36,14 @@ jobs:
   customer-quotation-acceptance:
     uses: ./.github/workflows/customer-quotation-acceptance.yml
 
+  trade-order-conversion:
+    uses: ./.github/workflows/trade-order-conversion.yml
+
   required:
     name: Required quality gate
     runs-on: ubuntu-latest
     if: always()
-    needs: [docs-contracts, backend, frontend, security, identity-access, partner-onboarding, catalog-supply-search, quotation-trade-planning, customer-quotation-acceptance]
+    needs: [docs-contracts, backend, frontend, security, identity-access, partner-onboarding, catalog-supply-search, quotation-trade-planning, customer-quotation-acceptance, trade-order-conversion]
     steps:
       - name: Require every quality workflow
         env:
@@ -53,6 +56,7 @@ jobs:
           CATALOG_RESULT: ${{ needs['catalog-supply-search'].result }}
           QUOTATION_RESULT: ${{ needs['quotation-trade-planning'].result }}
           ACCEPTANCE_RESULT: ${{ needs['customer-quotation-acceptance'].result }}
+          ORDER_RESULT: ${{ needs['trade-order-conversion'].result }}
         run: |
           test "${DOCS_RESULT}" = "success"
           test "${BACKEND_RESULT}" = "success"
@@ -63,3 +67,4 @@ jobs:
           test "${CATALOG_RESULT}" = "success"
           test "${QUOTATION_RESULT}" = "success"
           test "${ACCEPTANCE_RESULT}" = "success"
+          test "${ORDER_RESULT}" = "success"

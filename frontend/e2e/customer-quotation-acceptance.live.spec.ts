@@ -99,7 +99,11 @@ test('accepts once, renders a durable receipt, and refreshes without a duplicate
   expect(response.status()).toBe(201);
   expect(response.headers()['idempotency-replayed']).toBe('false');
   await expect(customer.getByText('Quotation accepted')).toBeVisible();
-  await expect(customer.getByText(/Refreshing this page will not submit it again/)).toBeVisible();
+  await expect(
+    customer.getByText(
+      /Order creation is in progress|Order creation is retrying safely|order is ready to review/,
+    ),
+  ).toBeVisible();
   expect(acceptanceRequests).toBe(1);
 
   await customer.reload();
