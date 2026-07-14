@@ -31,11 +31,11 @@
 
 ownership manifest 必须全量覆盖磁盘上的每个 V2+ migration，并为每项记录 version、file、owner Schemas 和文件 SHA-256。V8、V9 以固定 `legacyException` 加 ADR-015 引用声明其多 owner 集合；CI 只允许这两个既定例外，并校验磁盘文件全覆盖、无多余 manifest 项、SHA-256 一致且例外集合恰好为 V8/V9。从 V10 起，owner Schemas 必须且只能有一个，并禁止任何 exception/waiver。
 
-CI 使用高信号 Schema statement scanner 检查 Schema-qualified DDL，以及 `INSERT`、`UPDATE`、`DELETE`、`MERGE`、`TRUNCATE`、`COPY` 等 DML/backfill 是否都只作用于 manifest 声明的 owner。scanner 是针对仓库 migration 约定的保护，不宣称是完整 SQL parser。
+ownership manifest、磁盘全覆盖和 SHA-256/checksum 校验适用于全部 V2+ migration；严格 Schema statement scanner 只对 V10+ migration 生效。V2～V9 不因历史 SQL 写法被 scanner 追溯拒绝，只校验冻结 checksum、manifest 声明和 V8/V9 已知所有权例外。对 V10+，scanner 检查 Schema-qualified DDL，以及 `INSERT`、`UPDATE`、`DELETE`、`MERGE`、`TRUNCATE`、`COPY` 等 DML/backfill 是否都只作用于 manifest 声明的唯一 owner；它是针对仓库 migration 约定的保护，不宣称是完整 SQL parser。
 
-`DO`/`EXECUTE`、dynamic SQL、`search_path`、非限定对象或其他无法可靠归属的语句必须 fail closed；人工审查只能拒绝或要求改写为可归属语句，不能把未识别语句作为绕过。scanner/manifest 测试至少包含同 owner backfill 的正向用例、跨 owner DML 的反向用例，以及 V8/V9 固定例外和 V10+ 单 owner 约束用例。
+V10+ 的 `DO` block、procedural/dynamic `EXECUTE`、dynamic SQL、`search_path`、非限定对象或其他无法可靠归属的语句必须 fail closed；人工审查只能拒绝或要求改写为可归属语句，不能把未识别语句作为绕过。静态 `CREATE TRIGGER ... EXECUTE FUNCTION schema.fn` clause 不是 procedural/dynamic `EXECUTE`：当 trigger target 和被调用函数都能明确归属唯一 owner 时必须允许。scanner/manifest 测试至少包含该静态 trigger clause 与同 owner backfill 的正向用例、procedural `EXECUTE` 与跨 owner DML 的反向用例，以及 V8/V9 固定例外和 V10+ 单 owner 约束用例。
 
-所有 migration 应在真实 PostgreSQL 上执行 catalog test；最终 Catalog 必须不存在引用不同 owner Schema 的 foreign key。文本扫描负责文件所有权，Catalog test 负责最终数据库结构，两者不可互相替代。
+真实 PostgreSQL catalog test 必须执行完整 V2+ 历史并检查最终状态；最终 Catalog 必须不存在引用不同 owner Schema 的 foreign key。V10+ 文本扫描负责新文件所有权，Catalog test 负责全历史执行后的最终数据库结构，两者不可互相替代。
 
 ### 无法拆分时的停止条件
 
