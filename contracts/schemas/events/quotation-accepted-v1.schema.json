@@ -46,7 +46,7 @@
               "type": "string",
               "minLength": 1,
               "maxLength": 30,
-              "pattern": "\\S"
+              "pattern": "[^\\u0009-\\u000d\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]"
             },
             "revision": {
               "type": "integer",
@@ -83,13 +83,13 @@
                   "type": "string",
                   "minLength": 1,
                   "maxLength": 80,
-                  "pattern": "\\S"
+                  "pattern": "[^\\u0009-\\u000d\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]"
                 },
                 "displayName": {
                   "type": "string",
                   "minLength": 1,
                   "maxLength": 160,
-                  "pattern": "\\S"
+                  "pattern": "[^\\u0009-\\u000d\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]"
                 },
                 "sourceVersion": {
                   "type": "integer",
@@ -100,11 +100,11 @@
             },
             "currency": {
               "type": "string",
-              "pattern": "^[A-Z]{3}$"
+              "pattern": "^[A-Z]{3}(?![\\s\\S])"
             },
             "totalAmount": {
               "type": "string",
-              "pattern": "^0*(?:0|[1-9][0-9]{0,14})(?:\\.[0-9]{1,4})?$"
+              "pattern": "^0*(?:0|[1-9][0-9]{0,14})(?:\\.[0-9]{1,4})?(?![\\s\\S])"
             },
             "paymentTermDays": {
               "type": "integer",
@@ -132,7 +132,7 @@
                   "type": "string",
                   "minLength": 1,
                   "maxLength": 80,
-                  "pattern": "\\S"
+                  "pattern": "[^\\u0009-\\u000d\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]"
                 },
                 "estimatedDeliveryDate": {
                   "type": "string",
@@ -144,7 +144,7 @@
               "type": "string",
               "minLength": 1,
               "maxLength": 50,
-              "pattern": "\\S"
+              "pattern": "[^\\u0009-\\u000d\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]"
             },
             "requestedDeliveryDate": {
               "type": "string",
@@ -162,19 +162,19 @@
               "properties": {
                 "countryCode": {
                   "type": "string",
-                  "pattern": "^[A-Z]{2}$"
+                  "pattern": "^[A-Z]{2}(?![\\s\\S])"
                 },
                 "province": {
                   "type": "string",
                   "minLength": 1,
                   "maxLength": 100,
-                  "pattern": "\\S"
+                  "pattern": "[^\\u0009-\\u000d\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]"
                 },
                 "city": {
                   "type": "string",
                   "minLength": 1,
                   "maxLength": 100,
-                  "pattern": "\\S"
+                  "pattern": "[^\\u0009-\\u000d\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]"
                 },
                 "district": {
                   "type": [
@@ -183,13 +183,13 @@
                   ],
                   "minLength": 1,
                   "maxLength": 100,
-                  "pattern": "\\S"
+                  "pattern": "[^\\u0009-\\u000d\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]"
                 },
                 "line1": {
                   "type": "string",
                   "minLength": 1,
                   "maxLength": 200,
-                  "pattern": "\\S"
+                  "pattern": "[^\\u0009-\\u000d\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]"
                 },
                 "postalCode": {
                   "type": [
@@ -198,13 +198,13 @@
                   ],
                   "minLength": 1,
                   "maxLength": 20,
-                  "pattern": "\\S"
+                  "pattern": "[^\\u0009-\\u000d\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]"
                 }
               }
             },
             "snapshotHash": {
               "type": "string",
-              "pattern": "^[0-9a-f]{64}$"
+              "pattern": "^[0-9a-f]{64}(?![\\s\\S])"
             },
             "lines": {
               "type": "array",
@@ -237,17 +237,17 @@
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 80,
-                    "pattern": "\\S"
+                    "pattern": "[^\\u0009-\\u000d\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]"
                   },
                   "description": {
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 240,
-                    "pattern": "\\S"
+                    "pattern": "[^\\u0009-\\u000d\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]"
                   },
                   "quantity": {
                     "type": "string",
-                    "pattern": "^(?=.*[1-9])0*(?:0|[1-9][0-9]{0,12})(?:\\.[0-9]{1,6})?$"
+                    "pattern": "^(?=.*[1-9])0*(?:0|[1-9][0-9]{0,12})(?:\\.[0-9]{1,6})?(?![\\s\\S])"
                   },
                   "unit": {
                     "type": "string",
@@ -258,11 +258,11 @@
                   },
                   "netUnitPrice": {
                     "type": "string",
-                    "pattern": "^0*(?:0|[1-9][0-9]{0,14})(?:\\.[0-9]{1,4})?$"
+                    "pattern": "^0*(?:0|[1-9][0-9]{0,14})(?:\\.[0-9]{1,4})?(?![\\s\\S])"
                   },
                   "lineTotal": {
                     "type": "string",
-                    "pattern": "^0*(?:0|[1-9][0-9]{0,14})(?:\\.[0-9]{1,4})?$"
+                    "pattern": "^0*(?:0|[1-9][0-9]{0,14})(?:\\.[0-9]{1,4})?(?![\\s\\S])"
                   },
                   "supplyPoolId": {
                     "type": [

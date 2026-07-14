@@ -4,9 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.networknt.schema.SchemaRegistry;
+import com.networknt.schema.SpecificationVersion;
 import com.rom.cellarbridge.platform.EventDelivery;
 import com.rom.cellarbridge.platform.EventHandlingException;
 import com.rom.cellarbridge.quotation.QuotationAcceptedV1;
+import com.rom.cellarbridge.quotation.QuotationSnapshotHashV1;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -67,6 +70,31 @@ class QuotationAcceptedEventHandlerTest {
     assertInvalid(payload -> put(payload, "/customer/displayName", "🍷".repeat(161)));
     assertInvalid(payload -> put(payload, "/route/code", "UNKNOWN_ROUTE"));
     assertInvalid(payload -> put(payload, "/deliveryAddress/countryCode", "cn"));
+    assertInvalid(payload -> put(payload, "/currency", "usd"));
+  }
+
+  @Test
+  void schemaAndRuntimeAgreeOnWhitespaceAndWholeStringRules() throws Exception {
+    JsonNode properties = schemaProperties();
+    for (String whitespace : List.of(" ", "\t", "\u00a0", "\u3000")) {
+      assertInvalid(payload -> put(payload, "/quotationNumber", whitespace));
+      assertThat(schemaAccepts(properties.path("quotationNumber"), whitespace)).isFalse();
+    }
+    for (TextValue invalid :
+        List.of(
+            new TextValue("/currency", "/currency", "USD\n"),
+            new TextValue(
+                "/deliveryAddress/countryCode", "/deliveryAddress/properties/countryCode", "CN\n"),
+            new TextValue("/totalAmount", "/totalAmount", "128400.00\n"),
+            new TextValue(
+                "/lines/0/quantity", "/lines/items/properties/quantity", "100.000000\n"))) {
+      assertInvalid(payload -> put(payload, invalid.payloadPointer(), invalid.value()));
+      assertThat(schemaAccepts(properties.at(invalid.schemaPointer()), invalid.value())).isFalse();
+    }
+    String hash = "a".repeat(64) + "\n";
+    assertThat(schemaAccepts(properties.path("snapshotHash"), hash)).isFalse();
+    assertThatThrownBy(() -> QuotationSnapshotHashV1.normalizeIncomingHash(hash))
+        .isInstanceOf(QuotationSnapshotHashV1.InvalidSnapshotHashFormatException.class);
   }
 
   @Test
@@ -112,28 +140,14 @@ class QuotationAcceptedEventHandlerTest {
           payload.put("totalAmount", "256800.00");
         });
     assertInvalid(payload -> ((ArrayNode) payload.path("lines")).removeAll());
-    assertInvalid(
-        payload -> {
-          ObjectNode line = ((ObjectNode) payload.at("/lines/0")).deepCopy();
-          ArrayNode lines = ((ArrayNode) payload.path("lines")).removeAll();
-          payload.put("totalAmount", "0");
-          for (int index = 0; index < 51; index++) {
-            ObjectNode copy = line.deepCopy();
-            copy.put("quotationLineId", UUID.randomUUID().toString());
-            copy.put("skuId", UUID.randomUUID().toString());
-            copy.put("lineTotal", "0");
-            lines.add(copy);
-          }
-        });
+    assertValid(payload -> replaceLines(payload, 50));
+    assertInvalid(payload -> replaceLines(payload, 51));
+    assertInvalid(payload -> put(payload, "/totalAmount", "1"));
   }
 
   @Test
   void schemaExpressesTheSameDeterministicBounds() throws Exception {
-    JsonNode properties =
-        JSON.readTree(
-                Files.readString(
-                    contractPath("schemas", "events", "quotation-accepted-v1.schema.json")))
-            .at("/allOf/1/properties/payload/properties");
+    JsonNode properties = schemaProperties();
     for (TextBoundary boundary : TEXT_BOUNDARIES) {
       JsonNode property = properties.at(boundary.schemaPointer());
       assertThat(property.path("minLength").asInt()).isEqualTo(1);
@@ -229,6 +243,33 @@ class QuotationAcceptedEventHandlerTest {
     put(payload, "/lines/0/lineTotal", value);
   }
 
+  private static void replaceLines(ObjectNode payload, int count) {
+    ObjectNode line = ((ObjectNode) payload.at("/lines/0")).deepCopy();
+    ArrayNode lines = ((ArrayNode) payload.path("lines")).removeAll();
+    payload.put("totalAmount", "0");
+    for (int index = 0; index < count; index++) {
+      ObjectNode copy = line.deepCopy();
+      copy.put("quotationLineId", UUID.randomUUID().toString());
+      copy.put("skuId", UUID.randomUUID().toString());
+      copy.put("lineTotal", "0");
+      lines.add(copy);
+    }
+  }
+
+  private static JsonNode schemaProperties() throws Exception {
+    return JSON.readTree(
+            Files.readString(
+                contractPath("schemas", "events", "quotation-accepted-v1.schema.json")))
+        .at("/allOf/1/properties/payload/properties");
+  }
+
+  private static boolean schemaAccepts(JsonNode schema, String value) {
+    return SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12)
+        .getSchema(schema)
+        .validate(JSON.valueToTree(value))
+        .isEmpty();
+  }
+
   private static void put(ObjectNode payload, String pointer, String value) {
     int separator = pointer.lastIndexOf('/');
     ((ObjectNode) payload.at(pointer.substring(0, separator)))
@@ -248,4 +289,6 @@ class QuotationAcceptedEventHandlerTest {
 
   private record TextBoundary(
       String payloadPointer, String schemaPointer, int max, boolean optional) {}
+
+  private record TextValue(String payloadPointer, String schemaPointer, String value) {}
 }

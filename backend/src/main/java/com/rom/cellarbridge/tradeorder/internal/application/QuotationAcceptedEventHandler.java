@@ -176,7 +176,7 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
     required(customer != null && customer.partnerId() != null && customer.sourceVersion() >= 0);
     text(customer.partnerNumber(), 80);
     text(customer.displayName(), 160);
-    required(payload.currency() != null && payload.currency().matches("^[A-Z]{3}$"));
+    required(payload.currency() != null && payload.currency().matches("[A-Z]{3}"));
     BigDecimal total = decimal(payload.totalAmount(), 4, 15, false);
     required(payload.paymentTermDays() >= 0 && payload.paymentTermDays() <= 180);
     QuotationAcceptedV1.Route route = payload.route();
@@ -215,7 +215,7 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
   }
 
   private static void address(QuotationAcceptedV1.DeliveryAddress address) {
-    required(address.countryCode() != null && address.countryCode().matches("^[A-Z]{2}$"));
+    required(address.countryCode() != null && address.countryCode().matches("[A-Z]{2}"));
     text(address.province(), 100);
     text(address.city(), 100);
     optionalText(address.district(), 100);
@@ -224,7 +224,7 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
   }
 
   private static BigDecimal decimal(String value, int scale, int integerDigits, boolean positive) {
-    required(value != null && value.matches("^[0-9]+(?:\\.[0-9]{1," + scale + "})?$"));
+    required(value != null && value.matches("[0-9]+(?:\\.[0-9]{1," + scale + "})?"));
     BigDecimal decimal = new BigDecimal(value);
     required(
         (positive ? decimal.signum() > 0 : decimal.signum() >= 0)
@@ -234,7 +234,23 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
 
   private static void text(String value, int maxLength) {
     required(
-        value != null && !value.isBlank() && value.codePointCount(0, value.length()) <= maxLength);
+        value != null
+            && value.codePoints().anyMatch(codePoint -> !contractWhitespace(codePoint))
+            && value.codePointCount(0, value.length()) <= maxLength);
+  }
+
+  private static boolean contractWhitespace(int codePoint) {
+    return (codePoint >= 0x0009 && codePoint <= 0x000d)
+        || codePoint == 0x0020
+        || codePoint == 0x0085
+        || codePoint == 0x00a0
+        || codePoint == 0x1680
+        || (codePoint >= 0x2000 && codePoint <= 0x200a)
+        || codePoint == 0x2028
+        || codePoint == 0x2029
+        || codePoint == 0x202f
+        || codePoint == 0x205f
+        || codePoint == 0x3000;
   }
 
   private static void optionalText(String value, int maxLength) {
