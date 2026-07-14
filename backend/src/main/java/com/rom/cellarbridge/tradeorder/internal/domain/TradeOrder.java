@@ -4,6 +4,7 @@ import com.rom.cellarbridge.identityaccess.TenantId;
 import com.rom.cellarbridge.tradeorder.TradeOrderStatus;
 import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrderDomainException.FailureKind;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
@@ -222,6 +223,7 @@ public record TradeOrder(
       if (totalAmount.signum() < 0) {
         throw new IllegalArgumentException("totalAmount cannot be negative");
       }
+      totalAmount = totalAmount.setScale(4, RoundingMode.HALF_UP);
       if (paymentTermDays < 0 || paymentTermDays > 180) {
         throw new IllegalArgumentException("paymentTermDays must be between 0 and 180");
       }
@@ -235,7 +237,7 @@ public record TradeOrder(
       }
       BigDecimal lineTotal =
           lines.stream().map(Line::lineTotal).reduce(BigDecimal.ZERO, BigDecimal::add);
-      if (lineTotal.compareTo(totalAmount) != 0) {
+      if (lineTotal.setScale(4, RoundingMode.HALF_UP).compareTo(totalAmount) != 0) {
         throw new IllegalArgumentException("line totals must equal the order total");
       }
     }
@@ -300,9 +302,11 @@ public record TradeOrder(
       requireText(unit, "unit");
       Objects.requireNonNull(netUnitPrice, "netUnitPrice");
       Objects.requireNonNull(lineTotal, "lineTotal");
-      if (quantity.signum() <= 0 || netUnitPrice.signum() <= 0 || lineTotal.signum() < 0) {
-        throw new IllegalArgumentException("line quantity and amounts must be positive");
+      if (quantity.signum() <= 0 || netUnitPrice.signum() < 0 || lineTotal.signum() < 0) {
+        throw new IllegalArgumentException("quantity must be positive and amounts non-negative");
       }
+      netUnitPrice = netUnitPrice.setScale(4, RoundingMode.HALF_UP);
+      lineTotal = lineTotal.setScale(4, RoundingMode.HALF_UP);
       requireText(supplyType, "supplyType");
     }
   }

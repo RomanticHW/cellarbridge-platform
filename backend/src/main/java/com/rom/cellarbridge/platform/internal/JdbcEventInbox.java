@@ -120,7 +120,7 @@ class JdbcEventInbox {
         """
         UPDATE platform_event.event_inbox
            SET duplicate_count = duplicate_count + 1,
-               updated_at = :now,
+               updated_at = GREATEST(updated_at, created_at, :now),
                version = version + 1
          WHERE tenant_id = :tenantId
            AND consumer_name = :consumerName

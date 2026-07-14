@@ -12,6 +12,7 @@ import com.rom.cellarbridge.quotation.QuotationSnapshotHashV1;
 import com.rom.cellarbridge.quotation.internal.application.TradeOrderCreatedEventHandler;
 import com.rom.cellarbridge.test.PostgresIntegrationTestSupport;
 import com.rom.cellarbridge.tradeorder.internal.application.QuotationAcceptedEventHandler;
+import java.math.BigDecimal;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -131,6 +132,12 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
     assertOrderGraph(quotationId, 1, 1, 1);
     assertThat(inboxValue(delivery.eventId(), "status")).isEqualTo("PROCESSED");
     assertThat(inboxNumber(delivery.eventId(), "duplicate_count")).isEqualTo(consumers - 1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT updated_at >= created_at FROM platform_event.event_inbox WHERE event_id = ?",
+                Boolean.class,
+                delivery.eventId()))
+        .isTrue();
     assertThat(createdPublicationStatus(quotationId)).isEqualTo("PENDING");
     JsonNode createdPayload = createdPayload(quotationId);
     assertThat(createdPayload.propertyNames())
@@ -208,6 +215,22 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
     assertThat(createdPayload(quotationId).has("sourceOwnerId")).isFalse();
     assertThat(get("/api/v1/orders/" + orderId, NORTH_MANAGER).status()).isEqualTo(200);
     assertThat(get("/api/v1/orders/" + orderId, NORTH_SALES).status()).isEqualTo(404);
+  }
+
+  @Test
+  void createsAnImmutableZeroValueOrderFromAValidAcceptedEvent() {
+    UUID quotationId = UUID.randomUUID();
+    assertThat(
+            deliveryService.deliver(
+                handler, delivery(UUID.randomUUID(), quotationId, '0', PARTNER_ID)))
+        .isEqualTo(LocalEventDeliveryService.DeliveryOutcome.PROCESSED);
+    assertOrderGraph(quotationId, 1, 1, 1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT total_amount FROM trade_order.trade_order WHERE source_quotation_id = ?",
+                BigDecimal.class,
+                quotationId))
+        .isEqualTo(new BigDecimal("0.0000"));
   }
 
   @Test
@@ -555,6 +578,7 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
     UUID revisionId = UUID.nameUUIDFromBytes(("revision:" + quotationId).getBytes());
     UUID acceptanceId = UUID.nameUUIDFromBytes(("acceptance:" + quotationId).getBytes());
     String quotationNumber = "QUO-" + quotationId.toString().substring(0, 8).toUpperCase();
+    String amount = variant == '0' ? "0" : "100.00";
     String payload =
         """
         {
@@ -572,7 +596,7 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
             "sourceVersion":1
           },
           "currency":"CNY",
-          "totalAmount":"100.00",
+          "totalAmount":"%s",
           "paymentTermDays":30,
           "route":{
             "code":"SH_GENERAL_TRADE",
@@ -597,8 +621,8 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
             "description":"Synthetic wine case %s",
             "quantity":"1",
             "unit":"CASE",
-            "netUnitPrice":"100.00",
-            "lineTotal":"100.00",
+            "netUnitPrice":"%s",
+            "lineTotal":"%s",
             "supplyPoolId":null,
             "supplyType":"DOMESTIC_ON_HAND"
           }]
@@ -611,8 +635,11 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
                 acceptanceId,
                 sourceOwnerId,
                 partnerId,
+                amount,
                 "0".repeat(64),
-                variant)
+                variant,
+                amount,
+                amount)
             .strip();
     try {
       ObjectNode body = (ObjectNode) jsonMapper.readTree(payload);
