@@ -6,7 +6,7 @@ Status date: **2026-07-14**
 ## 1. 状态定义
 
 - `Available`：已实现、测试并可运行；
-- `Partial`：部分实现，限制明确；
+- `Partially available`：部分实现，限制明确；
 - `Designed`：完整设计/契约可用，尚无实现；
 - `Planned`：仅路线图；
 - `Not planned`：明确非范围。
@@ -22,10 +22,12 @@ Status date: **2026-07-14**
 | OpenAPI/AsyncAPI/JSON Schema | Available (design contract) | `contracts/` |
 | Repository engineering rules | Available | `AGENTS.md`, governance docs |
 | Java backend foundation | Available | `backend/`; Spring context, PostgreSQL/Flyway, Actuator, Modulith and ArchUnit tests |
+| Persistence baseline | Available | Spring JDBC / SQL-first；JPA 未安装且仅为 ADR-012 约束的未来可选项 |
+| Reliable local events | Available | custom `event_publication`, local dispatcher, Consumer Inbox, bounded retry and transaction integration tests |
 | React frontend foundation | Available | `frontend/`; system status, readiness states, generated API types, Vitest and Playwright |
 | Docker/CI executable runtime | Available | `deploy/compose/core.compose.yaml`, `scripts/smoke_core.sh`, `.github/workflows/` |
 | Identity, tenant and permission access | Available | OIDC Code + PKCE, JWT validation, `/me`, two-tenant mapping/isolation and protected permission-aware navigation |
-| Broader application security controls | Partial | Task 02 delivers identity boundary, safe audit logging, CORS and response headers; later threat, dependency and release evidence remains planned |
+| Broader application security controls | Partially available | Task 02 delivers identity boundary, safe audit logging, CORS and response headers; later threat, dependency and release evidence remains planned |
 | Partner onboarding and eligibility | Available | tenant-scoped draft/review lifecycle, duplicate controls, immutable eligibility, React workspace and real OIDC Playwright flow |
 | Catalog and supply search | Available | Catalog/Inventory model, FTS + trigram search, field/warehouse permissions, React workspace, real OIDC E2E and reproducible benchmark |
 | Quotation and trade planning | Available | revisioned snapshots/pricing, deterministic explainable route policy, independent approval, issue token, customer-safe read-only preview, React workspace, Testcontainers and real OIDC E2E |
@@ -33,6 +35,9 @@ Status date: **2026-07-14**
 | Quote-to-order conversion | Available | transactional Inbox consumer, immutable Trade Order snapshot, unique quotation conversion, reliable `TradeOrderCreatedV1`, eventual Quotation link, tenant/Buyer-scoped query UI and real OIDC E2E |
 | Inventory reservation | Designed | orders intentionally remain `PENDING_RESERVATION`; atomic allocation and reservation outcome handling remain Task 08 |
 | Fulfillment/exception/settlement/reporting | Designed | implementation not started |
+| Architecture fitness functions | Partially available | Modulith cycles/internal boundaries and selected ArchUnit rules run now；remaining domain/controller/public-contract/catalog/migration rules are tracked in the fitness status table |
+| Kafka/Redis/OTel/Prometheus/Grafana full profile | Planned | no current runtime dependency or compose service |
+| ECharts dashboards | Planned | ECharts is not installed；dashboard slice remains Task 12 |
 | Performance/security/release evidence | Planned | tasks 13–15 |
 
 ## 3. 声明

@@ -9,19 +9,17 @@ flowchart TB
     BE[Spring Boot :8080]
     PG[(PostgreSQL :5432)]
     KC[Keycloak :8081]
-    Mail[Mail simulator]
 
     Dev --> FE
     FE --> BE
     FE --> KC
     BE --> PG
     BE --> KC
-    BE --> Mail
 ```
 
-目标：`make up-core` 启动依赖，`make dev`/组合命令启动应用；最终 release 可全部容器化一条命令。
+当前：`make dev-core` 通过 `core.compose.yaml` 构建并启动 PostgreSQL、Keycloak、backend 和 frontend 的完整 core 环境。full profile 与发布镜像流程仍为 Planned。
 
-## 2. Full 演示拓扑
+## 2. Full 演示拓扑（Planned）
 
 ```mermaid
 flowchart LR
@@ -54,13 +52,15 @@ flowchart LR
 
 ## 3. Docker Compose profiles
 
+当前仓库仅提供 `deploy/compose/core.compose.yaml` 的完整 core 环境。下列 messaging/cache/observability/tools profiles 是目标拆分，尚无可运行 compose 配置：
+
 - `core`: postgres, keycloak, backend, frontend/proxy；
 - `messaging`: Kafka；
 - `cache`: Redis；
 - `observability`: OTel, Prometheus, Grafana；
 - `tools`: mail simulator、数据库 UI（默认不启动）。
 
-服务有 healthcheck、资源限制建议、持久卷、显式网络。默认凭据仅 demo profile，README 明确。
+当前 core 服务按 compose 配置提供 healthcheck 和持久卷。资源限制、显式网络以及 tools profile 都是 Planned 建议；默认凭据仅用于 demo 环境并在 README 明确。
 
 ## 4. 配置
 
@@ -93,7 +93,7 @@ Pull Request：
 6. contract generation diff；
 7. secret/dependency scan。
 
-Main/Release：
+Main/Release（Planned）：
 
 - 构建容器；
 - image scan + SBOM；

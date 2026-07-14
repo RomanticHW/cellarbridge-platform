@@ -14,10 +14,10 @@
 |---|---|---|---|
 | PostgreSQL 不可用 | 所有写/大部分读 | readiness false，503，不缓存写 | DB 恢复后重试安全命令 |
 | Keycloak 不可用 | 新登录/刷新失败 | 已有有效 JWT 在验证可用时继续；不绕过认证 | IDP 恢复 |
-| Redis 不可用 | 缓存 miss | 降级到 DB，记录指标 | 自动恢复，不丢事实 |
-| Kafka 不可用 | 外部事件延迟 | outbox 积压，核心本地事务可提交 | publisher 重试 |
-| OTEL/Prometheus 不可用 | 可观测性下降 | 业务不失败；导出有界缓冲 | 恢复后继续 |
-| 模拟外部适配器超时 | 履约步骤不确定 | attempt 失败/未知，进入异常 | 查询状态/幂等重试 |
+| Redis 不可用（Planned full profile） | 缓存 miss | 降级到 DB，记录指标 | 自动恢复，不丢事实 |
+| Kafka 不可用（Planned full profile） | 外部事件延迟 | 独立 external outbox 积压，核心本地事务可提交 | publisher 重试 |
+| OTEL/Prometheus 不可用（Planned） | 可观测性下降 | 业务不失败；导出有界缓冲 | 恢复后继续 |
+| 模拟外部适配器超时（Planned fulfillment） | 履约步骤不确定 | attempt 失败/未知，进入异常 | 查询状态/幂等重试 |
 | 应用进程崩溃 | 处理中断 | DB 事务回滚；已提交 publication 重启恢复 | 重启/多实例 |
 
 ## 3. 超时与重试

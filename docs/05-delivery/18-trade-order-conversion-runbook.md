@@ -39,7 +39,7 @@ Contract release: **OpenAPI 1.4.0**
 ## 4. 数据、边界与安全字段
 
 - `trade_order` schema 只通过逻辑 ID 引用 Quotation、Partner、Catalog、Inventory 和 IAM；不存在跨模块外键。订单行与时间线只使用 Trade Order 自己 schema 内的外键。
-- 商业快照、订单行和创建时间线不可变；deferred database constraint 在事务提交时要求关系订单行数量与 sealed JSON 快照完全一致，创建完成后不能追加、更新或删除行。`snapshotHash` 是生产者提供的 opaque identity，只做精确比较，不跨 JSONB 序列化重算。
+- 商业快照、订单行和创建时间线不可变；deferred database constraint 在事务提交时要求关系订单行数量与 sealed JSON 快照完全一致，创建完成后不能追加、更新或删除行。Task 07 的 consumer 当前仍把 `snapshotHash` 当作生产者提供的 identity；Task 07A 已将“按 QuotationAccepted payload 的 Snapshot Hash V1 canonical projection 独立重算”列为本 core PR 达到 Ready 前必须完成的 correction gate。
 - V9 允许历史 `QuotationAcceptedV1` 缺少新增的可选 `sourceOwnerId`：新订单仍保留完整商业快照，但 owner 为 null 的记录不会进入 Sales Representative 的本人范围，只有具有全租户读取范围的内部角色可见。当前生产者始终写入 owner。
 - Quotation 消费历史 `TradeOrderCreatedV1` 时允许缺少可选 `acceptanceId`；它使用自己持久化的接受事实补齐不可变链接，若事件显式携带该字段则必须与权威接受记录一致。
 - `north.buyer` 的 nullable identity mapping 绑定到合成 active Partner。`partnerId` 由可信身份映射进入 `TenantContext` 和 `/me`；普通内部用户保持 null。映射列不建立跨 schema 外键。
@@ -76,5 +76,5 @@ make order-e2e
 ## 7. 已知限制与下一步
 
 - 库存尚未分配或预占；`PENDING_RESERVATION`、reservation/fulfillment/settlement 的 pending/not-started projection 是诚实的流程边界，不代表订单完成。
-- Task 08 将消费 `TradeOrderCreatedV1`，以原子条件更新实现 all-or-nothing 库存预占，并发布 reservation outcome；本切片不写 Inventory 表、不虚构可用量或承诺日期。
+- Task 08 仍被 Task 07A 的 core 与 inventory-readiness 两阶段阻塞；放行后才可消费 `TradeOrderCreatedV1`，以原子条件更新实现 all-or-nothing 库存预占并发布 reservation outcome。本切片不写 Inventory 表、不虚构可用量或承诺日期。
 - 外部 Kafka adapter 与外部 publication acknowledgement 不在 core demo 的当前执行路径；保留的 `PENDING` publication 是后续 adapter 的可靠输入，不是丢失事件。

@@ -8,12 +8,16 @@ All notable changes to this project are documented in this file. The project fol
 
 - runnable identity/access and partner-onboarding vertical slices;
 - tenant-scoped wine/SKU and five-mode supply model with PostgreSQL FTS/trigram search;
-- permission-aware catalog workspace, local quote selection, OIDC browser verification, and reproducible query benchmark.
+- permission-aware catalog workspace, local quote selection, OIDC browser verification, and reproducible query benchmark;
+- revisioned quotation, explainable trade-planning, approval, and secure customer-decision slices;
+- idempotent accepted-quotation conversion into one immutable Trade Order, backed by reliable local publication and Consumer Inbox handling;
+- accepted decisions clarifying SQL-first persistence, reliable local event delivery, the designed Task 08 reservation protocol, and V10+ migration ownership;
+- public documentation that distinguishes the executable core from designed capabilities and planned full-profile infrastructure.
 
 ### Planned
 
-- End-to-end quotation, order, inventory, and fulfillment slices
-- Operational dashboards and public demo release
+- Inventory reservation, fulfillment, exception, settlement, and reporting slices
+- Kafka/Redis/observability full profile, operational dashboards, and public demo release
 
 ## [0.1.0-design] - 2026-07-13
 

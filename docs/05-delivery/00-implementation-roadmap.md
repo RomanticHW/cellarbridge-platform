@@ -13,6 +13,7 @@ Design Baseline
 → Partner + Catalog
 → Quotation + Trade Planning
 → Customer Acceptance + Order
+→ Architecture Integrity + Inventory Readiness Gate
 → Inventory Reservation
 → Fulfillment + Exception
 → Settlement + Reporting
@@ -32,6 +33,7 @@ Design Baseline
 | 05 | 报价和路径 | 编辑、定价、评估、审批 | 确定性、解释、策略版本 |
 | 06 | 客户接受 | 客户安全视图、幂等接受 | 字段安全、并发重复测试 |
 | 07 | 订单转换 | 唯一订单、可靠事件 | quote unique + crash recovery |
+| 07A | 架构完整性与库存准备门禁 | 领域/事件/数据语义纠偏；分为 core 与 inventory-readiness 两个 PR | 契约、hash、fitness 与准备证据；两阶段均合并后才放行 08 |
 | 08 | 库存预占 | 原子全量预占 | 高并发无超卖 |
 | 09 | 履约编排 | 模板、步骤、里程碑 | 依赖、SLA、公开时间线 |
 | 10 | 异常中心 | 去重、分派、恢复 | 失败/重试/恢复证据 |
@@ -42,6 +44,8 @@ Design Baseline
 | 15 | 公开 v1.0 | README、演示、Release | 一键启动、Playwright、审阅路径 |
 
 每个任务的可执行 Prompt 位于私有控制仓库，公共仓库只保存可长期维护的设计与实现证据。
+
+Task 08 当前保持 **Blocked**：必须先合并 Task 07A 的 `integrity-core` 与 `inventory-readiness` 两个准备 PR，不能从第一个 PR 的设计完成推断库存预占已经开始。
 
 ## 3. 纵向切片定义
 

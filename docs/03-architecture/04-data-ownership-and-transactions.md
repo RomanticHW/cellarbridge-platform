@@ -2,12 +2,14 @@
 
 ## 1. Schema 所有权
 
+下表是当前与目标模块共同遵守的 ownership map，不是现有物理表清单。V2～V9 已实现 Identity、Partner、Catalog/Inventory supply、Quotation/Trade Planning、Trade Order 与 `platform_event`；Fulfillment、Exception、Settlement、Audit/Reporting 的代表表仍为 Designed。
+
 | Schema | 所有者 | 代表表 |
 |---|---|---|
-| `iam` | identity-access | tenant, user_access, role_binding |
+| `identity_access` | identity-access | tenant, user_access, role_binding |
 | `partner` | partner | partner, contact, route_eligibility, review_decision |
 | `catalog` | catalog | wine_product, sku, producer, region |
-| `inventory` | inventory | warehouse, supply_pool, inventory_lot, reservation, allocation, movement |
+| `inventory` | inventory | warehouse, supply_pool, inventory_lot；reservation/allocation/movement 为 Task 08 设计 |
 | `quotation` | quotation | quotation, revision, line, approval, acceptance |
 | `trade_planning` | trade-planning | route_definition, policy_version, evaluation, candidate_result |
 | `trade_order` | trade-order | trade_order, order_line, cancellation |
@@ -15,7 +17,7 @@
 | `exception_center` | exception-center | exception_case, assignment, note, recovery_attempt |
 | `settlement` | settlement | receivable, payment_record |
 | `audit_reporting` | audit-reporting | audit_entry, timeline_projection, metric_projection, checkpoint |
-| `platform_event` | platform event support | publication, inbox, external_outbox |
+| `platform_event` | platform event support | publication, inbox；external_outbox 为 Planned full profile |
 
 模块数据库用户/权限在本地可简化为一个应用账号，但通过代码/测试/迁移路径执行所有权。full hardening 可为 schema 配置数据库权限。
 
@@ -56,20 +58,26 @@
 
 ## 5. 库存 SQL 语义
 
+状态：**Designed**。Task 08 合并前，当前 Inventory 只提供供给查询；下述条件更新是 ADR-014 冻结的实现协议，不是已可运行能力。
+
 示意：
 
 ```sql
 UPDATE inventory.inventory_lot
 SET reserved_quantity = reserved_quantity + :quantity,
+    updated_by = :actor_id,
     version = version + 1,
     updated_at = :now
 WHERE tenant_id = :tenant_id
-  AND lot_id = :lot_id
+  AND id = :lot_id
+  AND supply_pool_id = :supply_pool_id
+  AND sku_id = :sku_id
+  AND quantity_unit = :quantity_unit
   AND status = 'AVAILABLE'
   AND on_hand_quantity - reserved_quantity >= :quantity;
 ```
 
-受影响行为 1 才成功。所有订单行在同一事务；失败抛异常回滚。实际 SQL 还需数量精度、单位、索引和审计 movement。
+受影响行为 1 才成功。所有订单行在同一 savepoint 中全成全败；业务失败由外层事务可靠记录，技术失败回滚外层事务并有限重试。实际实现仍需数量精度、单位、索引和审计 movement。
 
 ## 6. 乐观并发
 
@@ -82,7 +90,9 @@ WHERE tenant_id = :tenant_id
 
 ## 7. 迁移
 
-- Flyway 迁移按模块命名，例如 `V2026.07.001__quotation_create_core_tables.sql`；
+- 当前仓库 migration 从 V2 到 V9 使用简单递增版本；V8/V9 是冻结的多 owner 历史协调例外；
+- 从 V10 起，一个文件只允许修改一个 owner Schema；跨模块任务拆为多个连续、前向兼容的 migration；
+- 计划中的 ownership manifest 必须覆盖全部 V2+ 文件并冻结 SHA-256；落地后，V10+ 另由高信号语句 scanner 和 PostgreSQL catalog test 验证；
 - 合并后不可修改；
 - schema 建立、约束和索引在迁移中；
 - 大数据迁移拆 expand/backfill/contract；

@@ -94,7 +94,8 @@ These rules become active when `backend/` is created.
 - Controllers translate transport input to application commands and never contain domain policy.
 - Application services orchestrate use cases and transactions; they do not reimplement aggregate rules.
 - Repositories return domain aggregates or explicit projections, never controller DTOs.
-- Use JPA for ordinary aggregate persistence and explicit JDBC for atomic inventory updates, event polling, and read-model queries where SQL semantics matter.
+- The current persistence baseline is Spring JDBC / SQL-first. Use explicit SQL where tenant predicates, ordering, snapshots, event processing, or concurrency semantics must remain directly reviewable.
+- JPA is a future optional adapter for an approved simple aggregate, not the default current stack. Its introduction requires the dependency and canonical-write-path controls in ADR-012.
 - Flyway migrations are immutable after merge. Correct an applied migration with a new migration.
 - Use `application/problem+json` for API failures and stable error codes from `docs/04-contracts/01-error-catalog.md`.
 - Validate module structure with Spring Modulith and ArchUnit in every build.

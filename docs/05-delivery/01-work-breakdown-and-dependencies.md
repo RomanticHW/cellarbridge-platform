@@ -12,7 +12,8 @@ flowchart TD
   T04 --> T05
   T05 --> T06[06 Customer Acceptance]
   T06 --> T07[07 Order Conversion]
-  T07 --> T08[08 Inventory Reservation]
+  T07 --> T07A[07A Architecture Integrity Gate]
+  T07A --> T08[08 Inventory Reservation - Blocked]
   T08 --> T09[09 Fulfillment]
   T09 --> T10[10 Exception Center]
   T07 --> T11[11 Settlement]
@@ -115,6 +116,14 @@ flowchart TD
 - duplicate/crash tests。
 
 ## 10. Task 08 — Inventory
+
+**Status: Blocked.** Task 07A 先后交付 `integrity-core` 与 `inventory-readiness`；两个准备 PR 均合并前不得开始 reservation/allocation/movement 或订单预占状态 handler。
+
+### Task 07A gate evidence
+
+- core：持久化/事件/迁移 ADR，领域边界、accepted-event/hash、金额不变量与通用 fitness；
+- inventory readiness：V10 数量单位、仓库优先级、Inventory API/generated types/React/seed 与 Task 08 准备契约；
+- 两阶段都不实现实际 reservation、allocation 或 movement。
 
 - lot/reservation/movement schema；
 - allocation policy and JDBC atomic updates；
