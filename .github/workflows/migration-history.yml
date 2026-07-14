@@ -1,0 +1,51 @@
+name: Migration history integrity
+on:
+  workflow_call:
+    inputs:
+      base:
+        required: true
+        type: string
+      head:
+        required: true
+        type: string
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      base:
+        required: true
+        type: string
+      head:
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Protect published migrations
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_BASE: ${{ github.event.before }}
+          EVENT_HEAD: ${{ github.sha }}
+          PROVIDED_BASE: ${{ inputs.base }}
+          PROVIDED_HEAD: ${{ inputs.head }}
+        run: |
+          set -euo pipefail
+          base="${PROVIDED_BASE:-${EVENT_BASE:-}}"
+          head="${PROVIDED_HEAD:-${EVENT_HEAD:-}}"
+          test -n "$base" && test -n "$head"
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            [[ ! "$base" =~ ^0+$ ]] || base="$(git rev-parse "${head}^" 2>/dev/null || printf '%s\n' "$head")"
+            git merge-base --is-ancestor "$base" "$head"
+          fi
+          make test-migration-history
+          python3 scripts/validate_migration_history.py --base "$base" --head "$head" \
+            --migration-dir backend/src/main/resources/db/migration
