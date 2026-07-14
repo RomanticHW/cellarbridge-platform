@@ -31,6 +31,10 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.dao.DataAccessException;
+import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.RecoverableDataAccessException;
+import org.springframework.dao.TransientDataAccessException;
 import org.springframework.stereotype.Component;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -126,7 +130,7 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
     } catch (JacksonException | ContractViolation exception) {
       throw EventHandlingException.finalFailure("QUOTATION_ACCEPTED_EVENT_INVALID");
     } catch (DataAccessException exception) {
-      throw EventHandlingException.retryable("ORDER_STORAGE_UNAVAILABLE");
+      throw classifyDataAccess(exception);
     }
   }
 
@@ -154,7 +158,7 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
     return new AcceptedEvent(payload, normalizedHash);
   }
 
-  private static void validate(EventDelivery delivery, QuotationAcceptedV1.Payload payload) {
+  static void validate(EventDelivery delivery, QuotationAcceptedV1.Payload payload) {
     required(payload != null);
     required(delivery.subject() != null);
     required(
@@ -167,13 +171,13 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
             && payload.acceptanceId() != null
             && payload.acceptedAt() != null
             && payload.revision() >= 1);
-    text(payload.quotationNumber());
+    text(payload.quotationNumber(), 30);
     QuotationAcceptedV1.Customer customer = payload.customer();
     required(customer != null && customer.partnerId() != null && customer.sourceVersion() >= 0);
-    text(customer.partnerNumber());
-    text(customer.displayName());
+    text(customer.partnerNumber(), 80);
+    text(customer.displayName(), 160);
     required(payload.currency() != null && payload.currency().matches("^[A-Z]{3}$"));
-    BigDecimal total = decimal(payload.totalAmount(), 4, false);
+    BigDecimal total = decimal(payload.totalAmount(), 4, 15, false);
     required(payload.paymentTermDays() >= 0 && payload.paymentTermDays() <= 180);
     QuotationAcceptedV1.Route route = payload.route();
     required(
@@ -181,15 +185,13 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
             && route.code() != null
             && ROUTES.contains(route.code())
             && route.estimatedDeliveryDate() != null);
-    text(route.policyVersion());
-    text(payload.acceptedTermsVersion());
-    required(
-        payload.acceptedTermsVersion().length() <= 50
-            && payload.requestedDeliveryDate() != null
-            && payload.deliveryAddress() != null);
+    text(route.policyVersion(), 80);
+    text(payload.acceptedTermsVersion(), 50);
+    required(payload.requestedDeliveryDate() != null && payload.deliveryAddress() != null);
     address(payload.deliveryAddress());
     required(payload.lines() != null && !payload.lines().isEmpty() && payload.lines().size() <= 50);
     Set<UUID> lineIds = new HashSet<>();
+    Set<UUID> skuIds = new HashSet<>();
     BigDecimal sum = BigDecimal.ZERO;
     for (QuotationAcceptedV1.Line line : payload.lines()) {
       required(
@@ -197,14 +199,15 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
               && line.quotationLineId() != null
               && lineIds.add(line.quotationLineId())
               && line.skuId() != null
+              && skuIds.add(line.skuId())
               && ("CASE".equals(line.unit()) || "BOTTLE".equals(line.unit()))
               && line.supplyType() != null
               && SUPPLY_TYPES.contains(line.supplyType()));
-      text(line.skuCode());
-      text(line.description());
-      decimal(line.quantity(), 6, true);
-      decimal(line.netUnitPrice(), 4, false);
-      sum = sum.add(decimal(line.lineTotal(), 4, false));
+      text(line.skuCode(), 80);
+      text(line.description(), 240);
+      decimal(line.quantity(), 6, 13, true);
+      decimal(line.netUnitPrice(), 4, 15, false);
+      sum = sum.add(decimal(line.lineTotal(), 4, 15, false));
     }
     required(
         sum.setScale(4, RoundingMode.HALF_UP).compareTo(total.setScale(4, RoundingMode.HALF_UP))
@@ -213,20 +216,43 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
 
   private static void address(QuotationAcceptedV1.DeliveryAddress address) {
     required(address.countryCode() != null && address.countryCode().matches("^[A-Z]{2}$"));
-    text(address.province());
-    text(address.city());
-    text(address.line1());
+    text(address.province(), 100);
+    text(address.city(), 100);
+    optionalText(address.district(), 100);
+    text(address.line1(), 200);
+    optionalText(address.postalCode(), 20);
   }
 
-  private static BigDecimal decimal(String value, int scale, boolean positive) {
+  private static BigDecimal decimal(String value, int scale, int integerDigits, boolean positive) {
     required(value != null && value.matches("^[0-9]+(?:\\.[0-9]{1," + scale + "})?$"));
     BigDecimal decimal = new BigDecimal(value);
-    required(positive ? decimal.signum() > 0 : decimal.signum() >= 0);
+    required(
+        (positive ? decimal.signum() > 0 : decimal.signum() >= 0)
+            && Math.max(0, decimal.precision() - decimal.scale()) <= integerDigits);
     return decimal;
   }
 
-  private static void text(String value) {
-    required(value != null && !value.isBlank());
+  private static void text(String value, int maxLength) {
+    required(
+        value != null && !value.isBlank() && value.codePointCount(0, value.length()) <= maxLength);
+  }
+
+  private static void optionalText(String value, int maxLength) {
+    if (value != null) {
+      text(value, maxLength);
+    }
+  }
+
+  static RuntimeException classifyDataAccess(DataAccessException exception) {
+    if (exception instanceof DataIntegrityViolationException) {
+      return EventHandlingException.finalFailure("ORDER_PERSISTENCE_CONSTRAINT_VIOLATION");
+    }
+    if (exception instanceof TransientDataAccessException
+        || exception instanceof RecoverableDataAccessException
+        || exception instanceof DataAccessResourceFailureException) {
+      return EventHandlingException.retryable("ORDER_STORAGE_UNAVAILABLE");
+    }
+    return exception;
   }
 
   private static void requiredInteger(JsonNode node, String field) {

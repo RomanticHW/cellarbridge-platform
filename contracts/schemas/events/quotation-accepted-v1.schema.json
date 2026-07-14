@@ -43,11 +43,15 @@
               "format": "uuid"
             },
             "quotationNumber": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 30,
+              "pattern": "\\S"
             },
             "revision": {
               "type": "integer",
-              "minimum": 1
+              "minimum": 1,
+              "maximum": 2147483647
             },
             "sourceOwnerId": {
               "type": "string",
@@ -76,14 +80,21 @@
                   "format": "uuid"
                 },
                 "partnerNumber": {
-                  "type": "string"
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80,
+                  "pattern": "\\S"
                 },
                 "displayName": {
-                  "type": "string"
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160,
+                  "pattern": "\\S"
                 },
                 "sourceVersion": {
                   "type": "integer",
-                  "minimum": 0
+                  "minimum": 0,
+                  "maximum": 2147483647
                 }
               }
             },
@@ -93,7 +104,7 @@
             },
             "totalAmount": {
               "type": "string",
-              "pattern": "^[0-9]+(\\.[0-9]{1,4})?$"
+              "pattern": "^0*(?:0|[1-9][0-9]{0,14})(?:\\.[0-9]{1,4})?$"
             },
             "paymentTermDays": {
               "type": "integer",
@@ -118,7 +129,10 @@
                   ]
                 },
                 "policyVersion": {
-                  "type": "string"
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80,
+                  "pattern": "\\S"
                 },
                 "estimatedDeliveryDate": {
                   "type": "string",
@@ -129,7 +143,8 @@
             "acceptedTermsVersion": {
               "type": "string",
               "minLength": 1,
-              "maxLength": 50
+              "maxLength": 50,
+              "pattern": "\\S"
             },
             "requestedDeliveryDate": {
               "type": "string",
@@ -150,25 +165,40 @@
                   "pattern": "^[A-Z]{2}$"
                 },
                 "province": {
-                  "type": "string"
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100,
+                  "pattern": "\\S"
                 },
                 "city": {
-                  "type": "string"
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100,
+                  "pattern": "\\S"
                 },
                 "district": {
                   "type": [
                     "string",
                     "null"
-                  ]
+                  ],
+                  "minLength": 1,
+                  "maxLength": 100,
+                  "pattern": "\\S"
                 },
                 "line1": {
-                  "type": "string"
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200,
+                  "pattern": "\\S"
                 },
                 "postalCode": {
                   "type": [
                     "string",
                     "null"
-                  ]
+                  ],
+                  "minLength": 1,
+                  "maxLength": 20,
+                  "pattern": "\\S"
                 }
               }
             },
@@ -204,14 +234,20 @@
                     "format": "uuid"
                   },
                   "skuCode": {
-                    "type": "string"
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80,
+                    "pattern": "\\S"
                   },
                   "description": {
-                    "type": "string"
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 240,
+                    "pattern": "\\S"
                   },
                   "quantity": {
                     "type": "string",
-                    "pattern": "^[0-9]+(\\.[0-9]{1,6})?$"
+                    "pattern": "^(?=.*[1-9])0*(?:0|[1-9][0-9]{0,12})(?:\\.[0-9]{1,6})?$"
                   },
                   "unit": {
                     "type": "string",
@@ -222,11 +258,11 @@
                   },
                   "netUnitPrice": {
                     "type": "string",
-                    "pattern": "^[0-9]+(\\.[0-9]{1,4})?$"
+                    "pattern": "^0*(?:0|[1-9][0-9]{0,14})(?:\\.[0-9]{1,4})?$"
                   },
                   "lineTotal": {
                     "type": "string",
-                    "pattern": "^[0-9]+(\\.[0-9]{1,4})?$"
+                    "pattern": "^0*(?:0|[1-9][0-9]{0,14})(?:\\.[0-9]{1,4})?$"
                   },
                   "supplyPoolId": {
                     "type": [
