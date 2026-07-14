@@ -2025,7 +2025,7 @@ components:
             - type: 'null'
         route: { $ref: '#/components/schemas/OrderRouteSnapshot' }
         capturedAt: { type: string, format: date-time }
-        snapshotHash: { type: string, pattern: '^[0-9a-f]{64}$' }
+        snapshotHash: { type: string, minLength: 1 }
     OrderProcessProjection:
       type: object
       additionalProperties: false
