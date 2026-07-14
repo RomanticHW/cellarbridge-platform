@@ -19,7 +19,7 @@ Design Baseline 阶段只提供设计证据，不应预填实现分数。
 | 领域建模 | 聚合、值对象、状态机和业务不变量是否明确？ | bounded contexts、aggregates、state machines | 非法转换被领域方法拒绝；快照和金额语义可测试 |
 | 模块架构 | 模块所有权和依赖方向是否能被构建自动验证？ | architecture overview、module rules | Spring Modulith/ArchUnit 能阻止跨 internal、循环和错误分层 |
 | 数据与事务 | 数据归属、migration、事务和历史语义是否可靠？ | data ownership、database design | module-owned schema、immutable migrations、unique/check constraints、rollback tests |
-| 幂等与事件 | 重复请求、重复事件和崩溃窗口是否被真实处理？ | idempotency、event design | quote→order exactly-once business effect、Inbox/outbox、crash-point tests |
+| 幂等与事件 | 重复请求、重复事件和崩溃窗口是否被真实处理？ | idempotency、event design | quote→order at-least-once delivery + at-most-one business effect、Inbox/outbox、crash-point tests |
 | 并发正确性 | 是否能证明库存不会超卖，而非只使用一个锁注解？ | ADR-008、inventory task/evidence | atomic conditional SQL、deterministic order、high-contention Testcontainers invariants |
 | 安全与租户 | 是否覆盖认证、授权、对象归属、字段和租户隔离？ | security/tenancy、permission matrix | role × tenant × ownership × state tests，客户 DTO allow-list，日志脱敏 |
 | API 与契约 | HTTP/event 契约是否稳定、一致、可生成和可验证？ | OpenAPI、AsyncAPI、contract docs | Problem Details、idempotency/ETag、schema examples、compatibility decisions |
