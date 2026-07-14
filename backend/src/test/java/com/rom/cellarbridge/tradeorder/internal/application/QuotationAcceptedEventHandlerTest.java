@@ -11,6 +11,7 @@ import com.rom.cellarbridge.quotation.QuotationAcceptedV1;
 import com.rom.cellarbridge.quotation.QuotationSnapshotHashV1;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -30,6 +31,7 @@ import tools.jackson.databind.node.ObjectNode;
 class QuotationAcceptedEventHandlerTest {
 
   private static final JsonMapper JSON = JsonMapper.builder().build();
+  private static final String HASH = "a".repeat(64);
   private static final List<Boundary> TEXT =
       List.of(
           new Boundary("/quotationNumber", 30, false),
@@ -97,6 +99,30 @@ class QuotationAcceptedEventHandlerTest {
     assertThat(schemaAccepts(createdHash, "a".repeat(64) + "\n")).isFalse();
     assertThatThrownBy(() -> QuotationSnapshotHashV1.normalizeIncomingHash(hash))
         .isInstanceOf(QuotationSnapshotHashV1.InvalidSnapshotHashFormatException.class);
+  }
+
+  @Test
+  void normalizesOnlyCurrentAndExactHistoricalHashFormats() {
+    assertThat(QuotationSnapshotHashV1.normalizeIncomingHash(HASH)).isEqualTo(HASH);
+    assertThat(QuotationSnapshotHashV1.normalizeStoredHash("sha256:" + HASH)).isEqualTo(HASH);
+    for (String invalid :
+        Arrays.asList(
+            null,
+            "",
+            " " + HASH,
+            HASH + " ",
+            "sha512:" + HASH,
+            "SHA256:" + HASH,
+            "sha256:sha256:" + HASH,
+            "a".repeat(63),
+            "a".repeat(65),
+            HASH.toUpperCase(),
+            "sha256:" + HASH.toUpperCase())) {
+      assertThatThrownBy(() -> QuotationSnapshotHashV1.normalizeIncomingHash(invalid))
+          .isInstanceOf(QuotationSnapshotHashV1.InvalidSnapshotHashFormatException.class);
+      assertThatThrownBy(() -> QuotationSnapshotHashV1.normalizeStoredHash(invalid))
+          .isInstanceOf(QuotationSnapshotHashV1.InvalidSnapshotHashFormatException.class);
+    }
   }
 
   @Test
