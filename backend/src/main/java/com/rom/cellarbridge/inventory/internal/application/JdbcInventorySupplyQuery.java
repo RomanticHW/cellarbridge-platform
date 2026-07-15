@@ -8,7 +8,10 @@ import com.rom.cellarbridge.identityaccess.TenantId;
 import com.rom.cellarbridge.inventory.InventorySupplyQuery;
 import com.rom.cellarbridge.inventory.QuantityUnit;
 import com.rom.cellarbridge.inventory.SupplyType;
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -121,7 +124,9 @@ public class JdbcInventorySupplyQuery implements InventorySupplyQuery {
   }
 
   @Override
-  public List<RouteAvailability> findRouteAvailability(TenantId tenantId, Set<UUID> skuIds) {
+  public List<RouteAvailability> findRouteAvailability(
+      TenantId tenantId, Set<UUID> skuIds, Instant decisionAt) {
+    Objects.requireNonNull(decisionAt, "decisionAt is required");
     if (skuIds == null || skuIds.isEmpty()) {
       return List.of();
     }
@@ -134,26 +139,38 @@ public class JdbcInventorySupplyQuery implements InventorySupplyQuery {
                sp.currency,
                l.quantity_unit,
                SUM(l.on_hand_quantity - l.reserved_quantity) AS available_quantity,
-               MIN(COALESCE(l.available_from, sp.available_from)) AS available_from,
+               CASE
+                 WHEN BOOL_OR(l.available_from IS NULL AND sp.available_from IS NULL) THEN NULL
+                 ELSE MIN(GREATEST(l.available_from, sp.available_from))
+               END AS available_from,
                sp.confidence,
                sp.policy_version,
-               MAX(GREATEST(l.updated_at, sp.updated_at)) AS data_as_of
+               MAX(GREATEST(l.updated_at, sp.updated_at, w.updated_at)) AS data_as_of
           FROM inventory.supply_pool sp
+          JOIN inventory.warehouse w
+            ON w.tenant_id = sp.tenant_id
+           AND w.id = sp.warehouse_id
           JOIN inventory.inventory_lot l
             ON l.tenant_id = sp.tenant_id
            AND l.supply_pool_id = sp.id
          WHERE sp.tenant_id = :tenantId
+           AND w.tenant_id = :tenantId
+           AND l.tenant_id = :tenantId
            AND l.sku_id IN (:skuIds)
            AND sp.status = 'ACTIVE'
+           AND w.status = 'ACTIVE'
            AND l.status = 'AVAILABLE'
            AND sp.route_code IS NOT NULL
+           AND (sp.available_from IS NULL OR sp.available_from <= :decisionAt)
+           AND (l.available_from IS NULL OR l.available_from <= :decisionAt)
          GROUP BY sp.id, l.sku_id, sp.route_code, sp.supply_type, sp.currency, l.quantity_unit,
                   sp.confidence, sp.policy_version
          ORDER BY sp.route_code, l.sku_id, l.quantity_unit, sp.id
         """,
         new MapSqlParameterSource()
             .addValue("tenantId", tenantId.value())
-            .addValue("skuIds", skuIds),
+            .addValue("skuIds", skuIds)
+            .addValue("decisionAt", Timestamp.from(decisionAt)),
         (resultSet, rowNumber) ->
             new RouteAvailability(
                 resultSet.getObject("supply_pool_id", UUID.class),
