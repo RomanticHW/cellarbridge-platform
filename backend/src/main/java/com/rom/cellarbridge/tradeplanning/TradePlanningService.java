@@ -110,6 +110,27 @@ public interface TradePlanningService {
         throw new IllegalArgumentException("Supply decision does not match route evaluation root");
       }
     }
+
+    public RouteEvaluation(
+        UUID evaluationId,
+        String policyVersion,
+        Instant evaluatedAt,
+        String inputHash,
+        List<RouteCandidate> candidates,
+        TradeRouteCode recommendedRouteCode,
+        TradeRouteCode selectedRouteCode,
+        RouteOverride override) {
+      this(
+          evaluationId,
+          policyVersion,
+          evaluatedAt,
+          inputHash,
+          candidates,
+          recommendedRouteCode,
+          selectedRouteCode,
+          override,
+          null);
+    }
   }
 
   record RouteCandidate(

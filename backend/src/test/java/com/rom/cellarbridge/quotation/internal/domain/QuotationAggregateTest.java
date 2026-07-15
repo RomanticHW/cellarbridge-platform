@@ -250,7 +250,6 @@ class QuotationAggregateTest {
                 List.of())),
         TradeRouteCode.SH_GENERAL_TRADE,
         TradeRouteCode.SH_GENERAL_TRADE,
-        null,
         null);
   }
 }
