@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.rom.cellarbridge.test.PostgresIntegrationTestSupport;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
@@ -52,6 +53,11 @@ class InventoryUnitMigrationIntegrationTest extends PostgresIntegrationTestSuppo
             "availability_class",
             "automatically_reservable",
             "sku_id");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM flyway_schema_history WHERE version IS NOT NULL AND success",
+                Integer.class))
+        .isEqualTo(10);
   }
 
   @Test
@@ -61,8 +67,28 @@ class InventoryUnitMigrationIntegrationTest extends PostgresIntegrationTestSuppo
     JdbcTemplate jdbc = jdbc(database);
     insertLegacyInventory(jdbc);
     insertLegacyCatalog(jdbc);
+    List<Map<String, Object>> warehouses =
+        jdbc.queryForList("SELECT id, code, name, status FROM inventory.warehouse ORDER BY id");
+    List<Map<String, Object>> lots =
+        jdbc.queryForList(
+            "SELECT id, lot_code, status, on_hand_quantity, reserved_quantity FROM inventory.inventory_lot ORDER BY id");
+    List<Map<String, Object>> projections =
+        jdbc.queryForList(
+            "SELECT tenant_id, sku_id, supply_pool_id, supply_type, location_label, projection_version FROM catalog.sku_supply_projection ORDER BY tenant_id, sku_id, supply_pool_id");
 
     migrate(database, "11");
+
+    assertThat(
+            jdbc.queryForList("SELECT id, code, name, status FROM inventory.warehouse ORDER BY id"))
+        .isEqualTo(warehouses);
+    assertThat(
+            jdbc.queryForList(
+                "SELECT id, lot_code, status, on_hand_quantity, reserved_quantity FROM inventory.inventory_lot ORDER BY id"))
+        .isEqualTo(lots);
+    assertThat(
+            jdbc.queryForList(
+                "SELECT tenant_id, sku_id, supply_pool_id, supply_type, location_label, projection_version FROM catalog.sku_supply_projection ORDER BY tenant_id, sku_id, supply_pool_id"))
+        .isEqualTo(projections);
 
     assertThat(
             jdbc.queryForObject("SELECT quantity_unit FROM inventory.inventory_lot", String.class))
@@ -92,6 +118,44 @@ class InventoryUnitMigrationIntegrationTest extends PostgresIntegrationTestSuppo
     JdbcTemplate fresh = jdbc(freshDatabase);
     WarehouseState freshSeed = warehouseState(fresh);
     assertThat(freshSeed.version()).isZero();
+    assertThat(
+            fresh.queryForObject(
+                "SELECT count(*) FROM flyway_schema_history WHERE version IS NULL AND success",
+                Integer.class))
+        .isEqualTo(3);
+    assertThat(
+            fresh.queryForObject(
+                "SELECT count(*) FROM inventory.inventory_lot WHERE quantity_unit IS NULL",
+                Integer.class))
+        .isZero();
+    assertThat(
+            fresh.queryForObject(
+                "SELECT count(*) FROM catalog.sku_supply_projection WHERE quantity_unit IS NULL",
+                Integer.class))
+        .isZero();
+    assertThat(
+            fresh.queryForObject(
+                "SELECT count(*) FROM inventory.warehouse WHERE allocation_priority < 0",
+                Integer.class))
+        .isZero();
+    assertThat(dualUnitGroups(fresh, "catalog.sku_supply_projection")).isPositive();
+    assertThat(dualUnitGroups(fresh, "inventory.inventory_lot")).isPositive();
+    assertThatThrownBy(
+            () -> fresh.update("UPDATE inventory.inventory_lot SET quantity_unit = NULL"))
+        .isInstanceOf(DataIntegrityViolationException.class);
+    assertThatThrownBy(
+            () -> fresh.update("UPDATE catalog.sku_supply_projection SET quantity_unit = NULL"))
+        .isInstanceOf(DataIntegrityViolationException.class);
+    assertThatThrownBy(
+            () ->
+                fresh.update(
+                    "UPDATE inventory.inventory_lot SET reserved_quantity = on_hand_quantity + 1"))
+        .isInstanceOf(DataIntegrityViolationException.class);
+    assertThatThrownBy(
+            () ->
+                fresh.update(
+                    "UPDATE catalog.sku_supply_projection SET quantity_unit = 'BOTTLE' WHERE sku_id = '34000000-0000-4000-8000-000000000001' AND supply_pool_id = '36000000-0000-4000-8000-000000000001' AND quantity_unit = 'CASE'"))
+        .isInstanceOf(DataIntegrityViolationException.class);
     rerunCatalogSeed(fresh);
     assertThat(warehouseState(fresh)).isEqualTo(freshSeed);
 
@@ -174,6 +238,14 @@ class InventoryUnitMigrationIntegrationTest extends PostgresIntegrationTestSuppo
                 resultSet.getLong("version"),
                 resultSet.getTimestamp("updated_at").toInstant(),
                 resultSet.getObject("updated_by", UUID.class)));
+  }
+
+  private static int dualUnitGroups(JdbcTemplate jdbc, String table) {
+    return jdbc.queryForObject(
+        "SELECT count(*) FROM (SELECT tenant_id, sku_id, supply_pool_id FROM "
+            + table
+            + " GROUP BY 1, 2, 3 HAVING count(DISTINCT quantity_unit) = 2) groups",
+        Integer.class);
   }
 
   private JdbcTemplate jdbc(String database) {
