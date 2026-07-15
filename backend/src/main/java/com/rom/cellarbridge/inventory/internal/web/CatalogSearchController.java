@@ -2,6 +2,7 @@ package com.rom.cellarbridge.inventory.internal.web;
 
 import com.rom.cellarbridge.catalog.CatalogItemStatus;
 import com.rom.cellarbridge.inventory.AvailabilityClass;
+import com.rom.cellarbridge.inventory.QuantityUnit;
 import com.rom.cellarbridge.inventory.SupplyType;
 import com.rom.cellarbridge.inventory.internal.application.CatalogSupplySearchService;
 import com.rom.cellarbridge.inventory.internal.application.CatalogSupplySearchService.ExactLotView;
@@ -52,6 +53,7 @@ final class CatalogSearchController {
       @RequestParam(required = false) @Min(1) Integer volumeMl,
       @RequestParam(required = false) Set<SupplyType> supplyType,
       @RequestParam(required = false) Set<AvailabilityClass> availabilityClass,
+      @RequestParam(required = false) Set<QuantityUnit> quantityUnit,
       @RequestParam(required = false) Boolean automaticallyReservable,
       @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
           Instant availableFrom,
@@ -72,6 +74,7 @@ final class CatalogSearchController {
                 volumeMl,
                 supplyType == null ? Set.of() : supplyType,
                 availabilityClass == null ? Set.of() : availabilityClass,
+                quantityUnit == null ? Set.of() : quantityUnit,
                 automaticallyReservable,
                 availableFrom,
                 availableTo,
@@ -150,11 +153,11 @@ final class CatalogSearchController {
     }
   }
 
-  record QuantityResponse(String value, String unit) {
-    static QuantityResponse cases(BigDecimal value) {
+  record QuantityResponse(String value, QuantityUnit unit) {
+    static QuantityResponse of(BigDecimal value, QuantityUnit unit) {
       return value == null
           ? null
-          : new QuantityResponse(value.stripTrailingZeros().toPlainString(), "CASE");
+          : new QuantityResponse(value.stripTrailingZeros().toPlainString(), unit);
     }
   }
 
@@ -165,6 +168,8 @@ final class CatalogSearchController {
       QuantityResponse onHandQuantity,
       QuantityResponse reservedQuantity,
       QuantityResponse availableQuantity,
+      int warehouseAllocationPriority,
+      long warehouseVersion,
       Instant availableFrom,
       Instant dataAsOf) {
     static ExactLotResponse from(ExactLotView lot) {
@@ -172,9 +177,11 @@ final class CatalogSearchController {
           lot.lotId(),
           lot.lotCode(),
           lot.warehouseLabel(),
-          QuantityResponse.cases(lot.onHandQuantity()),
-          QuantityResponse.cases(lot.reservedQuantity()),
-          QuantityResponse.cases(lot.availableQuantity()),
+          QuantityResponse.of(lot.onHandQuantity(), lot.quantityUnit()),
+          QuantityResponse.of(lot.reservedQuantity(), lot.quantityUnit()),
+          QuantityResponse.of(lot.availableQuantity(), lot.quantityUnit()),
+          lot.warehouseAllocationPriority(),
+          lot.warehouseVersion(),
           lot.availableFrom(),
           lot.dataAsOf());
     }
@@ -183,6 +190,7 @@ final class CatalogSearchController {
   record SupplyResponse(
       UUID supplyPoolId,
       SupplyType supplyType,
+      QuantityUnit quantityUnit,
       String locationLabel,
       AvailabilityClass availabilityLevel,
       String displayQuantityBand,
@@ -195,11 +203,12 @@ final class CatalogSearchController {
       return new SupplyResponse(
           supply.supplyPoolId(),
           supply.supplyType(),
+          supply.quantityUnit(),
           supply.locationLabel(),
           supply.availabilityClass(),
           supply.displayQuantityBand(),
           supply.automaticallyReservable(),
-          QuantityResponse.cases(supply.displayedAvailableQuantity()),
+          QuantityResponse.of(supply.displayedAvailableQuantity(), supply.quantityUnit()),
           supply.exactLots().stream().map(ExactLotResponse::from).toList(),
           supply.estimatedAvailableAt(),
           supply.dataAsOf());

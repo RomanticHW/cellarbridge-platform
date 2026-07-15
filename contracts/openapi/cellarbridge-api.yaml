@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: CellarBridge API
-  version: 1.4.0
+  version: 1.5.0
   summary: Contract baseline for B2B wine quotation, order, inventory and fulfillment
   description: |
     This contract remains the design-first integration baseline for CellarBridge. All examples are synthetic.
@@ -317,6 +317,12 @@ paths:
           schema:
             type: array
             items: { $ref: '#/components/schemas/AvailabilityClass' }
+          explode: false
+        - name: quantityUnit
+          in: query
+          schema:
+            type: array
+            items: { $ref: '#/components/schemas/QuantityUnit' }
           explode: false
         - name: automaticallyReservable
           in: query
@@ -1236,12 +1242,15 @@ components:
       properties:
         amount: { type: string, pattern: '^-?[0-9]+(\.[0-9]{1,4})?$' }
         currency: { type: string, pattern: '^[A-Z]{3}$' }
+    QuantityUnit:
+      type: string
+      enum: [CASE, BOTTLE]
     Quantity:
       type: object
       required: [value, unit]
       properties:
         value: { type: string, pattern: '^[0-9]+(\.[0-9]{1,6})?$' }
-        unit: { type: string, enum: [CASE, BOTTLE] }
+        unit: { $ref: '#/components/schemas/QuantityUnit' }
     Address:
       type: object
       required: [countryCode, province, city, line1]
@@ -1520,7 +1529,7 @@ components:
         updatedAt: { type: string, format: date-time }
     ExactLotAvailability:
       type: object
-      required: [lotId, lotCode, warehouseLabel, onHandQuantity, reservedQuantity, availableQuantity, dataAsOf]
+      required: [lotId, lotCode, warehouseLabel, onHandQuantity, reservedQuantity, availableQuantity, warehouseAllocationPriority, warehouseVersion, dataAsOf]
       properties:
         lotId: { type: string, format: uuid }
         lotCode: { type: string }
@@ -1528,14 +1537,17 @@ components:
         onHandQuantity: { $ref: '#/components/schemas/Quantity' }
         reservedQuantity: { $ref: '#/components/schemas/Quantity' }
         availableQuantity: { $ref: '#/components/schemas/Quantity' }
+        warehouseAllocationPriority: { type: integer, minimum: 0 }
+        warehouseVersion: { type: integer, format: int64, minimum: 0 }
         availableFrom: { type: [string, 'null'], format: date-time }
         dataAsOf: { type: string, format: date-time }
     SupplySummary:
       type: object
-      required: [supplyPoolId, supplyType, locationLabel, availabilityLevel, displayQuantityBand, automaticallyReservable, exactLots, updatedAt]
+      required: [supplyPoolId, supplyType, quantityUnit, locationLabel, availabilityLevel, displayQuantityBand, automaticallyReservable, exactLots, updatedAt]
       properties:
         supplyPoolId: { type: string, format: uuid }
         supplyType: { $ref: '#/components/schemas/SupplyType' }
+        quantityUnit: { $ref: '#/components/schemas/QuantityUnit' }
         locationLabel: { type: string }
         displayedAvailableQuantity:
           oneOf:
