@@ -182,7 +182,10 @@ VALUES
      '2026-07-13T00:00:00Z', '21200000-0000-4000-8000-000000000001',
      '2026-07-13T00:00:00Z', '21200000-0000-4000-8000-000000000001', 0)
 ON CONFLICT (tenant_id, id) DO UPDATE
-    SET allocation_priority = EXCLUDED.allocation_priority
+    SET allocation_priority = EXCLUDED.allocation_priority,
+        updated_at = CURRENT_TIMESTAMP,
+        updated_by = EXCLUDED.updated_by,
+        version = inventory.warehouse.version + 1
   WHERE inventory.warehouse.allocation_priority IS DISTINCT FROM EXCLUDED.allocation_priority;
 
 INSERT INTO inventory.supply_pool
