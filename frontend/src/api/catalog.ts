@@ -6,6 +6,7 @@ export type CatalogSearchItem = components['schemas']['SkuSearchItem'];
 export type CatalogSearchPage = components['schemas']['SkuSearchPage'];
 export type CatalogSearchQuery = NonNullable<operations['searchSkus']['parameters']['query']>;
 export type CatalogSku = components['schemas']['SkuSnapshot'];
+export type QuantityUnit = components['schemas']['QuantityUnit'];
 export type SupplySummary = components['schemas']['SupplySummary'];
 export type SupplyType = components['schemas']['SupplyType'];
 
