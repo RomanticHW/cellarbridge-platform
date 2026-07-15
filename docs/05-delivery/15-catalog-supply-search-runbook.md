@@ -76,29 +76,29 @@ make catalog-benchmark
 
 ## 6. 性能证据
 
-本地执行日期：**2026-07-14**。脚本使用独立 PostgreSQL 18.4 容器，从空库应用 V4/V5/V10/V11，确定性写入 **12,000 SKU、36,000 单位化供给投影、36,000 Inventory lot**（包含 BOTTLE 与同一 pool/SKU 双单位数据），执行 `ANALYZE`，热身 5 次后测量 30 次。宿主为 ARM64 macOS；Docker Desktop 分配 10 CPU、8,321,515,520 bytes memory。
+本地执行日期：**2026-07-15**。脚本使用独立 PostgreSQL 18.4 容器，从空库应用 V4/V5/V10/V11，确定性写入 **12,000 SKU、36,000 单位化供给投影、36,000 Inventory lot**；SQL 门禁确认 projection 与 lot 各有 **4,000** 个同 tenant/SKU/pool 的 CASE+BOTTLE 组。执行 `ANALYZE`，热身 5 次后测量 30 次；ARM64 macOS 的 Docker Desktop 分配 10 CPU、8,321,515,520 bytes memory。
 
 代表查询为 tenant 内关键词 `starling` + `DOMESTIC_ON_HAND` + `BOTTLE` + `AVAILABLE`，限制 26 行，并执行 `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)`：
 
 | Metric | Result |
 |---|---:|
-| Execution p50 | 7.037 ms |
-| Execution p95 | 12.378 ms |
-| Sample min / max | 6.090 / 14.293 ms |
-| Representative execution | 11.471 ms |
-| Representative planning | 4.078 ms |
-| Top-level shared hit / read blocks | 2,671 / 0 |
+| Execution p50 | 6.964 ms |
+| Execution p95 | 7.831 ms |
+| Sample min / max | 6.527 / 8.270 ms |
+| Representative execution | 7.239 ms |
+| Representative planning | 2.826 ms |
+| Top-level shared hit / read blocks | 2,913 / 0 |
 
-主搜索计划包含 trigram GiST `Index Scan` / `Bitmap Index Scan`、供给投影和产品主键 `Index Scan`。在该数据分布下，planner 对相关供给子查询选择旧的组合索引，并把 `quantity_unit` 保留为 Filter；脚本因此另执行 tenant-first 的单位过滤证据查询，实际通过 `ix_catalog_supply_projection_unit_filter` 的 `Index Only Scan` 将 `quantity_unit = 'BOTTLE'` 放入 `Index Cond`，返回 100 行，执行 0.270 ms。12,000 行下 planner 对便宜的精确 FTS 分支和主 SKU 关联仍选择顺序扫描；这些均是未关闭 seqscan 的真实 cost-based 计划。
+主搜索计划包含 trigram GiST `Index Scan` / `Bitmap Index Scan`、供给投影和产品主键 `Index Scan`。planner 对相关供给子查询选择旧组合索引并把 `quantity_unit` 保留为 Filter；tenant-first 证据查询则通过 `ix_catalog_supply_projection_unit_filter` 的 `Index Only Scan` 将单位放入 `Index Cond`，执行 0.197 ms。所有计划均未关闭 seqscan。
 
-Task 04 文档基线为 p50 **18.144 ms** / p95 **18.736 ms**；本次分别低约 61.2% / 33.9%，未发现回归。由于宿主/容器配额记录不同，该比较只用于本地变化方向，不构成跨环境 SLA。完整 JSON 和每次时间由脚本写入 ignored 的 `target/catalog-search-benchmark/`，每次执行可重新生成。
+Task 04 文档基线为 p50 **18.144 ms** / p95 **18.736 ms**；本次分别低约 61.6% / 58.2%，未发现回归。该比较只用于本地变化方向，不构成跨环境 SLA；完整 JSON 和逐次时间写入 ignored 的 `target/catalog-search-benchmark/`。
 
 这些结果只描述上述本机、容器配额、数据分布和 warm-cache 查询，不是生产 SLA，也不替代生产容量测试。
 
 ## 7. 验证证据
 
 - `InventoryLotTest`：CASE/BOTTLE、null 拒绝、负数、reserved <= on-hand 与同单位 available 不变量。
-- `InventoryUnitMigrationIntegrationTest`：fresh V2～V11 + repeatable seed、真实 V9 → V11 回填、列/约束/PK/索引/manifest 证据与非法数据拒绝。
+- `InventoryUnitMigrationIntegrationTest`：fresh V2～V11 + repeatable seed、真实 V9 → V11 ID/行数/旧字段保留、列/约束/PK/索引、非法数据与 seed 单次版本递增证据。
 - `InventorySupplyQueryIntegrationTest`：同一 route/pool/SKU 的 CASE/BOTTLE 分组，以及 exact Lot 的 priority/version 和确定性查询顺序。
 - `CatalogSearchApiIntegrationTest`：真实 PostgreSQL migration、双单位/filter、游标绑定、401/403、Sales 字段隐藏、tenant/warehouse assignment 与跨单位/跨 SKU 隔离。
 - `CatalogSearchPage.test.tsx` / `catalog.test.ts`：生成契约客户端、单位 URL filter、双卡片、Sales 隐藏、exact priority/version、loading/empty/error/403 和本地选择区。

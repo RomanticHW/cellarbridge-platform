@@ -1,7 +1,7 @@
 # 实现状态
 
 Baseline version: **Design Baseline v1.0**  
-Status date: **2026-07-14**
+Status date: **2026-07-15**
 
 ## 1. 状态定义
 
@@ -30,8 +30,8 @@ Status date: **2026-07-14**
 | Broader application security controls | Partially available | Task 02 delivers identity boundary, safe audit logging, CORS and response headers; later threat, dependency and release evidence remains planned |
 | Partner onboarding and eligibility | Available | tenant-scoped draft/review lifecycle, duplicate controls, immutable eligibility, React workspace and real OIDC Playwright flow |
 | Catalog and supply search | Available | Catalog/Inventory model, FTS + trigram search, field/warehouse permissions, React workspace, real OIDC E2E and reproducible benchmark |
-| Inventory unit readiness | Available | CASE/BOTTLE Lot 与 Catalog projection 分离；Warehouse priority/version 仅在授权 exact-lot 视图可见；V9 → V11 升级、约束、权限、租户、E2E 与 benchmark 证据 |
-| Quotation and trade planning | Available | revisioned snapshots/pricing, deterministic explainable route policy, independent approval, issue token, customer-safe read-only preview, React workspace, Testcontainers and real OIDC E2E |
+| Inventory unit readiness | Available | CASE/BOTTLE Lot 与 Catalog projection 分离；Warehouse priority/version 仅在授权 exact-lot 视图可见；fresh seed、V9 → V11 保留性、约束、权限、E2E 与双单位 benchmark 证据 |
+| Quotation and trade planning | Available | revisioned snapshots/pricing, ROUTE-2026-02 exact-unit supply coverage, independent approval, issue token, customer-safe preview, React workspace, Testcontainers and real OIDC E2E |
 | Customer quotation decision | Available | controlled portal context, strict customer DTO, accept/reject idempotency, immutable decision, leased expiry work, durable `QuotationAcceptedV1`, React receipt and refresh-safe E2E |
 | Quote-to-order conversion | Available | transactional Inbox consumer, immutable Trade Order snapshot, unique quotation conversion, reliable `TradeOrderCreatedV1`, eventual Quotation link, tenant/Buyer-scoped query UI and real OIDC E2E |
 | Inventory reservation | Designed | orders intentionally remain `PENDING_RESERVATION`; atomic allocation and reservation outcome handling remain Task 08 |

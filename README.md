@@ -9,8 +9,8 @@
 > The approved design baseline now runs through secure customer acceptance, transactional Inbox
 > consumption, one immutable order per accepted quotation, reliable order-created publication,
 > eventual quotation linking, and tenant/Partner-scoped order views. Inventory lots and supply
-> projections now preserve CASE/BOTTLE units, while authorized exact-stock views expose warehouse
-> priority/version evidence. Availability remains informational until Task 08 reservation succeeds;
+> projections now preserve CASE/BOTTLE units; ROUTE-2026-02 keeps MOQ case-equivalent separate from
+> exact-unit coverage, while authorized exact-stock views expose warehouse priority/version evidence. Availability remains informational until Task 08 reservation succeeds;
 > reservation and later workflows remain planned.
 
 ---
