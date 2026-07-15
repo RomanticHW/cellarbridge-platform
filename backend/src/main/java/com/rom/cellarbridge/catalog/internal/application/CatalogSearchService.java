@@ -87,6 +87,7 @@ public class CatalogSearchService implements CatalogSearchQuery {
             null,
             Set.of(),
             Set.of(),
+            Set.of(),
             null,
             null,
             null,
@@ -115,6 +116,7 @@ public class CatalogSearchService implements CatalogSearchQuery {
     return new SupplyProjectionView(
         projection.supplyPoolId(),
         projection.supplyType(),
+        projection.quantityUnit(),
         projection.locationLabel(),
         projection.availabilityClass(),
         projection.displayQuantityBand(),
@@ -158,6 +160,7 @@ public class CatalogSearchService implements CatalogSearchQuery {
         command.volumeMl(),
         immutableSet(command.supplyTypes()),
         immutableSet(command.availabilityClasses()),
+        immutableSet(command.quantityUnits()),
         command.automaticallyReservable(),
         availableFrom,
         availableTo,
@@ -218,6 +221,7 @@ public class CatalogSearchService implements CatalogSearchQuery {
     values.put("volume", criteria.volumeMl());
     values.put("supply", sorted(criteria.supplyTypes(), Function.identity()));
     values.put("availability", sorted(criteria.availabilityClasses(), Function.identity()));
+    values.put("unit", sorted(criteria.quantityUnits(), Function.identity()));
     values.put("automatic", criteria.automaticallyReservable());
     values.put("from", criteria.availableFrom());
     values.put("to", criteria.availableTo());

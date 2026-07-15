@@ -192,6 +192,7 @@ public class CatalogSupplySearchService {
         command.volumeMl(),
         names(command.supplyTypes()),
         names(command.availabilityClasses()),
+        Set.of(),
         command.automaticallyReservable(),
         command.availableFrom(),
         command.availableTo(),
