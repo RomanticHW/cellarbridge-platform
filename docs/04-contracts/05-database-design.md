@@ -2,7 +2,7 @@
 
 ## 1. 设计原则
 
-状态边界：当前物理数据库由 V2～V11 migration 实现 Task 01～07B。Inventory Lot 数量单位、Warehouse 分配优先级和 Catalog 单位化供给投影已 Available；`inventory_reservation`、`reservation_allocation`、确定性分配执行、release/consume 与订单 `RESERVED` 迁移仍是 Task 08 的 Designed 能力。
+状态边界：当前物理数据库由 V2～V12 migration 实现。V12 只扩展 `trade_planning.evaluation`，保存 selected-route Supply Decision 根证据与 JSON；历史 ROUTE-2026-01/02 行保持空决定。Quotation 冻结、`inventory_reservation`、`reservation_allocation`、确定性分配执行、release/consume 与订单 `RESERVED` 迁移仍不可用。
 
 - PostgreSQL 18；
 - module schema ownership；
@@ -80,6 +80,12 @@ erDiagram
 - id；tenant；number；source_quotation_id；source_revision_id；partner_id；status；currency；total；commercial_snapshot JSONB；snapshot_hash；version。
 - unique `(tenant, source_quotation_id)`。
 
+### `trade_planning.evaluation`
+
+- V12 增加 nullable 的 Supply Decision schema/policy/time/hash/summary 五列，并要求全空或全完整；`ROUTE-2026-03` 必须完整且 decision time 等于 evaluated time。
+- 根列与 JSON 的 schema、policy、hash、evaluation ID、input hash、selected route 交叉校验；Repository 读回时重算独立 Decision Hash。
+- 该证据属于 Planning，不写 `quotation` 或 `inventory`，也不表示已预占具体 Pool/Lot。
+
 ### `inventory.inventory_reservation`
 
 状态：**Designed（Task 08）**。
@@ -147,4 +153,4 @@ CHECK (version >= 0)
 
 ## 9. 详细 DDL
 
-Design Baseline 提供逻辑设计；实际 migration 在对应纵向切片创建。当前 V2～V11 可由 Flyway/Testcontainers 从空库执行，并有真实 V9 → V11 升级证据。V10 只修改 `inventory`，V11 只修改 `catalog`；manifest/hash、单位/优先级约束、新主键和索引均由 PostgreSQL catalog tests 验证。不得用上述准备度能力暗示 reservation 表或分配执行已经 Available。
+Design Baseline 提供逻辑设计；实际 migration 在对应纵向切片创建。当前 V2～V12 可由 Flyway/Testcontainers 从空库执行，并有真实 V11 → V12 历史评估保留证据。V10 只修改 `inventory`，V11 只修改 `catalog`，V12 只修改 `trade_planning`；不得用上述准备度能力暗示 Quotation freeze、reservation 表或分配执行已经 Available。

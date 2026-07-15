@@ -28,8 +28,9 @@
 | FF-DATA-005 | migration 文件合并后不可改 | current-tree SHA-256 manifest + CI Git-history base/head gate |
 | FF-DATA-006 | 金额/数量列 precision/scale 符合规范 | catalog test（numeric 分类与命名约束） |
 | FF-DATA-007 | Inventory quantity unit / allocation priority 与 Catalog 单位化投影 | V10/V11、升级测试与 PostgreSQL catalog test |
+| FF-DATA-008 | Planning Supply Decision 根列、JSON 与历史兼容 | Trade Planning-only V12、fresh/upgrade/round-trip/tamper tests |
 
-状态：FF-DATA-001～007 **Available**。FF-DATA-007 只证明单位、优先级数据和只读可见性，不表示确定性分配或库存预占已经执行。
+状态：FF-DATA-001～008 **Available**。FF-DATA-007/008 只证明只读供给输入和 Planning 决策证据，不表示 Quotation 已冻结决定、确定性分配或库存预占已经执行。
 
 ## 4. 契约
 

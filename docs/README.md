@@ -116,3 +116,5 @@ The documentation is organized from evidence to delivery. Each layer narrows the
 ## Change control
 
 `docs/design-baseline.yaml` identifies the approved baseline. A behavior change must update its requirement, domain, contract, test, and implementation status together. Architecture changes require an ADR before code changes.
+
+Current Task 07C evidence is layered by [ADR-016](03-architecture/adr/ADR-016-route-supply-decision-readiness-layers.md): Foundation is completed and Planning is implemented in review; Quotation, Propagation, and Task 08 remain blocked.

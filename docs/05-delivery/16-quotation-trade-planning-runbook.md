@@ -8,7 +8,8 @@ Requirements: **UC-QUO-001–003, UC-TRD-001, FR-QUO-001–009, FR-TRD-001–006
 
 - Sales 从活动客户与活动 SKU 创建报价草稿；金额使用 `BigDecimal`、四位小数与 `HALF_UP`，支持箱/瓶换算、折扣、人工单价和路线费用分摊。
 - 每次报价保存捕获客户、SKU、价格来源版本；已提交修订不可修改，变更请求后的再次保存创建新修订。
-- Owner Review 将供给覆盖规则版本化为 `ROUTE-2026-02`：MOQ 只使用 case-equivalent，精确覆盖与 confidence 只匹配原始 CASE/BOTTLE 单位及指定 pool；不拆/合箱或跨单位求和。
+- Planning 将当前评估升级为 `ROUTE-2026-03`：MOQ 只使用 case-equivalent；精确覆盖、自动 Supply Type 与 confidence 统一来自 `SUPPLY-DECISION-2026-01`，不拆/合箱、不跨单位或 Supply Type 求和，Fixed Pool 不 fallback，Auto 不冻结 Pool。
+- 一次评估使用一个微秒对齐时间；canonical input schema 3 的确切序列化字符串产生 input hash，selected route 的 Supply Decision 与候选使用同一次 Policy 结果并由 V12 同事务持久化。
 - 非推荐路线只能由经理填写理由后覆盖；评估输入摘要、策略版本、原推荐、操作者和发生时间持久化。
 - 折扣、毛利、账期、人工/异常价格、非推荐路线和有效期规则产生审批要求。提交者不能审批自己的修订；并发重复审批由版本条件与唯一约束收敛为一条决策。
 - 只有仍在有效期且当前路线仍合格的已批准报价可以签发。签发生成高熵令牌，只保存 SHA-256 摘要；公开 API 使用明确 allow-list 和 `Cache-Control: no-store`。
@@ -18,13 +19,14 @@ Requirements: **UC-QUO-001–003, UC-TRD-001, FR-QUO-001–009, FR-TRD-001–006
 
 `quotation` 和 `tradeplanning` 均为 `com.rom.cellarbridge` 的直接子模块。Quotation 只调用 Partner、Catalog 与 Trade Planning 的公开接口；不会直接依赖 Inventory。Trade Planning 通过 Partner、Catalog 与 Inventory 的 tenant-explicit 查询接口组合评估输入。
 
-`V6__trade_planning_evaluations.sql` 保存评估、候选、评分、拒绝与覆盖证据；`V7__quotation_revisions_and_approvals.sql` 保存报价、修订、行、审批、公开访问摘要、审计、发布和工作项。每个表带 tenant，模块之间不建立跨 schema 外键，Quotation 不跨 schema join。
+`V6__trade_planning_evaluations.sql` 保存评估与候选；Trade Planning-only `V12__trade_planning_supply_decision_snapshot.sql` 增加 selected-route Decision 根列/JSON，并保持历史 ROUTE-2026-01/02 空决定可读。`V7` Quotation 表未在本层修改。
 
 策略版本固定为：
 
 | Policy | Version |
 |---|---|
-| Route evaluation | `ROUTE-2026-02`（历史 `ROUTE-2026-01` 仍可读取） |
+| Route evaluation | `ROUTE-2026-03`（历史 `ROUTE-2026-01/02` 仍可读取） |
+| Supply decision | `SUPPLY-DECISION-2026-01`, schema 1 |
 | Pricing | `PRICE-2026-01` |
 | Approval | `APPROVAL-2026-01` |
 
@@ -70,4 +72,4 @@ make quotation-e2e
 - Task 05 自身不实现客户决定；当前仓库的接受/拒绝见 Task 06 运行手册，幂等报价转订单见 Task 07 运行手册。库存预占与履约仍未实现。
 - 报价列表当前面向演示规模；接口返回稳定页结构，但深分页优化可在真实数据规模需要时引入。
 - 签发后的通知投递和外部事件 broker 发布属于后续可靠事件/通知任务；Task 05 只在 Quotation 自有表内记录发布证据与待办。
-- 路线与价格是确定性合成策略，不代表实际海关、税务、承运商报价或生产承诺；route-bound supply decision 与库存预占均未实现。
+- 路线与价格是确定性合成策略，不代表实际海关、税务、承运商报价或生产承诺。Planning 已有内部 route-bound evidence，但 Quotation freeze、事件/订单传播和库存预占均未实现。

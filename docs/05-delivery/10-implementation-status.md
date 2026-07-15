@@ -32,6 +32,7 @@ Status date: **2026-07-15**
 | Catalog and supply search | Available | Catalog/Inventory model, FTS + trigram search, field/warehouse permissions, React workspace, real OIDC E2E and reproducible benchmark |
 | Inventory unit readiness | Available | CASE/BOTTLE Lot 与 Catalog projection 分离；Warehouse priority/version 仅在授权 exact-lot 视图可见；fresh seed、V9 → V11 保留性、约束、权限、E2E 与双单位 benchmark 证据 |
 | Quotation and trade planning | Available | revisioned snapshots/pricing, ROUTE-2026-02 exact-unit supply coverage, independent approval, issue token, customer-safe preview, React workspace, Testcontainers and real OIDC E2E |
+| Route supply-decision Planning evidence | Partially available | ROUTE-2026-03 single-source eligibility/confidence, one microsecond evaluation time, canonical input schema 3, V12 selected-route evidence and historical reads; Quotation freeze/propagation remain blocked |
 | Customer quotation decision | Available | controlled portal context, strict customer DTO, accept/reject idempotency, immutable decision, leased expiry work, durable `QuotationAcceptedV1`, React receipt and refresh-safe E2E |
 | Quote-to-order conversion | Available | transactional Inbox consumer, immutable Trade Order snapshot, unique quotation conversion, reliable `TradeOrderCreatedV1`, eventual Quotation link, tenant/Buyer-scoped query UI and real OIDC E2E |
 | Inventory reservation | Designed | orders intentionally remain `PENDING_RESERVATION`; atomic allocation and reservation outcome handling remain Task 08 |
@@ -43,7 +44,7 @@ Status date: **2026-07-15**
 
 ## 3. 声明
 
-当前可运行范围包括 Task 01 工程骨架、Task 02 身份访问、Task 03 商业客户准入、Task 04 酒款/供给检索、Task 05 报价/贸易路径、Task 06 客户安全报价决定、Task 07 幂等报价转订单，以及 Task 07B 单位化库存准备度。07B 只提供 CASE/BOTTLE 精确事实、Catalog 展示投影和受权限控制的仓库优先级/版本证据，不执行路线绑定供给决策或分配。客户接受后，本地 at-least-once 消费器仍保证最多一个业务订单；库存预占保持 `Designed`，订单的 `PENDING_RESERVATION` 是明确的未完成状态。只有具备实现、测试与运行证据的能力标记为 `Available`。
+当前 Planning 内部证据已升级到 ROUTE-2026-03，并保存 selected-route Supply Decision；HTTP/OpenAPI 仍保持 1.5.0 且不暴露该内部字段。Quotation 尚未冻结或传播决定，客户接受后的订单仍没有该证据；库存预占保持 `Designed`，订单的 `PENDING_RESERVATION` 是明确的未完成状态。
 
 ## 4. 追踪模板
 

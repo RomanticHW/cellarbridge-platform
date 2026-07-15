@@ -9,7 +9,7 @@
 能力按以下顺序交付，后层不得反向替代前层证据：
 
 1. **Foundation（completed）：** 已定义带显式 `decisionAt` 的库存查询语义、无副作用的纯供给决策、规范化哈希及其确定性与边界测试。该层不集成 Route Evaluation，不冻结报价，不传播订单，也不写库存。
-2. **Planning（implementation in progress）：** 将 Foundation 接入 Route Evaluation，在规划上下文中形成路线绑定的供给选择；完成前不得把 route-bound supply decision 标记为 `Available`。
+2. **Planning（implemented in review）：** 已将 Foundation 接入 `ROUTE-2026-03` Route Evaluation，以一个微秒对齐时间和 canonical input schema 3 形成并持久化 selected-route Supply Decision；Quotation 尚未冻结该决定，因此产品能力仍不得标记为 `Available`。
 3. **Quotation：** 在报价边界冻结经确认的业务供给决策，使后续流程引用同一不可变决定；冻结不等于库存预留。
 4. **Propagation：** 将冻结结果传播到 Order，保持决策身份、版本与哈希可追溯；传播不产生库存写入。
 
