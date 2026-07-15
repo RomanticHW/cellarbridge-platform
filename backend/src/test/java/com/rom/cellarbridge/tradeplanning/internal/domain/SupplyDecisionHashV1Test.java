@@ -177,7 +177,9 @@ class SupplyDecisionHashV1Test extends SupplyDecisionTestFixtures {
         field == LineField.ALLOCATION_MODE
             ? SupplyAllocationMode.ROUTE_ELIGIBLE_AUTO
             : line.allocationMode(),
-        field == LineField.SUPPLY_POOL_ID ? POOL_2 : line.supplyPoolId(),
+        field == LineField.ALLOCATION_MODE
+            ? null
+            : field == LineField.SUPPLY_POOL_ID ? POOL_2 : line.supplyPoolId(),
         field == LineField.SUPPLY_TYPE
             ? TradePlanningSupplyType.HONG_KONG_ON_HAND
             : line.supplyType());

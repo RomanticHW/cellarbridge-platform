@@ -74,10 +74,16 @@ class InventorySupplyQueryIntegrationTest extends PostgresIntegrationTestSupport
     UUID inactivePool =
         insertPool(
             TENANT.value(), activeWarehouse, "INACTIVE", null, DECISION_AT.minusSeconds(240));
+    UUID noRoutePool =
+        insertPool(TENANT.value(), activeWarehouse, "ACTIVE", null, DECISION_AT.minusSeconds(240));
+    jdbc.update("UPDATE inventory.supply_pool SET route_code = NULL WHERE id = ?", noRoutePool);
 
     insertLot(TENANT.value(), eligiblePool, skuId, QuantityUnit.CASE, "5", null);
     insertLot(TENANT.value(), inactiveWarehousePool, skuId, QuantityUnit.CASE, "30", null);
     insertLot(TENANT.value(), inactivePool, skuId, QuantityUnit.CASE, "40", null);
+    insertLot(TENANT.value(), noRoutePool, skuId, QuantityUnit.CASE, "50", null);
+    UUID frozenLot = insertLot(TENANT.value(), eligiblePool, skuId, QuantityUnit.CASE, "60", null);
+    jdbc.update("UPDATE inventory.inventory_lot SET status = 'FROZEN' WHERE id = ?", frozenLot);
 
     assertSingleCaseQuantity(query.findRouteAvailability(TENANT, Set.of(skuId), DECISION_AT), "5");
   }
@@ -286,7 +292,7 @@ class InventorySupplyQueryIntegrationTest extends PostgresIntegrationTestSupport
     return poolId;
   }
 
-  private void insertLot(
+  private UUID insertLot(
       UUID tenantId,
       UUID poolId,
       UUID skuId,
@@ -315,6 +321,7 @@ class InventorySupplyQueryIntegrationTest extends PostgresIntegrationTestSupport
         ACTOR,
         Timestamp.from(DECISION_AT.minusSeconds(180)),
         ACTOR);
+    return lotId;
   }
 
   private static Timestamp timestamp(Instant value) {

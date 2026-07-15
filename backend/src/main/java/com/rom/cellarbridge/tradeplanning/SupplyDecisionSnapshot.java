@@ -39,6 +39,20 @@ public record SupplyDecisionSnapshot(
       throw new IllegalArgumentException("decisionHash must be lowercase 64-character hex");
     }
     lineDecisions = ordered(lineDecisions);
+    String expectedHash =
+        SupplyDecisionHashV1.hash(
+            new SupplyDecisionHashV1.HashInput(
+                schemaVersion,
+                policyVersion,
+                decidedAt,
+                sourceRouteEvaluationId,
+                sourceRouteInputHash,
+                selectedRouteCode,
+                inventoryDataAsOf,
+                lineDecisions));
+    if (!decisionHash.equals(expectedHash)) {
+      throw new IllegalArgumentException("decisionHash does not match snapshot content");
+    }
   }
 
   public static SupplyDecisionSnapshot create(
@@ -82,6 +96,11 @@ public record SupplyDecisionSnapshot(
     if (ordered.isEmpty()) {
       throw new IllegalArgumentException("lineDecisions must not be empty");
     }
+    for (int index = 1; index < ordered.size(); index++) {
+      if (ordered.get(index - 1).quotationLineId().equals(ordered.get(index).quotationLineId())) {
+        throw new IllegalArgumentException("quotationLineId must be unique");
+      }
+    }
     return ordered;
   }
 
@@ -103,6 +122,12 @@ public record SupplyDecisionSnapshot(
       }
       quantityUnit = Objects.requireNonNull(quantityUnit, "quantityUnit");
       allocationMode = Objects.requireNonNull(allocationMode, "allocationMode");
+      if (allocationMode == SupplyAllocationMode.FIXED_POOL && supplyPoolId == null) {
+        throw new IllegalArgumentException("FIXED_POOL requires supplyPoolId");
+      }
+      if (allocationMode == SupplyAllocationMode.ROUTE_ELIGIBLE_AUTO && supplyPoolId != null) {
+        throw new IllegalArgumentException("ROUTE_ELIGIBLE_AUTO must not define supplyPoolId");
+      }
       supplyType = Objects.requireNonNull(supplyType, "supplyType");
     }
   }

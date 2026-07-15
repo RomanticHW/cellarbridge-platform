@@ -62,7 +62,18 @@ class SupplyDecisionPolicyFixedPoolTest extends SupplyDecisionTestFixtures {
             List.of(
                 fixedAvailability(
                     TradeRouteCode.SH_GENERAL_TRADE, TradePlanningQuantityUnit.CASE, "5"),
-                fallback));
+                fallback),
+            List.of(
+                availability(
+                    POOL_1,
+                    SKU_2,
+                    TradeRouteCode.SH_GENERAL_TRADE,
+                    TradePlanningSupplyType.DOMESTIC_ON_HAND,
+                    TradePlanningQuantityUnit.CASE,
+                    "100",
+                    null,
+                    "HIGH",
+                    DATA_AS_OF_1)));
 
     for (List<AvailabilityInput> availability : ineligibleInputs) {
       Result result =

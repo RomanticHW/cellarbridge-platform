@@ -163,6 +163,16 @@ class SupplyDecisionPolicyAutomaticTest extends SupplyDecisionTestFixtures {
                 "100",
                 null,
                 "HIGH",
+                DATA_AS_OF_2),
+            availability(
+                POOL_1,
+                SKU_2,
+                TradeRouteCode.SH_GENERAL_TRADE,
+                TradePlanningSupplyType.DOMESTIC_ON_HAND,
+                TradePlanningQuantityUnit.CASE,
+                "100",
+                null,
+                "HIGH",
                 DATA_AS_OF_2));
 
     Result result =
