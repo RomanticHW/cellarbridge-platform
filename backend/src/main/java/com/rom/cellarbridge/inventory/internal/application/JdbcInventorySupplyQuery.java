@@ -139,7 +139,10 @@ public class JdbcInventorySupplyQuery implements InventorySupplyQuery {
                sp.currency,
                l.quantity_unit,
                SUM(l.on_hand_quantity - l.reserved_quantity) AS available_quantity,
-               MIN(COALESCE(l.available_from, sp.available_from)) AS available_from,
+               CASE
+                 WHEN BOOL_OR(l.available_from IS NULL AND sp.available_from IS NULL) THEN NULL
+                 ELSE MIN(GREATEST(l.available_from, sp.available_from))
+               END AS available_from,
                sp.confidence,
                sp.policy_version,
                MAX(GREATEST(l.updated_at, sp.updated_at, w.updated_at)) AS data_as_of

@@ -116,6 +116,44 @@ class InventorySupplyQueryIntegrationTest extends PostgresIntegrationTestSupport
   }
 
   @Test
+  void usesLaterPoolOrLotConstraintThenEarliestEffectiveStartForTheGroup() {
+    UUID skuId = UUID.randomUUID();
+    Instant poolAvailableFrom = DECISION_AT.minusSeconds(600);
+    UUID warehouse = insertWarehouse(TENANT.value(), "ACTIVE", DECISION_AT.minusSeconds(900));
+    UUID pool =
+        insertPool(
+            TENANT.value(), warehouse, "ACTIVE", poolAvailableFrom, DECISION_AT.minusSeconds(840));
+    insertLot(TENANT.value(), pool, skuId, QuantityUnit.CASE, "5", DECISION_AT.minusSeconds(900));
+    insertLot(TENANT.value(), pool, skuId, QuantityUnit.CASE, "7", DECISION_AT.minusSeconds(300));
+
+    assertThat(query.findRouteAvailability(TENANT, Set.of(skuId), DECISION_AT))
+        .singleElement()
+        .satisfies(
+            item -> {
+              assertThat(item.availableQuantity()).isEqualByComparingTo("12");
+              assertThat(item.availableFrom()).isEqualTo(poolAvailableFrom);
+            });
+  }
+
+  @Test
+  void keepsGroupedAvailabilityFromNullWhenAnyContributingPairIsUnrestricted() {
+    UUID skuId = UUID.randomUUID();
+    UUID warehouse = insertWarehouse(TENANT.value(), "ACTIVE", DECISION_AT.minusSeconds(900));
+    UUID pool =
+        insertPool(TENANT.value(), warehouse, "ACTIVE", null, DECISION_AT.minusSeconds(840));
+    insertLot(TENANT.value(), pool, skuId, QuantityUnit.CASE, "5", null);
+    insertLot(TENANT.value(), pool, skuId, QuantityUnit.CASE, "7", DECISION_AT.minusSeconds(300));
+
+    assertThat(query.findRouteAvailability(TENANT, Set.of(skuId), DECISION_AT))
+        .singleElement()
+        .satisfies(
+            item -> {
+              assertThat(item.availableQuantity()).isEqualByComparingTo("12");
+              assertThat(item.availableFrom()).isNull();
+            });
+  }
+
+  @Test
   void excludesInventoryOwnedByAnotherTenant() {
     UUID skuId = UUID.randomUUID();
     UUID tenantWarehouse = insertWarehouse(TENANT.value(), "ACTIVE", DECISION_AT.minusSeconds(300));
