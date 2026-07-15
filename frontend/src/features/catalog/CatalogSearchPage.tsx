@@ -348,7 +348,7 @@ export function CatalogSearchPage() {
           />
           <Select
             aria-label="Filter by quantity unit"
-            value={currentQuery.quantityUnit?.[0] ?? 'ALL'}
+            value={currentQuery.quantityUnit?.length === 1 ? currentQuery.quantityUnit[0] : 'ALL'}
             onChange={(value) => replaceFilter('quantityUnit', value === 'ALL' ? undefined : value)}
             options={[
               { value: 'ALL', label: 'All quantity units' },

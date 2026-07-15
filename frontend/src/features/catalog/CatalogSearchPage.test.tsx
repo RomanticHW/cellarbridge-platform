@@ -109,14 +109,15 @@ describe('catalog and supply workspace', () => {
       catalogRequests.push(incoming);
       return Promise.resolve(response(page));
     });
-    await router.navigate('/app/catalog?quantityUnit=BOTTLE');
+    await router.navigate('/app/catalog?quantityUnit=CASE&quantityUnit=BOTTLE');
     renderApplication();
 
     expect(await screen.findByRole('heading', { name: 'Catalog & supply search' })).toBeVisible();
     expect(screen.getByText('Moonlit Terrace')).toBeVisible();
     expect(
       new URL(catalogRequests.at(-1)?.url ?? '').searchParams.getAll('quantityUnit'),
-    ).toContain('BOTTLE');
+    ).toEqual(['CASE', 'BOTTLE']);
+    expect(screen.getByText('All quantity units')).toBeVisible();
     expect(screen.getAllByText('CASE').length).toBeGreaterThan(0);
     expect(screen.getAllByText('BOTTLE').length).toBeGreaterThan(0);
     expect(
