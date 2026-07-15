@@ -22,7 +22,7 @@ ALTER TABLE trade_planning.evaluation
     ),
     ADD CONSTRAINT ck_trade_planning_supply_decision_policy CHECK (
         supply_decision_policy_version IS NULL
-        OR length(supply_decision_policy_version) BETWEEN 1 AND 80
+        OR length(btrim(supply_decision_policy_version)) BETWEEN 1 AND 80
     ),
     ADD CONSTRAINT ck_trade_planning_supply_decision_hash CHECK (
         supply_decision_hash IS NULL
@@ -44,7 +44,33 @@ ALTER TABLE trade_planning.evaluation
     ),
     ADD CONSTRAINT ck_trade_planning_supply_decision_root_json CHECK (
         supply_decision_summary IS NULL
-        OR (supply_decision_summary ->> 'schemaVersion'
+        OR ((jsonb_typeof(supply_decision_summary) = 'object'
+            AND supply_decision_summary ?& ARRAY[
+                'schemaVersion',
+                'policyVersion',
+                'decidedAt',
+                'sourceRouteEvaluationId',
+                'sourceRouteInputHash',
+                'selectedRouteCode',
+                'inventoryDataAsOf',
+                'decisionHash',
+                'lineDecisions'
+            ]::text[]
+            AND jsonb_typeof(supply_decision_summary -> 'schemaVersion') = 'number'
+            AND jsonb_typeof(supply_decision_summary -> 'policyVersion') = 'string'
+            AND jsonb_typeof(supply_decision_summary -> 'decidedAt') = 'string'
+            AND jsonb_typeof(supply_decision_summary -> 'sourceRouteEvaluationId') = 'string'
+            AND jsonb_typeof(supply_decision_summary -> 'sourceRouteInputHash') = 'string'
+            AND jsonb_typeof(supply_decision_summary -> 'selectedRouteCode') = 'string'
+            AND jsonb_typeof(supply_decision_summary -> 'inventoryDataAsOf') = 'string'
+            AND jsonb_typeof(supply_decision_summary -> 'decisionHash') = 'string'
+            AND jsonb_typeof(supply_decision_summary -> 'lineDecisions') = 'array'
+            AND CASE
+                    WHEN jsonb_typeof(supply_decision_summary -> 'lineDecisions') = 'array'
+                    THEN jsonb_array_length(supply_decision_summary -> 'lineDecisions') > 0
+                    ELSE FALSE
+                END
+            AND supply_decision_summary ->> 'schemaVersion'
                 = supply_decision_schema_version::text
             AND supply_decision_summary ->> 'policyVersion'
                 = supply_decision_policy_version
@@ -55,5 +81,9 @@ ALTER TABLE trade_planning.evaluation
             AND supply_decision_summary ->> 'sourceRouteInputHash'
                 = input_hash
             AND supply_decision_summary ->> 'selectedRouteCode'
-                = selected_route_code)
+                = selected_route_code
+            AND supply_decision_summary ->> 'sourceRouteInputHash'
+                ~ ('^[0-9a-f]{64}' || chr(36))
+            AND supply_decision_summary ->> 'decisionHash'
+                ~ ('^[0-9a-f]{64}' || chr(36))) IS TRUE)
     );

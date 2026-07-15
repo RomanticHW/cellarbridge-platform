@@ -305,7 +305,31 @@ class QuotationApiIntegrationTest extends PostgresIntegrationTestSupport {
     assertThatThrownBy(
             () ->
                 jdbc.update(
-                    "UPDATE trade_planning.evaluation SET supply_decision_summary = '[]'::jsonb WHERE id = ?",
+                    "UPDATE trade_planning.evaluation SET supply_decision_summary = '{\"schemaVersion\":1}'::jsonb WHERE id = ?",
+                    evaluationId))
+        .isInstanceOf(DataIntegrityViolationException.class);
+    assertThatThrownBy(
+            () ->
+                jdbc.update(
+                    "UPDATE trade_planning.evaluation SET supply_decision_summary = jsonb_set(supply_decision_summary, '{sourceRouteInputHash}', 'null'::jsonb) WHERE id = ?",
+                    evaluationId))
+        .isInstanceOf(DataIntegrityViolationException.class);
+    assertThatThrownBy(
+            () ->
+                jdbc.update(
+                    "UPDATE trade_planning.evaluation SET supply_decision_summary = jsonb_set(supply_decision_summary, '{schemaVersion}', to_jsonb('1'::text)) WHERE id = ?",
+                    evaluationId))
+        .isInstanceOf(DataIntegrityViolationException.class);
+    assertThatThrownBy(
+            () ->
+                jdbc.update(
+                    "UPDATE trade_planning.evaluation SET supply_decision_summary = jsonb_set(supply_decision_summary, '{lineDecisions}', '[]'::jsonb) WHERE id = ?",
+                    evaluationId))
+        .isInstanceOf(DataIntegrityViolationException.class);
+    assertThatThrownBy(
+            () ->
+                jdbc.update(
+                    "UPDATE trade_planning.evaluation SET supply_decision_policy_version = '   ', supply_decision_summary = jsonb_set(supply_decision_summary, '{policyVersion}', to_jsonb('   '::text)) WHERE id = ?",
                     evaluationId))
         .isInstanceOf(DataIntegrityViolationException.class);
     assertThatThrownBy(
