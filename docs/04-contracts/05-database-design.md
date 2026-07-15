@@ -2,7 +2,7 @@
 
 ## 1. 设计原则
 
-状态边界：当前物理数据库由 V2～V9 migration 实现 Task 01～07。下文 ER 图和关键表同时包含后续逻辑设计；`inventory_reservation`、`reservation_allocation`、库存数量单位与仓库优先级在 Task 08 前均不是现有物理能力。
+状态边界：当前物理数据库由 V2～V11 migration 实现 Task 01～07B。Inventory Lot 数量单位、Warehouse 分配优先级和 Catalog 单位化供给投影已 Available；`inventory_reservation`、`reservation_allocation`、确定性分配执行、release/consume 与订单 `RESERVED` 迁移仍是 Task 08 的 Designed 能力。
 
 - PostgreSQL 18；
 - module schema ownership；
@@ -52,8 +52,18 @@ erDiagram
 
 ### `inventory.inventory_lot`
 
-- id；tenant；supply_pool_id；sku_id（逻辑 Catalog ID）；lot_code；status；on_hand_quantity；reserved_quantity；available_from；received_at；version。
-- check nonnegative and reserved <= on_hand；索引 `(tenant_id, sku_id, status, available_from)`。
+- id；tenant；supply_pool_id；sku_id（逻辑 Catalog ID）；lot_code；status；quantity_unit（`CASE`/`BOTTLE`）；on_hand_quantity；reserved_quantity；available_from；received_at；version。
+- check nonnegative、reserved <= on_hand 和明确单位；单位感知索引 `(tenant_id, sku_id, quantity_unit, status, available_from, supply_pool_id, id)`。
+
+### `inventory.warehouse`
+
+- id；tenant；code；name；country_code；city；status；allocation_priority；version；timestamps。
+- `allocation_priority >= 0`，数值越小只表示未来确定性分配策略中的较早顺序；当前没有运行时修改 API，也不表示已经完成分配。
+
+### `catalog.sku_supply_projection`
+
+- tenant；sku_id；supply_pool_id；quantity_unit；supply_type；availability_class；quantity_band；预计日期；自动预占标志；数据时间与版本。
+- PK `(tenant_id, sku_id, supply_pool_id, quantity_unit)` 允许同一 pool/SKU 分别保存 CASE 和 BOTTLE；该表仍是非承诺、可过期的 Catalog-owned 展示投影，不是库存正确性事实源。
 
 ### `quotation.quotation`
 
@@ -137,4 +147,4 @@ CHECK (version >= 0)
 
 ## 9. 详细 DDL
 
-Design Baseline 提供逻辑设计；实际 migration 在对应纵向切片创建。当前 V2～V9 可由 Flyway/Testcontainers 执行，通用 PostgreSQL catalog fitness tests 已 Available；Inventory 专属约束留给 Inventory readiness PR 和 V10 migration。不得用逻辑表清单暗示尚未创建的表已经 Available。
+Design Baseline 提供逻辑设计；实际 migration 在对应纵向切片创建。当前 V2～V11 可由 Flyway/Testcontainers 从空库执行，并有真实 V9 → V11 升级证据。V10 只修改 `inventory`，V11 只修改 `catalog`；manifest/hash、单位/优先级约束、新主键和索引均由 PostgreSQL catalog tests 验证。不得用上述准备度能力暗示 reservation 表或分配执行已经 Available。

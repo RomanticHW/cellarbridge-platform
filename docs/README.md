@@ -108,7 +108,7 @@ The documentation is organized from evidence to delivery. Each layer narrows the
 - [Technical reviewer scorecard](05-delivery/12-reviewer-scorecard.md)
 - [Identity and access runbook](05-delivery/13-identity-access-runbook.md)
 - [Partner onboarding runbook](05-delivery/14-partner-onboarding-runbook.md)
-- [Catalog supply search runbook](05-delivery/15-catalog-supply-search-runbook.md)
+- [Unit-aware catalog supply search runbook](05-delivery/15-catalog-supply-search-runbook.md)
 - [Quotation and trade-planning runbook](05-delivery/16-quotation-trade-planning-runbook.md)
 - [Customer quotation acceptance runbook](05-delivery/17-customer-quotation-acceptance-runbook.md)
 - [Trade order conversion runbook](05-delivery/18-trade-order-conversion-runbook.md)

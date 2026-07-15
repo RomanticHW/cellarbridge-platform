@@ -27,9 +27,9 @@
 | FF-DATA-004 | mutable aggregate 表有 version | catalog test（显式 mutable root 集合） |
 | FF-DATA-005 | migration 文件合并后不可改 | current-tree SHA-256 manifest + CI Git-history base/head gate |
 | FF-DATA-006 | 金额/数量列 precision/scale 符合规范 | catalog test（numeric 分类与命名约束） |
-| FF-DATA-007 | inventory quantity unit / allocation priority | Inventory readiness PR 的 V10 与 catalog test |
+| FF-DATA-007 | Inventory quantity unit / allocation priority 与 Catalog 单位化投影 | V10/V11、升级测试与 PostgreSQL catalog test |
 
-状态：FF-DATA-001～006 **Available**；FF-DATA-007 **Planned**。
+状态：FF-DATA-001～007 **Available**。FF-DATA-007 只证明单位、优先级数据和只读可见性，不表示确定性分配或库存预占已经执行。
 
 ## 4. 契约
 
