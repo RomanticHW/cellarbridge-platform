@@ -2,6 +2,7 @@ package com.rom.cellarbridge.quotation.internal.infrastructure;
 
 import com.rom.cellarbridge.identityaccess.GlobalRegistryAccess;
 import com.rom.cellarbridge.identityaccess.TenantId;
+import com.rom.cellarbridge.quotation.QuotationSnapshotHashV1;
 import com.rom.cellarbridge.quotation.QuotationStatus;
 import com.rom.cellarbridge.quotation.internal.application.QuotationProblem;
 import com.rom.cellarbridge.quotation.internal.application.QuotationRepository;
@@ -486,6 +487,7 @@ public class JdbcQuotationRepository implements QuotationRepository {
       IdempotencyWrite idempotency,
       UUID actorId) {
     requireTenant(tenantId, before.tenantId(), after.tenantId(), decision.tenantId());
+    requireCurrentSnapshotHash(decision.snapshotHash());
     updateQuotation(after, before.version(), actorId);
     jdbc.update(
         """
@@ -662,6 +664,7 @@ public class JdbcQuotationRepository implements QuotationRepository {
       OrderLink orderLink,
       UUID systemActorId) {
     requireTenant(tenantId, before.tenantId(), after.tenantId());
+    requireCurrentSnapshotHash(orderLink.snapshotHash());
     if (!before.id().equals(orderLink.quotationId())
         || !before.revision().id().equals(orderLink.revisionId())) {
       throw new IllegalArgumentException("Order link does not match the quotation revision");
@@ -1314,6 +1317,12 @@ public class JdbcQuotationRepository implements QuotationRepository {
       if (!expected.equals(tenantId)) {
         throw new IllegalArgumentException("Tenant scope mismatch");
       }
+    }
+  }
+
+  private static void requireCurrentSnapshotHash(String snapshotHash) {
+    if (!QuotationSnapshotHashV1.isCurrentFormat(snapshotHash)) {
+      throw new IllegalArgumentException("New snapshot hash writes require current bare V1 format");
     }
   }
 

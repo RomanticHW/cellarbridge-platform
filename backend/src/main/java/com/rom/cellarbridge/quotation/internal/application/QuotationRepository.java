@@ -135,6 +135,7 @@ public interface QuotationRepository {
     REJECTED
   }
 
+  /** Immutable customer decision; snapshotHash is always the current bare V1 format. */
   record CustomerDecision(
       UUID id,
       TenantId tenantId,
@@ -185,6 +186,7 @@ public interface QuotationRepository {
   record ExpirationWorkItem(
       UUID id, TenantId tenantId, UUID quotationId, UUID revisionId, Instant dueAt) {}
 
+  /** Stored links may contain current bare V1 or the exact historical sha256-prefixed form. */
   record OrderLink(
       UUID quotationId,
       UUID revisionId,
@@ -195,5 +197,6 @@ public interface QuotationRepository {
       UUID sourceEventId,
       Instant convertedAt) {}
 
+  /** Accepted customer decisions expose snapshotHash in the current bare V1 format. */
   record AcceptedOrderSource(UUID acceptanceId, UUID revisionId, String snapshotHash) {}
 }

@@ -7,6 +7,7 @@ import com.networknt.schema.SchemaLocation;
 import com.networknt.schema.SchemaRegistry;
 import com.networknt.schema.SpecificationVersion;
 import com.rom.cellarbridge.platform.EventDelivery;
+import com.rom.cellarbridge.platform.EventHandlingException;
 import com.rom.cellarbridge.quotation.QuotationAcceptedV1;
 import com.rom.cellarbridge.quotation.QuotationSnapshotHashV1;
 import com.rom.cellarbridge.quotation.internal.application.TradeOrderCreatedEventHandler;
@@ -183,6 +184,48 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
     assertThat(deliveryService.deliver(handler, equivalentReplay))
         .isEqualTo(LocalEventDeliveryService.DeliveryOutcome.PROCESSED);
     assertOrderGraph(quotationId, 1, 1, 1);
+  }
+
+  @Test
+  void normalizesLegacyAcceptedHashesAndReplaysHistoricalOrders() throws Exception {
+    UUID quotationId = UUID.randomUUID();
+    EventDelivery current = delivery(UUID.randomUUID(), quotationId, 'l', PARTNER_ID);
+    String bareHash = parsedPayload(current.payloadJson()).snapshotHash();
+    EventDelivery legacy = legacySnapshotHash(current);
+
+    assertThat(deliveryService.deliver(handler, legacy))
+        .isEqualTo(LocalEventDeliveryService.DeliveryOutcome.PROCESSED);
+    UUID orderId = orderId(quotationId);
+    assertThat(snapshotHash("trade_order.trade_order", orderId)).isEqualTo(bareHash);
+    assertThat(createdPayload(quotationId).path("snapshotHash").asText()).isEqualTo(bareHash);
+
+    assertThat(
+            deliveryService.deliver(
+                handler,
+                legacySnapshotHash(delivery(UUID.randomUUID(), quotationId, 'l', PARTNER_ID))))
+        .isEqualTo(LocalEventDeliveryService.DeliveryOutcome.PROCESSED);
+    assertOrderGraph(quotationId, 1, 1, 1);
+
+    overwriteSnapshotHashForHistory(
+        "trade_order.trade_order",
+        "trade_order_commercial_snapshot_immutable",
+        orderId,
+        "sha256:" + bareHash);
+    EventDelivery bareReplay = delivery(UUID.randomUUID(), quotationId, 'l', PARTNER_ID);
+    assertThat(deliveryService.deliver(handler, bareReplay))
+        .isEqualTo(LocalEventDeliveryService.DeliveryOutcome.PROCESSED);
+    assertThat(snapshotHash("trade_order.trade_order", orderId)).isEqualTo("sha256:" + bareHash);
+    assertOrderGraph(quotationId, 1, 1, 1);
+
+    overwriteSnapshotHashForHistory(
+        "trade_order.trade_order", "trade_order_commercial_snapshot_immutable", orderId, "invalid");
+    assertThatThrownBy(() -> handler.handle(bareReplay))
+        .isInstanceOfSatisfying(
+            EventHandlingException.class,
+            failure ->
+                assertThat(failure)
+                    .returns("ORDER_SOURCE_QUOTATION_CONFLICT", EventHandlingException::failureCode)
+                    .returns(false, EventHandlingException::retryable));
   }
 
   @Test
@@ -467,11 +510,25 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
             .orElseThrow();
     assertThat(jsonMapper.readTree(createdDelivery.payloadJson()).path("snapshotHash").asText())
         .isEqualTo(acceptedPayload.snapshotHash());
-    EventDelivery legacyCreatedDelivery = withoutPayloadField(createdDelivery, "acceptanceId");
+
+    EventDelivery legacyCreatedDelivery =
+        legacySnapshotHash(withoutPayloadField(createdDelivery, "acceptanceId"));
     assertThat(deliveryService.deliver(quotationHandler, legacyCreatedDelivery))
         .isEqualTo(LocalEventDeliveryService.DeliveryOutcome.PROCESSED);
+    assertThat(snapshotHash("quotation.order_link", createdDelivery.eventId()))
+        .isEqualTo(acceptedPayload.snapshotHash());
     assertThat(deliveryService.deliver(quotationHandler, legacyCreatedDelivery))
         .isEqualTo(LocalEventDeliveryService.DeliveryOutcome.ALREADY_PROCESSED);
+
+    overwriteSnapshotHashForHistory(
+        "quotation.order_link",
+        "quotation_order_link_append_only",
+        createdDelivery.eventId(),
+        "sha256:" + acceptedPayload.snapshotHash());
+    assertThat(quotationHandler.handle(createdDelivery).resultReference())
+        .isEqualTo(orderId.toString());
+    assertThat(snapshotHash("quotation.order_link", createdDelivery.eventId()))
+        .isEqualTo("sha256:" + acceptedPayload.snapshotHash());
 
     ApiResponse converted = get(issued.publicPath(), null);
     assertThat(converted.status()).withFailMessage(converted.raw()).isEqualTo(200);
@@ -617,11 +674,13 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
     assertInvalid('h', payload -> payload.put("snapshotHash", "sha256:not-a-v1-hash"));
 
     UUID tamperedQuotation = UUID.randomUUID();
-    assertFinalFailure(
+    EventDelivery tampered =
         mutate(
             delivery(UUID.randomUUID(), tamperedQuotation, 't', PARTNER_ID),
             payload ->
-                ((ObjectNode) payload.path("customer")).put("displayName", "Tampered Buyer")),
+                ((ObjectNode) payload.path("customer")).put("displayName", "Tampered Buyer"));
+    assertFinalFailure(
+        legacySnapshotHash(tampered),
         tamperedQuotation,
         "QUOTATION_ACCEPTED_SNAPSHOT_HASH_MISMATCH");
 
@@ -734,6 +793,12 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
 
   private EventDelivery withoutPayloadField(EventDelivery delivery, String field) throws Exception {
     return mutate(delivery, payload -> payload.remove(field));
+  }
+
+  private EventDelivery legacySnapshotHash(EventDelivery delivery) throws Exception {
+    return mutate(
+        delivery,
+        payload -> payload.put("snapshotHash", "sha256:" + payload.path("snapshotHash").asText()));
   }
 
   private EventDelivery mutate(EventDelivery delivery, Consumer<ObjectNode> mutation)
@@ -1055,6 +1120,29 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
       return jsonMapper.readTree(payload);
     } catch (tools.jackson.core.JacksonException exception) {
       throw new IllegalStateException(exception);
+    }
+  }
+
+  private String snapshotHash(String table, UUID id) {
+    if (!Set.of("trade_order.trade_order", "quotation.order_link").contains(table)) {
+      throw new IllegalArgumentException("Unsupported historical fixture table");
+    }
+    return jdbc.queryForObject(
+        "SELECT snapshot_hash FROM " + table + " WHERE id = ?", String.class, id);
+  }
+
+  private void overwriteSnapshotHashForHistory(
+      String table, String trigger, UUID id, String snapshotHash) {
+    String target = table + ":" + trigger;
+    if (!target.equals("trade_order.trade_order:trade_order_commercial_snapshot_immutable")
+        && !target.equals("quotation.order_link:quotation_order_link_append_only")) {
+      throw new IllegalArgumentException("Unsupported historical fixture target");
+    }
+    jdbc.execute("ALTER TABLE " + table + " DISABLE TRIGGER " + trigger);
+    try {
+      jdbc.update("UPDATE " + table + " SET snapshot_hash = ? WHERE id = ?", snapshotHash, id);
+    } finally {
+      jdbc.execute("ALTER TABLE " + table + " ENABLE TRIGGER " + trigger);
     }
   }
 

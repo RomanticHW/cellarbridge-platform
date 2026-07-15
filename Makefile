@@ -5,7 +5,8 @@ COMPOSE_FILE := deploy/compose/core.compose.yaml
 ENV_FILE ?= $(if $(wildcard .env),.env,.env.example)
 
 .PHONY: help validate validate-docs validate-contracts validate-public validate-backend \
-	validate-frontend validate-compose test test-backend test-frontend dev-core stop-core smoke-core \
+	validate-frontend validate-compose test test-backend test-frontend test-migration-history \
+	dev-core stop-core smoke-core \
 	identity-e2e partner-e2e catalog-e2e quotation-e2e acceptance-e2e order-e2e \
 	catalog-benchmark generate-api-client
 
@@ -46,6 +47,9 @@ validate-frontend: generate-api-client
 
 validate-compose:
 	docker compose --env-file $(ENV_FILE) --file $(COMPOSE_FILE) config --quiet
+
+test-migration-history:
+	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m unittest -v scripts/test_validate_migration_history.py
 
 test: test-backend test-frontend
 

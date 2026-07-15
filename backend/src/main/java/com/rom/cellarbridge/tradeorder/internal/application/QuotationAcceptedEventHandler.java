@@ -30,7 +30,12 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import org.springframework.dao.DataAccessException;
+import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.RecoverableDataAccessException;
+import org.springframework.dao.TransientDataAccessException;
 import org.springframework.stereotype.Component;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -53,6 +58,9 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
           "HONG_KONG_ON_HAND",
           "IN_TRANSIT_PRESALE",
           "OVERSEAS_SOURCING");
+  private static final Pattern TEXT_CONTENT =
+      Pattern.compile(
+          "[^\\u0009-\\u000d\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]");
 
   private final TradeOrderRepository repository;
   private final ReliableEventPublisher eventPublisher;
@@ -83,25 +91,26 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
   @Override
   public EventHandlingResult handle(EventDelivery delivery) {
     try {
-      QuotationAcceptedV1.Payload payload = parse(delivery);
+      AcceptedEvent accepted = parse(delivery);
+      QuotationAcceptedV1.Payload payload = accepted.payload();
       TenantId tenantId = new TenantId(delivery.tenantId());
       TradeOrder existing =
           repository.findBySourceQuotation(tenantId, payload.quotationId()).orElse(null);
       if (existing != null) {
-        requireSameSource(existing, payload);
-        return result(existing);
+        String existingHash = requireSameSource(existing, payload, accepted.snapshotHash());
+        return result(existing, existingHash);
       }
 
       Instant now = max(clock.instant(), payload.acceptedAt());
-      TradeOrder order = createOrder(tenantId, delivery, payload, now);
+      TradeOrder order = createOrder(tenantId, delivery, payload, accepted.snapshotHash(), now);
       if (!repository.insertIfAbsent(tenantId, order, SYSTEM_ACTOR_ID)) {
         TradeOrder winner =
             repository
                 .findBySourceQuotation(tenantId, payload.quotationId())
                 .orElseThrow(
                     () -> EventHandlingException.finalFailure("ORDER_SOURCE_EVENT_REUSED"));
-        requireSameSource(winner, payload);
-        return result(winner);
+        String winnerHash = requireSameSource(winner, payload, accepted.snapshotHash());
+        return result(winner, winnerHash);
       }
 
       TradeOrderCreatedV1 created = createdEvent(order);
@@ -119,17 +128,17 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
               created.causationId(),
               created.payload(),
               created.metadata()));
-      return result(order);
+      return result(order, accepted.snapshotHash());
     } catch (EventHandlingException exception) {
       throw exception;
     } catch (JacksonException | ContractViolation exception) {
       throw EventHandlingException.finalFailure("QUOTATION_ACCEPTED_EVENT_INVALID");
     } catch (DataAccessException exception) {
-      throw EventHandlingException.retryable("ORDER_STORAGE_UNAVAILABLE");
+      throw classifyDataAccess(exception);
     }
   }
 
-  private QuotationAcceptedV1.Payload parse(EventDelivery delivery) throws JacksonException {
+  private AcceptedEvent parse(EventDelivery delivery) throws JacksonException {
     if (!EVENT_TYPE.equals(delivery.eventType()) || delivery.eventVersion() != 1) {
       throw invalid();
     }
@@ -140,15 +149,20 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
     QuotationAcceptedV1.Payload payload =
         jsonMapper.readValue(body.toString(), QuotationAcceptedV1.Payload.class);
     validate(delivery, payload);
-    if (!payload
-        .snapshotHash()
-        .equals(QuotationSnapshotHashV1.hash(QuotationSnapshotHashV1.Snapshot.from(payload)))) {
+    String normalizedHash;
+    try {
+      normalizedHash = QuotationSnapshotHashV1.normalizeIncomingHash(payload.snapshotHash());
+    } catch (QuotationSnapshotHashV1.InvalidSnapshotHashFormatException exception) {
+      throw invalid();
+    }
+    if (!normalizedHash.equals(
+        QuotationSnapshotHashV1.hash(QuotationSnapshotHashV1.Snapshot.from(payload)))) {
       throw EventHandlingException.finalFailure("QUOTATION_ACCEPTED_SNAPSHOT_HASH_MISMATCH");
     }
-    return payload;
+    return new AcceptedEvent(payload, normalizedHash);
   }
 
-  private static void validate(EventDelivery delivery, QuotationAcceptedV1.Payload payload) {
+  static void validate(EventDelivery delivery, QuotationAcceptedV1.Payload payload) {
     required(payload != null);
     required(delivery.subject() != null);
     required(
@@ -161,13 +175,13 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
             && payload.acceptanceId() != null
             && payload.acceptedAt() != null
             && payload.revision() >= 1);
-    text(payload.quotationNumber());
+    text(payload.quotationNumber(), 30);
     QuotationAcceptedV1.Customer customer = payload.customer();
     required(customer != null && customer.partnerId() != null && customer.sourceVersion() >= 0);
-    text(customer.partnerNumber());
-    text(customer.displayName());
-    required(payload.currency() != null && payload.currency().matches("^[A-Z]{3}$"));
-    BigDecimal total = decimal(payload.totalAmount(), 4, false);
+    text(customer.partnerNumber(), 80);
+    text(customer.displayName(), 160);
+    required(payload.currency() != null && payload.currency().matches("[A-Z]{3}"));
+    BigDecimal total = decimal(payload.totalAmount(), 4, 15, false);
     required(payload.paymentTermDays() >= 0 && payload.paymentTermDays() <= 180);
     QuotationAcceptedV1.Route route = payload.route();
     required(
@@ -175,16 +189,13 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
             && route.code() != null
             && ROUTES.contains(route.code())
             && route.estimatedDeliveryDate() != null);
-    text(route.policyVersion());
-    text(payload.acceptedTermsVersion());
-    required(
-        payload.acceptedTermsVersion().length() <= 50
-            && payload.requestedDeliveryDate() != null
-            && payload.deliveryAddress() != null);
+    text(route.policyVersion(), 80);
+    text(payload.acceptedTermsVersion(), 50);
+    required(payload.requestedDeliveryDate() != null && payload.deliveryAddress() != null);
     address(payload.deliveryAddress());
-    required(payload.snapshotHash() != null && payload.snapshotHash().matches("^[0-9a-f]{64}$"));
     required(payload.lines() != null && !payload.lines().isEmpty() && payload.lines().size() <= 50);
     Set<UUID> lineIds = new HashSet<>();
+    Set<UUID> skuIds = new HashSet<>();
     BigDecimal sum = BigDecimal.ZERO;
     for (QuotationAcceptedV1.Line line : payload.lines()) {
       required(
@@ -192,14 +203,15 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
               && line.quotationLineId() != null
               && lineIds.add(line.quotationLineId())
               && line.skuId() != null
+              && skuIds.add(line.skuId())
               && ("CASE".equals(line.unit()) || "BOTTLE".equals(line.unit()))
               && line.supplyType() != null
               && SUPPLY_TYPES.contains(line.supplyType()));
-      text(line.skuCode());
-      text(line.description());
-      decimal(line.quantity(), 6, true);
-      decimal(line.netUnitPrice(), 4, false);
-      sum = sum.add(decimal(line.lineTotal(), 4, false));
+      text(line.skuCode(), 80);
+      text(line.description(), 240);
+      decimal(line.quantity(), 6, 13, true);
+      decimal(line.netUnitPrice(), 4, 15, false);
+      sum = sum.add(decimal(line.lineTotal(), 4, 15, false));
     }
     required(
         sum.setScale(4, RoundingMode.HALF_UP).compareTo(total.setScale(4, RoundingMode.HALF_UP))
@@ -207,21 +219,46 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
   }
 
   private static void address(QuotationAcceptedV1.DeliveryAddress address) {
-    required(address.countryCode() != null && address.countryCode().matches("^[A-Z]{2}$"));
-    text(address.province());
-    text(address.city());
-    text(address.line1());
+    required(address.countryCode() != null && address.countryCode().matches("[A-Z]{2}"));
+    text(address.province(), 100);
+    text(address.city(), 100);
+    optionalText(address.district(), 100);
+    text(address.line1(), 200);
+    optionalText(address.postalCode(), 20);
   }
 
-  private static BigDecimal decimal(String value, int scale, boolean positive) {
-    required(value != null && value.matches("^[0-9]+(?:\\.[0-9]{1," + scale + "})?$"));
+  private static BigDecimal decimal(String value, int scale, int integerDigits, boolean positive) {
+    required(value != null && value.matches("[0-9]+(?:\\.[0-9]{1," + scale + "})?"));
     BigDecimal decimal = new BigDecimal(value);
-    required(positive ? decimal.signum() > 0 : decimal.signum() >= 0);
+    required(
+        (positive ? decimal.signum() > 0 : decimal.signum() >= 0)
+            && Math.max(0, decimal.precision() - decimal.scale()) <= integerDigits);
     return decimal;
   }
 
-  private static void text(String value) {
-    required(value != null && !value.isBlank());
+  private static void text(String value, int maxLength) {
+    required(
+        value != null
+            && TEXT_CONTENT.matcher(value).find()
+            && value.codePointCount(0, value.length()) <= maxLength);
+  }
+
+  private static void optionalText(String value, int maxLength) {
+    if (value != null) {
+      text(value, maxLength);
+    }
+  }
+
+  static RuntimeException classifyDataAccess(DataAccessException exception) {
+    if (exception instanceof DataIntegrityViolationException) {
+      return EventHandlingException.finalFailure("ORDER_PERSISTENCE_CONSTRAINT_VIOLATION");
+    }
+    if (exception instanceof TransientDataAccessException
+        || exception instanceof RecoverableDataAccessException
+        || exception instanceof DataAccessResourceFailureException) {
+      return EventHandlingException.retryable("ORDER_STORAGE_UNAVAILABLE");
+    }
+    return exception;
   }
 
   private static void requiredInteger(JsonNode node, String field) {
@@ -239,7 +276,11 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
   }
 
   private TradeOrder createOrder(
-      TenantId tenantId, EventDelivery delivery, QuotationAcceptedV1.Payload payload, Instant now) {
+      TenantId tenantId,
+      EventDelivery delivery,
+      QuotationAcceptedV1.Payload payload,
+      String snapshotHash,
+      Instant now) {
     List<Line> lines =
         payload.lines().stream()
             .map(
@@ -295,26 +336,38 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
         payload.acceptedAt(),
         payload.sourceOwnerId(),
         snapshot,
-        payload.snapshotHash(),
+        snapshotHash,
         delivery.correlationId(),
         delivery.eventId(),
         UUID.randomUUID(),
         now);
   }
 
-  private static void requireSameSource(TradeOrder existing, QuotationAcceptedV1.Payload payload) {
+  private static String requireSameSource(
+      TradeOrder existing, QuotationAcceptedV1.Payload payload, String snapshotHash) {
+    String existingHash =
+        normalizeStoredHash(existing.snapshotHash(), "ORDER_SOURCE_QUOTATION_CONFLICT");
     if (!existing.sourceRevisionId().equals(payload.revisionId())
         || existing.sourceRevision() != payload.revision()
         || !existing.sourceQuotationNumber().equals(payload.quotationNumber())
         || !existing.acceptanceId().equals(payload.acceptanceId())
-        || !existing.snapshotHash().equals(payload.snapshotHash())) {
+        || !existingHash.equals(snapshotHash)) {
       throw EventHandlingException.finalFailure("ORDER_SOURCE_QUOTATION_CONFLICT");
     }
+    return existingHash;
   }
 
-  private static EventHandlingResult result(TradeOrder order) {
+  private static EventHandlingResult result(TradeOrder order, String snapshotHash) {
     return EventHandlingResult.processed(
-        order.id().toString(), sha256(order.id() + "|" + order.snapshotHash()));
+        order.id().toString(), sha256(order.id() + "|" + snapshotHash));
+  }
+
+  private static String normalizeStoredHash(String snapshotHash, String failureCode) {
+    try {
+      return QuotationSnapshotHashV1.normalizeStoredHash(snapshotHash);
+    } catch (QuotationSnapshotHashV1.InvalidSnapshotHashFormatException exception) {
+      throw EventHandlingException.finalFailure(failureCode);
+    }
   }
 
   private static TradeOrderCreatedV1 createdEvent(TradeOrder order) {
@@ -401,6 +454,8 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
       throw new IllegalStateException("SHA-256 is unavailable", exception);
     }
   }
+
+  private record AcceptedEvent(QuotationAcceptedV1.Payload payload, String snapshotHash) {}
 
   private static final class ContractViolation extends RuntimeException {}
 }

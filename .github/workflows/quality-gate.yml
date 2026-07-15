@@ -3,6 +3,9 @@ name: Pull request quality gate
 on:
   pull_request:
   workflow_dispatch:
+    inputs:
+      base: {required: true, type: string}
+      head: {required: true, type: string}
 
 permissions:
   contents: read
@@ -39,11 +42,17 @@ jobs:
   trade-order-conversion:
     uses: ./.github/workflows/trade-order-conversion.yml
 
+  migration-history:
+    uses: ./.github/workflows/migration-history.yml
+    with:
+      base: ${{ github.event.pull_request.base.sha || inputs.base }}
+      head: ${{ github.event.pull_request.head.sha || inputs.head }}
+
   required:
     name: Required quality gate
     runs-on: ubuntu-latest
     if: always()
-    needs: [docs-contracts, backend, frontend, security, identity-access, partner-onboarding, catalog-supply-search, quotation-trade-planning, customer-quotation-acceptance, trade-order-conversion]
+    needs: [docs-contracts, backend, frontend, security, identity-access, partner-onboarding, catalog-supply-search, quotation-trade-planning, customer-quotation-acceptance, trade-order-conversion, migration-history]
     steps:
       - name: Require every quality workflow
         env:
@@ -57,6 +66,7 @@ jobs:
           QUOTATION_RESULT: ${{ needs['quotation-trade-planning'].result }}
           ACCEPTANCE_RESULT: ${{ needs['customer-quotation-acceptance'].result }}
           ORDER_RESULT: ${{ needs['trade-order-conversion'].result }}
+          MIGRATION_RESULT: ${{ needs['migration-history'].result }}
         run: |
           test "${DOCS_RESULT}" = "success"
           test "${BACKEND_RESULT}" = "success"
@@ -68,3 +78,4 @@ jobs:
           test "${QUOTATION_RESULT}" = "success"
           test "${ACCEPTANCE_RESULT}" = "success"
           test "${ORDER_RESULT}" = "success"
+          test "${MIGRATION_RESULT}" = "success"

@@ -25,11 +25,11 @@
 | FF-DATA-002 | 无跨模块 FK | PostgreSQL catalog integration test |
 | FF-DATA-003 | 所有业务表有 tenant_id（例外白名单） | catalog test |
 | FF-DATA-004 | mutable aggregate 表有 version | catalog test（显式 mutable root 集合） |
-| FF-DATA-005 | migration 文件合并后不可改 | V2+ SHA-256 manifest；PR 基线差异仍需 CI/评审 |
+| FF-DATA-005 | migration 文件合并后不可改 | current-tree SHA-256 manifest + CI Git-history base/head gate |
 | FF-DATA-006 | 金额/数量列 precision/scale 符合规范 | catalog test（numeric 分类与命名约束） |
 | FF-DATA-007 | inventory quantity unit / allocation priority | Inventory readiness PR 的 V10 与 catalog test |
 
-状态：FF-DATA-001～004、006 **Available**；FF-DATA-005 **Partially available**；FF-DATA-007 **Planned**。
+状态：FF-DATA-001～006 **Available**；FF-DATA-007 **Planned**。
 
 ## 4. 契约
 

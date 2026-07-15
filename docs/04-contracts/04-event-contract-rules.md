@@ -33,7 +33,7 @@ AsyncAPI channel/topic 名：`cellarbridge.<domain>.<fact>.v1`。
 - 个人/商业敏感最小化；
 - 不把技术异常堆栈放 payload。
 
-`QuotationAcceptedV1` 的 Snapshot Hash V1 字段序固定为 `schemaVersion=1, quotationId, revisionId, quotationNumber, revision, customer, currency, totalAmount, paymentTermDays, route, acceptedTermsVersion, requestedDeliveryDate, deliveryAddress, lines`；排除 acceptance/envelope/hash 字段，保留行序，显式写 null，金额/数量用去尾零十进制字符串，日期用 ISO 格式，再对 UTF-8 紧凑 JSON 做 SHA-256。对外值固定为裸小写 64 位十六进制；消费者先校验契约、再重算 hash、最后查询或创建订单。
+`QuotationAcceptedV1` 的 Snapshot Hash V1 字段序固定为 `schemaVersion=1, quotationId, revisionId, quotationNumber, revision, customer, currency, totalAmount, paymentTermDays, route, acceptedTermsVersion, requestedDeliveryDate, deliveryAddress, lines`；排除 acceptance/envelope/hash 字段，保留行序，显式写 null，金额/数量用去尾零十进制字符串，日期用 ISO 格式，再对 UTF-8 紧凑 JSON 做 SHA-256。当前 Schema 与新生产者唯一格式是裸小写 64 位十六进制；`sha256:` 只兼容读取 pre-1.0 已持久化消息/历史行，规范化后比较且新写入仍为裸值，不代表 Schema 重新允许前缀，v1.0 后删除兼容路径须另行决策。消费者在持久化前校验长度、精度、行/SKU 唯一和求和边界；确定性约束失败为 `ORDER_PERSISTENCE_CONSTRAINT_VIOLATION`，已知瞬态存储失败为 `ORDER_STORAGE_UNAVAILABLE`，未知数据访问异常继续遵守 ADR-013 有界兜底。
 
 嵌套字段序固定为 customer 的 `partnerId, partnerNumber, displayName, sourceVersion`，route 的 `code, policyVersion, estimatedDeliveryDate`，address 的 `countryCode, province, city, district, line1, postalCode`，line 的 `quotationLineId, skuId, skuCode, description, quantity, unit, netUnitPrice, lineTotal, supplyPoolId, supplyType`；`acceptanceId`、`acceptedAt`、`sourceOwnerId`、`snapshotHash` 和 envelope 不进入 projection。
 
