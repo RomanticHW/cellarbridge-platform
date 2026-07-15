@@ -299,6 +299,7 @@ public class QuotationApplicationService {
                   .map(
                       line ->
                           new LineDemand(
+                              line.lineId(),
                               line.sku().skuId(),
                               line.quantity(),
                               TradePlanningQuantityUnit.valueOf(line.unit().name()),

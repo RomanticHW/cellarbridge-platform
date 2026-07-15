@@ -1,6 +1,5 @@
 package com.rom.cellarbridge.tradeplanning.internal.domain;
 
-import com.rom.cellarbridge.tradeplanning.TradePlanningQuantityUnit;
 import com.rom.cellarbridge.tradeplanning.TradePlanningService.Eligibility;
 import com.rom.cellarbridge.tradeplanning.TradePlanningService.RouteCandidate;
 import com.rom.cellarbridge.tradeplanning.TradePlanningService.RouteRejection;
@@ -15,25 +14,39 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
+import java.util.stream.Collectors;
 
 public final class RouteEvaluationPolicy {
 
-  public static final String VERSION = "ROUTE-2026-02";
+  public static final String VERSION = "ROUTE-2026-03";
   public static final LocalDate EFFECTIVE_FROM = LocalDate.of(2026, 1, 1);
   private static final BigDecimal HUNDRED = new BigDecimal("100");
   private static final Map<TradeRouteCode, Definition> DEFINITIONS = definitions();
 
   private RouteEvaluationPolicy() {}
 
-  public static List<RouteCandidate> evaluate(Input input) {
+  public static EvaluationOutcome evaluate(Input input) {
     if (input.evaluationDate().isBefore(EFFECTIVE_FROM)) {
       throw new IllegalStateException("Route policy is not effective for the evaluation date");
     }
-    return DEFINITIONS.values().stream()
-        .sorted(Comparator.comparingInt(Definition::priority))
-        .map(definition -> candidate(definition, input))
-        .toList();
+    List<Definition> definitions =
+        DEFINITIONS.values().stream()
+            .sorted(Comparator.comparingInt(Definition::priority))
+            .toList();
+    Map<TradeRouteCode, SupplyDecisionPolicy.Result> decisions =
+        new EnumMap<>(TradeRouteCode.class);
+    List<RouteCandidate> candidates =
+        definitions.stream()
+            .map(
+                definition -> {
+                  SupplyDecisionPolicy.Result decision =
+                      SupplyDecisionPolicy.decide(
+                          definition.code(), input.lines(), input.availability());
+                  decisions.put(definition.code(), decision);
+                  return candidate(definition, input, decision);
+                })
+            .toList();
+    return new EvaluationOutcome(candidates, decisions);
   }
 
   public static TradeRouteCode recommend(List<RouteCandidate> candidates) {
@@ -49,7 +62,8 @@ public final class RouteEvaluationPolicy {
         .orElse(null);
   }
 
-  private static RouteCandidate candidate(Definition definition, Input input) {
+  private static RouteCandidate candidate(
+      Definition definition, Input input, SupplyDecisionPolicy.Result supplyDecision) {
     List<RouteRejection> rejections = new ArrayList<>();
     reject(
         rejections,
@@ -77,7 +91,7 @@ public final class RouteEvaluationPolicy {
         "Payment term exceeds this route policy");
     BigDecimal totalMoqCaseEquivalentQuantity =
         input.lines().stream()
-            .map(LineInput::moqCaseEquivalentQuantity)
+            .map(SupplyDecisionPolicy.LineInput::moqCaseEquivalentQuantity)
             .reduce(BigDecimal.ZERO, BigDecimal::add);
     reject(
         rejections,
@@ -92,18 +106,13 @@ public final class RouteEvaluationPolicy {
         "TRD-DELIVERY-001",
         "DELIVERY_DATE_UNACHIEVABLE",
         "Requested delivery date is earlier than the route estimate");
-    reject(
-        rejections,
-        !hasSupply(definition.code(), input.lines(), input.availability()),
-        "TRD-SUPPLY-001",
-        "NO_PROMISABLE_SUPPLY",
-        "Current supply cannot cover every quotation line");
+    rejections.addAll(supplyRejections(supplyDecision));
 
     if (!rejections.isEmpty()) {
       return new RouteCandidate(
           definition.code(), Eligibility.REJECTED, null, null, null, input.currency(), rejections);
     }
-    BigDecimal confidence = confidence(definition.code(), input.lines(), input.availability());
+    BigDecimal confidence = confidence(supplyDecision.minimumConfidence());
     RouteScore score =
         new RouteScore(
             definition.costScore(),
@@ -129,52 +138,41 @@ public final class RouteEvaluationPolicy {
         List.of());
   }
 
-  private static boolean hasSupply(
-      TradeRouteCode route, List<LineInput> lines, List<AvailabilityInput> availability) {
-    return lines.stream()
-        .allMatch(
-            line ->
-                availability.stream()
-                        .filter(
-                            item ->
-                                item.routeCode() == route
-                                    && item.skuId().equals(line.skuId())
-                                    && item.quantityUnit() == line.quantityUnit())
-                        .filter(
-                            item ->
-                                line.preferredSupplyPoolId() == null
-                                    || item.supplyPoolId().equals(line.preferredSupplyPoolId()))
-                        .map(AvailabilityInput::availableQuantity)
-                        .reduce(BigDecimal.ZERO, BigDecimal::add)
-                        .compareTo(line.requestedQuantity())
-                    >= 0);
+  private static BigDecimal confidence(SupplyDecisionPolicy.Confidence confidence) {
+    int value =
+        switch (confidence) {
+          case HIGH -> 95;
+          case MEDIUM -> 75;
+          case LOW -> 55;
+        };
+    return BigDecimal.valueOf(value).setScale(2, RoundingMode.UNNECESSARY);
   }
 
-  private static BigDecimal confidence(
-      TradeRouteCode route, List<LineInput> lines, List<AvailabilityInput> availability) {
-    int value =
-        availability.stream()
-            .filter(item -> item.routeCode() == route)
-            .filter(
-                item ->
-                    lines.stream()
-                        .anyMatch(
-                            line ->
-                                line.skuId().equals(item.skuId())
-                                    && line.quantityUnit() == item.quantityUnit()
-                                    && (line.preferredSupplyPoolId() == null
-                                        || line.preferredSupplyPoolId()
-                                            .equals(item.supplyPoolId()))))
-            .mapToInt(
-                item ->
-                    switch (item.confidence()) {
-                      case "HIGH" -> 95;
-                      case "MEDIUM" -> 75;
-                      default -> 55;
-                    })
-            .min()
-            .orElse(0);
-    return BigDecimal.valueOf(value).setScale(2, RoundingMode.UNNECESSARY);
+  private static List<RouteRejection> supplyRejections(SupplyDecisionPolicy.Result supplyDecision) {
+    return supplyDecision.failures().stream()
+        .collect(Collectors.groupingBy(SupplyDecisionPolicy.Failure::code))
+        .entrySet()
+        .stream()
+        .sorted(Map.Entry.comparingByKey())
+        .map(
+            entry -> {
+              boolean fixed =
+                  SupplyDecisionPolicy.FIXED_POOL_INELIGIBLE_CODE.equals(entry.getKey());
+              String lineIds =
+                  entry.getValue().stream()
+                      .map(SupplyDecisionPolicy.Failure::quotationLineId)
+                      .sorted()
+                      .map(Object::toString)
+                      .collect(Collectors.joining(","));
+              return new RouteRejection(
+                  fixed ? "TRD-SUPPLY-FIXED-001" : "TRD-SUPPLY-001",
+                  entry.getKey(),
+                  fixed
+                      ? "Fixed supply pool cannot cover the quotation lines"
+                      : "Current supply cannot cover the quotation lines",
+                  Map.of("quotationLineIds", lineIds));
+            })
+        .toList();
   }
 
   private static BigDecimal weighted(
@@ -252,8 +250,8 @@ public final class RouteEvaluationPolicy {
       LocalDate requestedDeliveryDate,
       int paymentTermDays,
       LocalDate evaluationDate,
-      List<LineInput> lines,
-      List<AvailabilityInput> availability) {
+      List<SupplyDecisionPolicy.LineInput> lines,
+      List<SupplyDecisionPolicy.AvailabilityInput> availability) {
 
     public Input {
       partnerRoutes = Set.copyOf(partnerRoutes);
@@ -262,20 +260,18 @@ public final class RouteEvaluationPolicy {
     }
   }
 
-  public record LineInput(
-      UUID skuId,
-      BigDecimal requestedQuantity,
-      TradePlanningQuantityUnit quantityUnit,
-      BigDecimal moqCaseEquivalentQuantity,
-      UUID preferredSupplyPoolId) {}
+  public record EvaluationOutcome(
+      List<RouteCandidate> candidates,
+      Map<TradeRouteCode, SupplyDecisionPolicy.Result> supplyDecisions) {
 
-  public record AvailabilityInput(
-      UUID supplyPoolId,
-      UUID skuId,
-      TradeRouteCode routeCode,
-      TradePlanningQuantityUnit quantityUnit,
-      BigDecimal availableQuantity,
-      String confidence) {}
+    public EvaluationOutcome {
+      candidates = List.copyOf(candidates);
+      supplyDecisions = Map.copyOf(supplyDecisions);
+      if (!supplyDecisions.keySet().equals(DEFINITIONS.keySet())) {
+        throw new IllegalArgumentException("Every route definition requires a supply decision");
+      }
+    }
+  }
 
   private record Definition(
       TradeRouteCode code,

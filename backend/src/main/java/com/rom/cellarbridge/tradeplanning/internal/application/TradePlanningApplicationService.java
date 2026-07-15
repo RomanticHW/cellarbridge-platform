@@ -15,23 +15,23 @@ import com.rom.cellarbridge.tradeplanning.TradePlanningService.Eligibility;
 import com.rom.cellarbridge.tradeplanning.TradePlanningService.RouteCandidate;
 import com.rom.cellarbridge.tradeplanning.TradePlanningService.RouteEvaluation;
 import com.rom.cellarbridge.tradeplanning.TradePlanningService.RouteOverride;
+import com.rom.cellarbridge.tradeplanning.TradePlanningSupplyType;
 import com.rom.cellarbridge.tradeplanning.TradeRouteCode;
 import com.rom.cellarbridge.tradeplanning.internal.domain.RouteEvaluationPolicy;
-import com.rom.cellarbridge.tradeplanning.internal.domain.RouteEvaluationPolicy.AvailabilityInput;
+import com.rom.cellarbridge.tradeplanning.internal.domain.RouteEvaluationPolicy.EvaluationOutcome;
 import com.rom.cellarbridge.tradeplanning.internal.domain.RouteEvaluationPolicy.Input;
-import com.rom.cellarbridge.tradeplanning.internal.domain.RouteEvaluationPolicy.LineInput;
-import java.math.BigDecimal;
+import com.rom.cellarbridge.tradeplanning.internal.domain.SupplyDecisionPolicy;
+import com.rom.cellarbridge.tradeplanning.internal.domain.SupplyDecisionPolicy.AvailabilityInput;
+import com.rom.cellarbridge.tradeplanning.internal.domain.SupplyDecisionPolicy.LineInput;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.HexFormat;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -70,6 +70,8 @@ public class TradePlanningApplicationService implements TradePlanningService {
   @Transactional
   public RouteEvaluation evaluate(TenantId tenantId, EvaluationCommand command) {
     validate(command);
+    Instant evaluationTime = clock.instant().truncatedTo(ChronoUnit.MICROS);
+    UUID evaluationId = UUID.randomUUID();
     EligibilitySnapshot partner;
     try {
       partner = partnerEligibilityService.requireActive(tenantId, command.partnerId());
@@ -88,9 +90,14 @@ public class TradePlanningApplicationService implements TradePlanningService {
     Set<UUID> skuIds =
         command.lines().stream().map(LineDemand::skuId).collect(Collectors.toUnmodifiableSet());
     List<RouteAvailability> availability =
-        inventorySupplyQuery.findRouteAvailability(tenantId, skuIds, clock.instant());
-    Input input = input(command, partner, availability);
-    List<RouteCandidate> candidates = RouteEvaluationPolicy.evaluate(input);
+        inventorySupplyQuery.findRouteAvailability(tenantId, skuIds, evaluationTime);
+    Input input = input(command, partner, availability, evaluationTime);
+    String inputSummary =
+        serialize(
+            RouteEvaluationInputSnapshotV3.create(evaluationTime, command, partner, availability));
+    String inputHash = sha256(inputSummary);
+    EvaluationOutcome outcome = RouteEvaluationPolicy.evaluate(input);
+    List<RouteCandidate> candidates = outcome.candidates();
     TradeRouteCode recommended = RouteEvaluationPolicy.recommend(candidates);
     if (recommended == null) {
       throw new TradePlanningException(
@@ -110,19 +117,20 @@ public class TradePlanningApplicationService implements TradePlanningService {
       throw new TradePlanningException(
           "QUOTE_ROUTE_NOT_ELIGIBLE", "Requested route does not satisfy hard constraints");
     }
-    Instant now = clock.instant();
-    RouteOverride override = override(command, recommended, selected, now);
-    String inputSummary = inputSummary(command, partner, input);
+    RouteOverride override = override(command, recommended, selected, evaluationTime);
+    SupplyDecisionPolicy.Result selectedSupplyDecision = outcome.supplyDecisions().get(selected);
+    var supplyDecision = selectedSupplyDecision.snapshot(evaluationTime, evaluationId, inputHash);
     RouteEvaluation evaluation =
         new RouteEvaluation(
-            UUID.randomUUID(),
+            evaluationId,
             RouteEvaluationPolicy.VERSION,
-            now,
-            sha256(inputSummary),
+            evaluationTime,
+            inputHash,
             candidates,
             recommended,
             selected,
-            override);
+            override,
+            supplyDecision);
     repository.save(tenantId, command.partnerId(), command.actorId(), inputSummary, evaluation);
     return evaluation;
   }
@@ -147,7 +155,8 @@ public class TradePlanningApplicationService implements TradePlanningService {
   private Input input(
       EvaluationCommand command,
       EligibilitySnapshot partner,
-      List<RouteAvailability> availability) {
+      List<RouteAvailability> availability,
+      Instant evaluationTime) {
     Set<TradeRouteCode> partnerRoutes =
         partner.routeCodes().stream()
             .map(TradeRouteCode::valueOf)
@@ -158,11 +167,12 @@ public class TradePlanningApplicationService implements TradePlanningService {
         command.destinationCountryCode(),
         command.requestedDeliveryDate(),
         command.paymentTermDays(),
-        clock.instant().atZone(ZoneOffset.UTC).toLocalDate(),
+        evaluationTime.atZone(ZoneOffset.UTC).toLocalDate(),
         command.lines().stream()
             .map(
                 line ->
                     new LineInput(
+                        line.quotationLineId(),
                         line.skuId(),
                         line.requestedQuantity(),
                         line.quantityUnit(),
@@ -176,9 +186,13 @@ public class TradePlanningApplicationService implements TradePlanningService {
                         item.supplyPoolId(),
                         item.skuId(),
                         TradeRouteCode.valueOf(item.routeCode()),
+                        TradePlanningSupplyType.valueOf(item.supplyType().name()),
                         TradePlanningQuantityUnit.valueOf(item.quantityUnit().name()),
                         item.availableQuantity(),
-                        item.confidence()))
+                        item.availableFrom(),
+                        item.confidence(),
+                        item.policyVersion(),
+                        item.dataAsOf()))
             .toList());
   }
 
@@ -198,22 +212,9 @@ public class TradePlanningApplicationService implements TradePlanningService {
     return new RouteOverride(command.overrideReason().strip(), command.actorId(), now, recommended);
   }
 
-  private String inputSummary(EvaluationCommand command, EligibilitySnapshot partner, Input input) {
-    Map<String, Object> summary = new LinkedHashMap<>();
-    summary.put("schemaVersion", 2);
-    summary.put("policyVersion", RouteEvaluationPolicy.VERSION);
-    summary.put("partnerId", command.partnerId());
-    summary.put("partnerEligibilityVersion", partner.sourceVersion());
-    summary.put("partnerRoutes", input.partnerRoutes().stream().map(Enum::name).sorted().toList());
-    summary.put("currency", input.currency());
-    summary.put("destinationCountryCode", input.destinationCountryCode());
-    summary.put("requestedDeliveryDate", input.requestedDeliveryDate());
-    summary.put("paymentTermDays", input.paymentTermDays());
-    summary.put("evaluationDate", input.evaluationDate());
-    summary.put("lines", input.lines());
-    summary.put("availability", input.availability());
+  private String serialize(RouteEvaluationInputSnapshotV3 snapshot) {
     try {
-      return jsonMapper.writeValueAsString(summary);
+      return jsonMapper.writeValueAsString(snapshot);
     } catch (JacksonException exception) {
       throw new IllegalStateException("Could not serialize route evaluation input", exception);
     }
@@ -240,15 +241,13 @@ public class TradePlanningApplicationService implements TradePlanningService {
       throw new TradePlanningException(
           "QUOTE_LINE_DUPLICATE_SKU", "Quotation SKU lines must be unique");
     }
-    if (command.lines().stream()
-        .anyMatch(
-            line ->
-                line.requestedQuantity() == null
-                    || line.requestedQuantity().compareTo(BigDecimal.ZERO) <= 0
-                    || line.quantityUnit() == null
-                    || line.moqCaseEquivalentQuantity() == null
-                    || line.moqCaseEquivalentQuantity().compareTo(BigDecimal.ZERO) <= 0)) {
-      throw new TradePlanningException("VALIDATION_FAILED", "Line quantities must be positive");
+    Set<UUID> lineIds =
+        command.lines().stream()
+            .map(LineDemand::quotationLineId)
+            .collect(Collectors.toUnmodifiableSet());
+    if (lineIds.size() != command.lines().size()) {
+      throw new TradePlanningException(
+          "VALIDATION_FAILED", "Quotation line identifiers must be unique");
     }
   }
 
@@ -256,8 +255,7 @@ public class TradePlanningApplicationService implements TradePlanningService {
     try {
       return HexFormat.of()
           .formatHex(
-              MessageDigest.getInstance("SHA-256").digest(input.getBytes(StandardCharsets.UTF_8)))
-          .toLowerCase(Locale.ROOT);
+              MessageDigest.getInstance("SHA-256").digest(input.getBytes(StandardCharsets.UTF_8)));
     } catch (NoSuchAlgorithmException exception) {
       throw new IllegalStateException("SHA-256 is unavailable", exception);
     }

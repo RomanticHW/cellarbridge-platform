@@ -9,7 +9,9 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
@@ -76,19 +78,44 @@ public final class SupplyDecisionHashV1 {
       List<SupplyDecisionSnapshot.LineDecision> lineDecisions) {
 
     public HashInput {
+      if (schemaVersion <= 0) {
+        throw new IllegalArgumentException("schemaVersion must be positive");
+      }
       policyVersion = Objects.requireNonNull(policyVersion, "policyVersion");
+      if (policyVersion.isBlank() || policyVersion.length() > 80) {
+        throw new IllegalArgumentException("policyVersion must contain 1 to 80 characters");
+      }
       decidedAt = Objects.requireNonNull(decidedAt, "decidedAt");
+      requireMicroseconds(decidedAt, "decidedAt");
       sourceRouteEvaluationId =
           Objects.requireNonNull(sourceRouteEvaluationId, "sourceRouteEvaluationId");
       sourceRouteInputHash = Objects.requireNonNull(sourceRouteInputHash, "sourceRouteInputHash");
+      if (!sourceRouteInputHash.matches("^[0-9a-f]{64}$")) {
+        throw new IllegalArgumentException(
+            "sourceRouteInputHash must be lowercase 64-character hex");
+      }
       selectedRouteCode = Objects.requireNonNull(selectedRouteCode, "selectedRouteCode");
       inventoryDataAsOf = Objects.requireNonNull(inventoryDataAsOf, "inventoryDataAsOf");
+      requireMicroseconds(inventoryDataAsOf, "inventoryDataAsOf");
       Objects.requireNonNull(lineDecisions, "lineDecisions");
       lineDecisions =
           lineDecisions.stream()
               .map(line -> Objects.requireNonNull(line, "lineDecision"))
               .sorted(Comparator.comparing(SupplyDecisionSnapshot.LineDecision::quotationLineId))
               .toList();
+      if (lineDecisions.isEmpty()) {
+        throw new IllegalArgumentException("lineDecisions must not be empty");
+      }
+      HashSet<UUID> lineIds = new HashSet<>();
+      if (lineDecisions.stream().anyMatch(line -> !lineIds.add(line.quotationLineId()))) {
+        throw new IllegalArgumentException("quotationLineId must be unique");
+      }
+    }
+
+    private static void requireMicroseconds(Instant value, String field) {
+      if (!value.equals(value.truncatedTo(ChronoUnit.MICROS))) {
+        throw new IllegalArgumentException(field + " must use microsecond precision");
+      }
     }
   }
 }
