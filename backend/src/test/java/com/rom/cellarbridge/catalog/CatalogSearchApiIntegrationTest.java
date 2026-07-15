@@ -120,6 +120,14 @@ class CatalogSearchApiIntegrationTest extends PostgresIntegrationTestSupport {
 
   @Test
   void separatesAndFiltersSamePoolSupplyByQuantityUnit() throws Exception {
+    Instant priorityCorrectionTime = Instant.now().minusSeconds(1);
+    jdbc.update(
+        """
+        UPDATE inventory.warehouse
+           SET allocation_priority = 10, updated_at = ?::timestamptz, version = version + 1
+         WHERE id = '35000000-0000-4000-8000-000000000001'
+        """,
+        priorityCorrectionTime.toString());
     String path = "/api/v1/catalog/skus?keyword=Moonlit%20Terrace&supplyType=DOMESTIC_ON_HAND";
     ApiResponse sales = get(path, NORTH_SALES);
 
@@ -145,6 +153,8 @@ class CatalogSearchApiIntegrationTest extends PostgresIntegrationTestSupport {
 
     ApiResponse exact = get(path, NORTH_ADMIN);
     JsonNode exactSupplies = exact.body().path("items").path(0).path("supplies");
+    assertThat(Instant.parse(exact.body().path("dataAsOf").asText()))
+        .isAfterOrEqualTo(priorityCorrectionTime);
     assertThat(exactSupplies.path(0).path("displayedAvailableQuantity").path("value").asText())
         .isEqualTo("10");
     assertThat(exactSupplies.path(0).path("exactLots").size()).isEqualTo(1);
@@ -157,7 +167,7 @@ class CatalogSearchApiIntegrationTest extends PostgresIntegrationTestSupport {
                 .asInt())
         .isEqualTo(10);
     assertThat(exactSupplies.path(0).path("exactLots").path(0).path("warehouseVersion").asLong())
-        .isZero();
+        .isEqualTo(1);
     assertThat(
             exactSupplies
                 .path(0)

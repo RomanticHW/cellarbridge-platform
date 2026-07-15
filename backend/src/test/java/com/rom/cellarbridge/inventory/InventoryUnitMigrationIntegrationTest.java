@@ -4,13 +4,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.rom.cellarbridge.test.PostgresIntegrationTestSupport;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 @Testcontainers
@@ -77,6 +80,49 @@ class InventoryUnitMigrationIntegrationTest extends PostgresIntegrationTestSuppo
         .isInstanceOf(DataIntegrityViolationException.class);
     assertThatThrownBy(() -> jdbc.update("UPDATE inventory.warehouse SET allocation_priority = -1"))
         .isInstanceOf(DataIntegrityViolationException.class);
+    assertThatThrownBy(
+            () -> jdbc.update("UPDATE catalog.sku_supply_projection SET quantity_unit = 'PALLET'"))
+        .isInstanceOf(DataIntegrityViolationException.class);
+  }
+
+  @Test
+  void repeatableDemoSeedVersionsOnlyRealWarehousePriorityCorrections() {
+    String freshDatabase = createDatabase();
+    migrateWithDemo(freshDatabase, "11");
+    JdbcTemplate fresh = jdbc(freshDatabase);
+    WarehouseState freshSeed = warehouseState(fresh);
+    assertThat(freshSeed.version()).isZero();
+    rerunCatalogSeed(fresh);
+    assertThat(warehouseState(fresh)).isEqualTo(freshSeed);
+
+    String legacyDatabase = createDatabase();
+    migrate(legacyDatabase, "9");
+    JdbcTemplate legacy = jdbc(legacyDatabase);
+    legacy.update(
+        """
+        INSERT INTO inventory.warehouse
+          (id, tenant_id, code, name, country_code, city, status,
+           created_at, created_by, updated_at, updated_by, version)
+        VALUES
+          ('35000000-0000-4000-8000-000000000001',
+           '10000000-0000-4000-8000-000000000001', 'WH-SH-01', 'Legacy Warehouse',
+           'CN', 'Shanghai', 'ACTIVE', '2020-01-01T00:00:00Z',
+           '11200000-0000-4000-8000-000000000099', '2020-01-01T00:00:00Z',
+           '11200000-0000-4000-8000-000000000099', 0)
+        """);
+    migrate(legacyDatabase, "11");
+    WarehouseState beforeCorrection = warehouseState(legacy);
+    assertThat(beforeCorrection.priority()).isEqualTo(100);
+
+    rerunCatalogSeed(legacy);
+    WarehouseState corrected = warehouseState(legacy);
+    assertThat(corrected.priority()).isEqualTo(10);
+    assertThat(corrected.version()).isEqualTo(1);
+    assertThat(corrected.updatedAt()).isAfter(beforeCorrection.updatedAt());
+    assertThat(corrected.updatedBy())
+        .isEqualTo(UUID.fromString("11200000-0000-4000-8000-000000000004"));
+    rerunCatalogSeed(legacy);
+    assertThat(warehouseState(legacy)).isEqualTo(corrected);
   }
 
   private JdbcTemplate migrateTo(String target) {
@@ -98,6 +144,36 @@ class InventoryUnitMigrationIntegrationTest extends PostgresIntegrationTestSuppo
         .target(target)
         .load()
         .migrate();
+  }
+
+  private void migrateWithDemo(String database, String target) {
+    Flyway.configure()
+        .dataSource(url(database), USERNAME, PASSWORD)
+        .locations("classpath:db/migration", "classpath:db/demo")
+        .target(target)
+        .load()
+        .migrate();
+  }
+
+  private static void rerunCatalogSeed(JdbcTemplate jdbc) {
+    new ResourceDatabasePopulator(
+            new ClassPathResource("db/demo/R__catalog_inventory_demo_seed.sql"))
+        .execute(jdbc.getDataSource());
+  }
+
+  private static WarehouseState warehouseState(JdbcTemplate jdbc) {
+    return jdbc.queryForObject(
+        """
+        SELECT allocation_priority, version, updated_at, updated_by
+          FROM inventory.warehouse
+         WHERE id = '35000000-0000-4000-8000-000000000001'
+        """,
+        (resultSet, rowNumber) ->
+            new WarehouseState(
+                resultSet.getInt("allocation_priority"),
+                resultSet.getLong("version"),
+                resultSet.getTimestamp("updated_at").toInstant(),
+                resultSet.getObject("updated_by", UUID.class)));
   }
 
   private JdbcTemplate jdbc(String database) {
@@ -288,4 +364,6 @@ class InventoryUnitMigrationIntegrationTest extends PostgresIntegrationTestSuppo
            '11200000-0000-4000-8000-000000000099', 0)
         """);
   }
+
+  private record WarehouseState(int priority, long version, Instant updatedAt, UUID updatedBy) {}
 }
