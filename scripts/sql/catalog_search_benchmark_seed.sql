@@ -74,7 +74,7 @@ SELECT md5('catalog-benchmark-sku-' || product_sequence || '-' || variant)::uuid
  CROSS JOIN generate_series(1, 3) AS variant;
 
 INSERT INTO inventory.warehouse
-    (id, tenant_id, code, name, country_code, city, status,
+    (id, tenant_id, code, name, country_code, city, status, allocation_priority,
      created_at, created_by, updated_at, updated_by, version)
 SELECT md5('catalog-benchmark-warehouse-' || sequence)::uuid,
        :'tenant_id'::uuid,
@@ -83,7 +83,7 @@ SELECT md5('catalog-benchmark-warehouse-' || sequence)::uuid,
        CASE sequence WHEN 1 THEN 'CN' WHEN 2 THEN 'CN' WHEN 3 THEN 'HK' ELSE 'FR' END,
        CASE sequence WHEN 1 THEN 'Shanghai' WHEN 2 THEN 'Ningbo'
             WHEN 3 THEN 'Hong Kong' ELSE 'Lyon' END,
-       'ACTIVE',
+       'ACTIVE', sequence * 10,
        '2026-07-13T00:00:00Z', :'actor_id'::uuid,
        '2026-07-13T00:00:00Z', :'actor_id'::uuid, 0
   FROM generate_series(1, 5) AS sequence;
@@ -110,13 +110,14 @@ SELECT md5('catalog-benchmark-pool-' || sequence)::uuid,
   FROM generate_series(1, 5) AS sequence;
 
 INSERT INTO catalog.sku_supply_projection
-    (tenant_id, sku_id, supply_pool_id, supply_type, location_label,
+    (tenant_id, sku_id, supply_pool_id, quantity_unit, supply_type, location_label,
      availability_class, display_quantity_band, automatically_reservable,
      estimated_available_at, data_as_of, projection_version,
      created_at, created_by, updated_at, updated_by, version)
 SELECT :'tenant_id'::uuid,
        md5('catalog-benchmark-sku-' || product_sequence || '-' || variant)::uuid,
        md5('catalog-benchmark-pool-' || pool_sequence)::uuid,
+       CASE WHEN variant = 3 THEN 'BOTTLE' ELSE 'CASE' END,
        CASE pool_sequence WHEN 1 THEN 'DOMESTIC_ON_HAND' WHEN 2 THEN 'BONDED_ON_HAND'
             ELSE 'IN_TRANSIT_PRESALE' END,
        'Benchmark Warehouse ' || pool_sequence,
@@ -133,14 +134,14 @@ SELECT :'tenant_id'::uuid,
 
 INSERT INTO inventory.inventory_lot
     (id, tenant_id, supply_pool_id, sku_id, lot_code, status,
-     on_hand_quantity, reserved_quantity, available_from, received_at,
+     quantity_unit, on_hand_quantity, reserved_quantity, available_from, received_at,
      created_at, created_by, updated_at, updated_by, version)
 SELECT md5('catalog-benchmark-lot-' || product_sequence || '-' || variant || '-' || pool_sequence)::uuid,
        :'tenant_id'::uuid,
        md5('catalog-benchmark-pool-' || pool_sequence)::uuid,
        md5('catalog-benchmark-sku-' || product_sequence || '-' || variant)::uuid,
        'BENCH-LOT-' || product_sequence || '-' || variant || '-' || pool_sequence,
-       'AVAILABLE', 48 + variant, variant,
+       'AVAILABLE', CASE WHEN variant = 3 THEN 'BOTTLE' ELSE 'CASE' END, 48 + variant, variant,
        '2026-07-13T00:00:00Z', '2026-07-01T00:00:00Z',
        '2026-07-13T00:00:00Z', :'actor_id'::uuid,
        '2026-07-13T00:00:00Z', :'actor_id'::uuid, 0

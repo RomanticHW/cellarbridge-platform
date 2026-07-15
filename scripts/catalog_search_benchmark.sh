@@ -52,9 +52,21 @@ fi
 
 psql_file "${ROOT_DIR}/backend/src/main/resources/db/migration/V4__catalog_products_and_search_projection.sql"
 psql_file "${ROOT_DIR}/backend/src/main/resources/db/migration/V5__inventory_supply_model.sql"
+psql_file "${ROOT_DIR}/backend/src/main/resources/db/migration/V10__inventory_quantity_unit_and_warehouse_priority.sql"
+psql_file "${ROOT_DIR}/backend/src/main/resources/db/migration/V11__catalog_supply_projection_quantity_unit.sql"
 psql_file "${ROOT_DIR}/scripts/sql/catalog_search_benchmark_seed.sql"
 
 mkdir -p "${RESULT_DIR}"
+unit_plan_file="${RESULT_DIR}/catalog-unit-filter-plan.json"
+compose exec -T postgres psql --username cellarbridge --dbname cellarbridge \
+  --no-align --tuples-only --quiet --file - \
+  < "${ROOT_DIR}/scripts/sql/catalog_unit_filter_evidence.sql" > "${unit_plan_file}"
+if ! jq -e \
+  '.. | objects | select(."Index Name"? == "ix_catalog_supply_projection_unit_filter") | select(."Index Cond" | contains("quantity_unit"))' \
+  "${unit_plan_file}" >/dev/null; then
+  printf 'Unit filter plan did not use the unit-aware projection index.\n' >&2
+  exit 1
+fi
 times_file="${RESULT_DIR}/execution-times-ms.txt"
 : > "${times_file}"
 
@@ -87,3 +99,4 @@ printf 'Docker resources: %s CPUs; %s bytes memory\n' \
   "$(docker info --format '{{.MemTotal}}')"
 printf 'Host: %s\n' "$(uname -a)"
 printf 'Plan: %s\n' "${RESULT_DIR}/catalog-search-plan.json"
+printf 'Unit filter plan: %s\n' "${unit_plan_file}"

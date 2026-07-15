@@ -93,8 +93,7 @@ public class CatalogSupplySearchService {
                 .collect(
                     Collectors.groupingBy(
                         lot ->
-                            new SupplyLotKey(
-                                lot.supplyPoolId(), lot.skuId(), lot.quantityUnit())))
+                            new SupplyLotKey(lot.supplyPoolId(), lot.skuId(), lot.quantityUnit())))
             : Map.of();
     return catalogItems.stream()
         .map(

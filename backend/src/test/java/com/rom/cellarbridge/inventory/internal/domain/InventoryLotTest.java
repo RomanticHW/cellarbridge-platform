@@ -3,6 +3,7 @@ package com.rom.cellarbridge.inventory.internal.domain;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.rom.cellarbridge.inventory.QuantityUnit;
 import com.rom.cellarbridge.inventory.SupplyType;
 import java.math.BigDecimal;
 import java.util.UUID;
@@ -17,19 +18,34 @@ class InventoryLotTest {
             UUID.randomUUID(),
             UUID.randomUUID(),
             UUID.randomUUID(),
+            QuantityUnit.CASE,
             new BigDecimal("18"),
             new BigDecimal("3"));
 
     assertThat(lot.available()).isEqualByComparingTo("15");
+    assertThat(lot.quantityUnit()).isEqualTo(QuantityUnit.CASE);
     assertThatThrownBy(
             () ->
                 new InventoryLot(
                     UUID.randomUUID(),
                     UUID.randomUUID(),
                     UUID.randomUUID(),
+                    QuantityUnit.BOTTLE,
                     BigDecimal.ONE,
                     new BigDecimal("2")))
         .isInstanceOf(IllegalArgumentException.class);
+
+    assertThatThrownBy(
+            () ->
+                new InventoryLot(
+                    UUID.randomUUID(),
+                    UUID.randomUUID(),
+                    UUID.randomUUID(),
+                    null,
+                    BigDecimal.ONE,
+                    BigDecimal.ZERO))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessage("quantityUnit");
   }
 
   @Test
