@@ -114,9 +114,10 @@ describe('catalog and supply workspace', () => {
 
     expect(await screen.findByRole('heading', { name: 'Catalog & supply search' })).toBeVisible();
     expect(screen.getByText('Moonlit Terrace')).toBeVisible();
-    expect(
-      new URL(catalogRequests.at(-1)?.url ?? '').searchParams.getAll('quantityUnit'),
-    ).toEqual(['CASE', 'BOTTLE']);
+    expect(new URL(catalogRequests.at(-1)?.url ?? '').searchParams.getAll('quantityUnit')).toEqual([
+      'CASE',
+      'BOTTLE',
+    ]);
     expect(screen.getByText('All quantity units')).toBeVisible();
     expect(screen.getAllByText('CASE').length).toBeGreaterThan(0);
     expect(screen.getAllByText('BOTTLE').length).toBeGreaterThan(0);
