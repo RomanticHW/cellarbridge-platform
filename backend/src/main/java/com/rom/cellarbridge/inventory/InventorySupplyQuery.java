@@ -22,9 +22,12 @@ public interface InventorySupplyQuery {
       UUID lotId,
       String lotCode,
       String warehouseLabel,
+      QuantityUnit quantityUnit,
       BigDecimal onHandQuantity,
       BigDecimal reservedQuantity,
       BigDecimal availableQuantity,
+      int allocationPriority,
+      long warehouseVersion,
       Instant availableFrom,
       Instant dataAsOf) {}
 
@@ -34,6 +37,7 @@ public interface InventorySupplyQuery {
       String routeCode,
       SupplyType supplyType,
       String currency,
+      QuantityUnit quantityUnit,
       BigDecimal availableQuantity,
       Instant availableFrom,
       String confidence,

@@ -59,5 +59,13 @@ wait_for_health frontend
 cd "${ROOT_DIR}/frontend"
 # Preserve the Playwright exit status while preventing a failed navigation message from
 # echoing a capability-bearing portal URL into local or CI output.
-corepack pnpm test:e2e:acceptance 2>&1 \
+if command -v corepack >/dev/null 2>&1; then
+  package_manager=(corepack pnpm)
+elif command -v pnpm >/dev/null 2>&1; then
+  package_manager=(pnpm)
+else
+  printf 'corepack or pnpm is required to run the acceptance E2E suite.\n' >&2
+  exit 1
+fi
+"${package_manager[@]}" test:e2e:acceptance 2>&1 \
   | sed -E 's#/portal/(quotes|quotations)/[A-Za-z0-9_-]{40,100}#/portal/\1/[redacted]#g'

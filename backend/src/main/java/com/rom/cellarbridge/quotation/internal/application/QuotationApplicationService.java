@@ -30,6 +30,7 @@ import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.Pri
 import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.QuantityUnit;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.SkuSnapshot;
 import com.rom.cellarbridge.tradeplanning.TradePlanningException;
+import com.rom.cellarbridge.tradeplanning.TradePlanningQuantityUnit;
 import com.rom.cellarbridge.tradeplanning.TradePlanningService;
 import com.rom.cellarbridge.tradeplanning.TradePlanningService.EvaluationCommand;
 import com.rom.cellarbridge.tradeplanning.TradePlanningService.LineDemand;
@@ -299,7 +300,9 @@ public class QuotationApplicationService {
                       line ->
                           new LineDemand(
                               line.sku().skuId(),
-                              caseEquivalent(line),
+                              line.quantity(),
+                              TradePlanningQuantityUnit.valueOf(line.unit().name()),
+                              moqCaseEquivalent(line),
                               line.preferredSupplyPoolId()))
                   .toList(),
               requestedRoute,
@@ -603,7 +606,7 @@ public class QuotationApplicationService {
         fallback.postalCode());
   }
 
-  private static BigDecimal caseEquivalent(PricedLine line) {
+  private static BigDecimal moqCaseEquivalent(PricedLine line) {
     if (line.unit() == QuantityUnit.CASE) {
       return line.quantity();
     }

@@ -57,7 +57,7 @@ class CatalogSearchApiIntegrationTest extends PostgresIntegrationTestSupport {
     ApiResponse misspelled =
         get(
             "/api/v1/catalog/skus?keyword=Silvr%20Vale&vintage=2019"
-                + "&supplyType=DOMESTIC_ON_HAND&pageSize=5",
+                + "&supplyType=DOMESTIC_ON_HAND&quantityUnit=CASE&pageSize=5",
             NORTH_SALES);
 
     assertThat(misspelled.status()).withFailMessage(misspelled.raw()).isEqualTo(200);
@@ -84,7 +84,8 @@ class CatalogSearchApiIntegrationTest extends PostgresIntegrationTestSupport {
   void revealsExactAssignedLotsOnlyToExactInventoryReaders() throws Exception {
     ApiResponse exact =
         get(
-            "/api/v1/catalog/skus?keyword=Moonlit%20Terrace&supplyType=DOMESTIC_ON_HAND",
+            "/api/v1/catalog/skus?keyword=Moonlit%20Terrace&supplyType=DOMESTIC_ON_HAND"
+                + "&quantityUnit=CASE",
             NORTH_ADMIN);
 
     assertThat(exact.status()).isEqualTo(200);
@@ -115,6 +116,70 @@ class CatalogSearchApiIntegrationTest extends PostgresIntegrationTestSupport {
         .isEqualTo("CONFIRMATION_REQUIRED");
     assertThat(confirmationSupply.path("displayedAvailableQuantity").isNull()).isTrue();
     assertThat(confirmationSupply.path("exactLots").size()).isZero();
+  }
+
+  @Test
+  void separatesAndFiltersSamePoolSupplyByQuantityUnit() throws Exception {
+    Instant priorityCorrectionTime = Instant.now().minusSeconds(1);
+    jdbc.update(
+        """
+        UPDATE inventory.warehouse
+           SET allocation_priority = 10, updated_at = ?::timestamptz, version = version + 1
+         WHERE id = '35000000-0000-4000-8000-000000000001'
+        """,
+        priorityCorrectionTime.toString());
+    String path = "/api/v1/catalog/skus?keyword=Moonlit%20Terrace&supplyType=DOMESTIC_ON_HAND";
+    ApiResponse sales = get(path, NORTH_SALES);
+
+    assertThat(sales.status()).isEqualTo(200);
+    JsonNode salesSupplies = sales.body().path("items").path(0).path("supplies");
+    assertThat(salesSupplies.size()).isEqualTo(2);
+    assertThat(salesSupplies.path(0).path("quantityUnit").asText()).isEqualTo("BOTTLE");
+    assertThat(salesSupplies.path(1).path("quantityUnit").asText()).isEqualTo("CASE");
+    assertThat(sales.raw()).doesNotContain("warehouseAllocationPriority", "warehouseVersion");
+
+    ApiResponse filtered = get(path + "&quantityUnit=BOTTLE", NORTH_SALES);
+    assertThat(filtered.body().path("items").path(0).path("supplies").size()).isEqualTo(1);
+    assertThat(
+            filtered
+                .body()
+                .path("items")
+                .path(0)
+                .path("supplies")
+                .path(0)
+                .path("quantityUnit")
+                .asText())
+        .isEqualTo("BOTTLE");
+
+    ApiResponse exact = get(path, NORTH_ADMIN);
+    JsonNode exactSupplies = exact.body().path("items").path(0).path("supplies");
+    assertThat(Instant.parse(exact.body().path("dataAsOf").asText()))
+        .isAfterOrEqualTo(priorityCorrectionTime);
+    assertThat(exactSupplies.path(0).path("displayedAvailableQuantity").path("value").asText())
+        .isEqualTo("10");
+    assertThat(exactSupplies.path(0).path("exactLots").size()).isEqualTo(1);
+    assertThat(
+            exactSupplies
+                .path(0)
+                .path("exactLots")
+                .path(0)
+                .path("warehouseAllocationPriority")
+                .asInt())
+        .isEqualTo(10);
+    assertThat(exactSupplies.path(0).path("exactLots").path(0).path("warehouseVersion").asLong())
+        .isEqualTo(1);
+    assertThat(
+            exactSupplies
+                .path(0)
+                .path("exactLots")
+                .path(0)
+                .path("availableQuantity")
+                .path("unit")
+                .asText())
+        .isEqualTo(exactSupplies.path(0).path("quantityUnit").asText());
+    assertThat(exactSupplies.path(1).path("displayedAvailableQuantity").path("value").asText())
+        .isEqualTo("56");
+    assertThat(exactSupplies.path(1).path("exactLots").size()).isEqualTo(2);
   }
 
   @Test

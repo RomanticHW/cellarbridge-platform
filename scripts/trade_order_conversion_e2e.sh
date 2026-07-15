@@ -63,4 +63,11 @@ wait_for_health frontend
 cd "${ROOT_DIR}/frontend"
 # The dedicated Playwright configuration disables screenshots and traces. Redaction keeps a
 # capability-bearing portal URL out of local and CI output even when Playwright reports a failure.
-corepack pnpm test:e2e:order 2>&1 | redact_capabilities
+if command -v corepack >/dev/null 2>&1; then
+  corepack pnpm test:e2e:order 2>&1 | redact_capabilities
+elif command -v pnpm >/dev/null 2>&1; then
+  pnpm test:e2e:order 2>&1 | redact_capabilities
+else
+  printf 'corepack or pnpm is required to run the order E2E suite.\n' >&2
+  exit 1
+fi

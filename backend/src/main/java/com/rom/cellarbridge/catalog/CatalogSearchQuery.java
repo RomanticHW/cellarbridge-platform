@@ -23,6 +23,7 @@ public interface CatalogSearchQuery {
       Integer volumeMl,
       Set<String> supplyTypes,
       Set<String> availabilityClasses,
+      Set<String> quantityUnits,
       Boolean automaticallyReservable,
       Instant availableFrom,
       Instant availableTo,
@@ -58,6 +59,7 @@ public interface CatalogSearchQuery {
   record SupplyProjectionView(
       UUID supplyPoolId,
       String supplyType,
+      String quantityUnit,
       String locationLabel,
       String availabilityClass,
       String displayQuantityBand,

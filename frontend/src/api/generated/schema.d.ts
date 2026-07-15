@@ -657,10 +657,11 @@ export interface components {
             amount: string;
             currency: string;
         };
+        /** @enum {string} */
+        QuantityUnit: "CASE" | "BOTTLE";
         Quantity: {
             value: string;
-            /** @enum {string} */
-            unit: "CASE" | "BOTTLE";
+            unit: components["schemas"]["QuantityUnit"];
         };
         Address: {
             countryCode: string;
@@ -864,6 +865,9 @@ export interface components {
             onHandQuantity: components["schemas"]["Quantity"];
             reservedQuantity: components["schemas"]["Quantity"];
             availableQuantity: components["schemas"]["Quantity"];
+            warehouseAllocationPriority: number;
+            /** Format: int64 */
+            warehouseVersion: number;
             /** Format: date-time */
             availableFrom?: string | null;
             /** Format: date-time */
@@ -873,6 +877,7 @@ export interface components {
             /** Format: uuid */
             supplyPoolId: string;
             supplyType: components["schemas"]["SupplyType"];
+            quantityUnit: components["schemas"]["QuantityUnit"];
             locationLabel: string;
             displayedAvailableQuantity?: components["schemas"]["Quantity"] | null;
             availabilityLevel: components["schemas"]["AvailabilityClass"];
@@ -2065,6 +2070,7 @@ export interface operations {
                 volumeMl?: number;
                 supplyType?: components["schemas"]["SupplyType"][];
                 availabilityClass?: components["schemas"]["AvailabilityClass"][];
+                quantityUnit?: components["schemas"]["QuantityUnit"][];
                 automaticallyReservable?: boolean;
                 availableFrom?: string;
                 availableTo?: string;

@@ -1,5 +1,6 @@
 package com.rom.cellarbridge.tradeplanning.internal.domain;
 
+import com.rom.cellarbridge.tradeplanning.TradePlanningQuantityUnit;
 import com.rom.cellarbridge.tradeplanning.TradePlanningService.Eligibility;
 import com.rom.cellarbridge.tradeplanning.TradePlanningService.RouteCandidate;
 import com.rom.cellarbridge.tradeplanning.TradePlanningService.RouteRejection;
@@ -18,7 +19,7 @@ import java.util.UUID;
 
 public final class RouteEvaluationPolicy {
 
-  public static final String VERSION = "ROUTE-2026-01";
+  public static final String VERSION = "ROUTE-2026-02";
   public static final LocalDate EFFECTIVE_FROM = LocalDate.of(2026, 1, 1);
   private static final BigDecimal HUNDRED = new BigDecimal("100");
   private static final Map<TradeRouteCode, Definition> DEFINITIONS = definitions();
@@ -74,11 +75,13 @@ public final class RouteEvaluationPolicy {
         "TRD-PAYMENT-001",
         "PAYMENT_TERM_NOT_ALLOWED",
         "Payment term exceeds this route policy");
-    BigDecimal totalQuantity =
-        input.lines().stream().map(LineInput::quantity).reduce(BigDecimal.ZERO, BigDecimal::add);
+    BigDecimal totalMoqCaseEquivalentQuantity =
+        input.lines().stream()
+            .map(LineInput::moqCaseEquivalentQuantity)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
     reject(
         rejections,
-        totalQuantity.compareTo(definition.minimumQuantity()) < 0,
+        totalMoqCaseEquivalentQuantity.compareTo(definition.minimumQuantity()) < 0,
         "TRD-MOQ-001",
         "MOQ_NOT_MET",
         "Minimum route quantity is not met");
@@ -113,7 +116,9 @@ public final class RouteEvaluationPolicy {
                 confidence,
                 definition.simplicityScore()));
     BigDecimal charges =
-        totalQuantity.multiply(definition.chargePerUnit()).setScale(4, RoundingMode.HALF_UP);
+        totalMoqCaseEquivalentQuantity
+            .multiply(definition.chargePerUnit())
+            .setScale(4, RoundingMode.HALF_UP);
     return new RouteCandidate(
         definition.code(),
         Eligibility.ELIGIBLE,
@@ -131,14 +136,17 @@ public final class RouteEvaluationPolicy {
             line ->
                 availability.stream()
                         .filter(
-                            item -> item.routeCode() == route && item.skuId().equals(line.skuId()))
+                            item ->
+                                item.routeCode() == route
+                                    && item.skuId().equals(line.skuId())
+                                    && item.quantityUnit() == line.quantityUnit())
                         .filter(
                             item ->
                                 line.preferredSupplyPoolId() == null
                                     || item.supplyPoolId().equals(line.preferredSupplyPoolId()))
                         .map(AvailabilityInput::availableQuantity)
                         .reduce(BigDecimal.ZERO, BigDecimal::add)
-                        .compareTo(line.quantity())
+                        .compareTo(line.requestedQuantity())
                     >= 0);
   }
 
@@ -147,7 +155,16 @@ public final class RouteEvaluationPolicy {
     int value =
         availability.stream()
             .filter(item -> item.routeCode() == route)
-            .filter(item -> lines.stream().anyMatch(line -> line.skuId().equals(item.skuId())))
+            .filter(
+                item ->
+                    lines.stream()
+                        .anyMatch(
+                            line ->
+                                line.skuId().equals(item.skuId())
+                                    && line.quantityUnit() == item.quantityUnit()
+                                    && (line.preferredSupplyPoolId() == null
+                                        || line.preferredSupplyPoolId()
+                                            .equals(item.supplyPoolId()))))
             .mapToInt(
                 item ->
                     switch (item.confidence()) {
@@ -245,12 +262,18 @@ public final class RouteEvaluationPolicy {
     }
   }
 
-  public record LineInput(UUID skuId, BigDecimal quantity, UUID preferredSupplyPoolId) {}
+  public record LineInput(
+      UUID skuId,
+      BigDecimal requestedQuantity,
+      TradePlanningQuantityUnit quantityUnit,
+      BigDecimal moqCaseEquivalentQuantity,
+      UUID preferredSupplyPoolId) {}
 
   public record AvailabilityInput(
       UUID supplyPoolId,
       UUID skuId,
       TradeRouteCode routeCode,
+      TradePlanningQuantityUnit quantityUnit,
       BigDecimal availableQuantity,
       String confidence) {}
 

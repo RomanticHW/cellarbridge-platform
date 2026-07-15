@@ -34,7 +34,9 @@ SELECT s.id, s.code, wp.name,
          FROM catalog.sku_supply_projection sp
         WHERE sp.tenant_id = s.tenant_id
           AND sp.sku_id = s.id
+          AND sp.quantity_unit = 'BOTTLE'
           AND sp.supply_type = 'DOMESTIC_ON_HAND'
-          AND sp.availability_class = 'AVAILABLE')
+          AND sp.availability_class = 'AVAILABLE'
+          AND sp.automatically_reservable = true)
  ORDER BY relevance_score DESC, s.code, s.id
  LIMIT 26;

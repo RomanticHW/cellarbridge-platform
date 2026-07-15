@@ -24,6 +24,7 @@ const page: CatalogSearchPage = {
         {
           supplyPoolId: '36000000-0000-4000-8000-000000000001',
           supplyType: 'DOMESTIC_ON_HAND',
+          quantityUnit: 'CASE',
           locationLabel: 'Eastbank Distribution Center',
           availabilityLevel: 'AVAILABLE',
           displayQuantityBand: 'HIGH',
@@ -63,6 +64,7 @@ describe('catalog API client', () => {
         volumeMl: 750,
         supplyType: ['DOMESTIC_ON_HAND', 'BONDED_ON_HAND'],
         availabilityClass: ['AVAILABLE'],
+        quantityUnit: ['CASE', 'BOTTLE'],
         automaticallyReservable: true,
         sort: 'name',
         pageSize: 25,
@@ -81,6 +83,12 @@ describe('catalog API client', () => {
         .flatMap((value) => value.split(','))
         .sort(),
     ).toEqual(['BONDED_ON_HAND', 'DOMESTIC_ON_HAND']);
+    expect(
+      url.searchParams
+        .getAll('quantityUnit')
+        .flatMap((value) => value.split(','))
+        .sort(),
+    ).toEqual(['BOTTLE', 'CASE']);
   });
 
   it('preserves stable problem details for forbidden search', async () => {

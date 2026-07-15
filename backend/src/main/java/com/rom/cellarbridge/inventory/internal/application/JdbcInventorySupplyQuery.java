@@ -6,6 +6,7 @@ import com.rom.cellarbridge.identityaccess.TenantContext;
 import com.rom.cellarbridge.identityaccess.TenantContextHolder;
 import com.rom.cellarbridge.identityaccess.TenantId;
 import com.rom.cellarbridge.inventory.InventorySupplyQuery;
+import com.rom.cellarbridge.inventory.QuantityUnit;
 import com.rom.cellarbridge.inventory.SupplyType;
 import java.util.List;
 import java.util.Set;
@@ -71,10 +72,14 @@ public class JdbcInventorySupplyQuery implements InventorySupplyQuery {
                l.id AS lot_id,
                l.lot_code,
                w.name AS warehouse_label,
+               l.quantity_unit,
                l.on_hand_quantity,
                l.reserved_quantity,
                l.on_hand_quantity - l.reserved_quantity AS available_quantity,
+               w.allocation_priority,
+               w.version AS warehouse_version,
                l.available_from,
+               l.received_at,
                GREATEST(l.updated_at, sp.updated_at, w.updated_at) AS data_as_of
           FROM inventory.inventory_lot l
           JOIN inventory.supply_pool sp
@@ -92,7 +97,8 @@ public class JdbcInventorySupplyQuery implements InventorySupplyQuery {
            AND l.status = 'AVAILABLE'
            AND sp.status = 'ACTIVE'
            AND w.status = 'ACTIVE'
-         ORDER BY l.supply_pool_id, l.available_from NULLS LAST, l.lot_code, l.id
+         ORDER BY l.supply_pool_id, l.sku_id, l.quantity_unit,
+                  l.available_from NULLS LAST, l.received_at NULLS LAST, l.lot_code, l.id
         """,
         parameters,
         (resultSet, rowNumber) ->
@@ -102,9 +108,12 @@ public class JdbcInventorySupplyQuery implements InventorySupplyQuery {
                 resultSet.getObject("lot_id", UUID.class),
                 resultSet.getString("lot_code"),
                 resultSet.getString("warehouse_label"),
+                QuantityUnit.valueOf(resultSet.getString("quantity_unit")),
                 resultSet.getBigDecimal("on_hand_quantity"),
                 resultSet.getBigDecimal("reserved_quantity"),
                 resultSet.getBigDecimal("available_quantity"),
+                resultSet.getInt("allocation_priority"),
+                resultSet.getLong("warehouse_version"),
                 resultSet.getTimestamp("available_from") == null
                     ? null
                     : resultSet.getTimestamp("available_from").toInstant(),
@@ -123,6 +132,7 @@ public class JdbcInventorySupplyQuery implements InventorySupplyQuery {
                sp.route_code,
                sp.supply_type,
                sp.currency,
+               l.quantity_unit,
                SUM(l.on_hand_quantity - l.reserved_quantity) AS available_quantity,
                MIN(COALESCE(l.available_from, sp.available_from)) AS available_from,
                sp.confidence,
@@ -137,9 +147,9 @@ public class JdbcInventorySupplyQuery implements InventorySupplyQuery {
            AND sp.status = 'ACTIVE'
            AND l.status = 'AVAILABLE'
            AND sp.route_code IS NOT NULL
-         GROUP BY sp.id, l.sku_id, sp.route_code, sp.supply_type, sp.currency,
+         GROUP BY sp.id, l.sku_id, sp.route_code, sp.supply_type, sp.currency, l.quantity_unit,
                   sp.confidence, sp.policy_version
-         ORDER BY sp.route_code, l.sku_id, sp.id
+         ORDER BY sp.route_code, l.sku_id, l.quantity_unit, sp.id
         """,
         new MapSqlParameterSource()
             .addValue("tenantId", tenantId.value())
@@ -151,6 +161,7 @@ public class JdbcInventorySupplyQuery implements InventorySupplyQuery {
                 resultSet.getString("route_code"),
                 SupplyType.valueOf(resultSet.getString("supply_type")),
                 resultSet.getString("currency"),
+                QuantityUnit.valueOf(resultSet.getString("quantity_unit")),
                 resultSet.getBigDecimal("available_quantity"),
                 resultSet.getTimestamp("available_from") == null
                     ? null

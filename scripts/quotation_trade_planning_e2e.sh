@@ -38,4 +38,11 @@ wait_for_health backend
 wait_for_health frontend
 
 cd "${ROOT_DIR}/frontend"
-corepack pnpm test:e2e:quotation
+if command -v corepack >/dev/null 2>&1; then
+  corepack pnpm test:e2e:quotation
+elif command -v pnpm >/dev/null 2>&1; then
+  pnpm test:e2e:quotation
+else
+  printf 'corepack or pnpm is required to run the quotation E2E suite.\n' >&2
+  exit 1
+fi

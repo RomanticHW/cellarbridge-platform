@@ -12,6 +12,7 @@ import com.rom.cellarbridge.identityaccess.TenantContextHolder;
 import com.rom.cellarbridge.inventory.AvailabilityClass;
 import com.rom.cellarbridge.inventory.InventorySupplyQuery;
 import com.rom.cellarbridge.inventory.InventorySupplyQuery.ExactLotAvailability;
+import com.rom.cellarbridge.inventory.QuantityUnit;
 import com.rom.cellarbridge.inventory.SupplyType;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -90,7 +91,9 @@ public class CatalogSupplySearchService {
         exact
             ? inventorySupplyQuery.findAuthorizedLots(visiblePoolIds).stream()
                 .collect(
-                    Collectors.groupingBy(lot -> new SupplyLotKey(lot.supplyPoolId(), lot.skuId())))
+                    Collectors.groupingBy(
+                        lot ->
+                            new SupplyLotKey(lot.supplyPoolId(), lot.skuId(), lot.quantityUnit())))
             : Map.of();
     return catalogItems.stream()
         .map(
@@ -123,7 +126,12 @@ public class CatalogSupplySearchService {
     List<ExactLotView> exactLots =
         canViewExact
             ? lotsBySupply
-                .getOrDefault(new SupplyLotKey(projection.supplyPoolId(), skuId), List.of())
+                .getOrDefault(
+                    new SupplyLotKey(
+                        projection.supplyPoolId(),
+                        skuId,
+                        QuantityUnit.valueOf(projection.quantityUnit())),
+                    List.of())
                 .stream()
                 .map(
                     lot ->
@@ -131,9 +139,12 @@ public class CatalogSupplySearchService {
                             lot.lotId(),
                             lot.lotCode(),
                             lot.warehouseLabel(),
+                            lot.quantityUnit(),
                             lot.onHandQuantity(),
                             lot.reservedQuantity(),
                             lot.availableQuantity(),
+                            lot.allocationPriority(),
+                            lot.warehouseVersion(),
                             lot.availableFrom(),
                             lot.dataAsOf()))
                 .toList()
@@ -153,6 +164,7 @@ public class CatalogSupplySearchService {
     return new SupplyView(
         projection.supplyPoolId(),
         SupplyType.valueOf(projection.supplyType()),
+        QuantityUnit.valueOf(projection.quantityUnit()),
         projection.locationLabel(),
         AvailabilityClass.valueOf(projection.availabilityClass()),
         projection.displayQuantityBand(),
@@ -192,6 +204,7 @@ public class CatalogSupplySearchService {
         command.volumeMl(),
         names(command.supplyTypes()),
         names(command.availabilityClasses()),
+        names(command.quantityUnits()),
         command.automaticallyReservable(),
         command.availableFrom(),
         command.availableTo(),
@@ -216,6 +229,7 @@ public class CatalogSupplySearchService {
       Integer volumeMl,
       Set<SupplyType> supplyTypes,
       Set<AvailabilityClass> availabilityClasses,
+      Set<QuantityUnit> quantityUnits,
       Boolean automaticallyReservable,
       Instant availableFrom,
       Instant availableTo,
@@ -252,6 +266,7 @@ public class CatalogSupplySearchService {
   public record SupplyView(
       UUID supplyPoolId,
       SupplyType supplyType,
+      QuantityUnit quantityUnit,
       String locationLabel,
       AvailabilityClass availabilityClass,
       String displayQuantityBand,
@@ -265,11 +280,14 @@ public class CatalogSupplySearchService {
       UUID lotId,
       String lotCode,
       String warehouseLabel,
+      QuantityUnit quantityUnit,
       BigDecimal onHandQuantity,
       BigDecimal reservedQuantity,
       BigDecimal availableQuantity,
+      int warehouseAllocationPriority,
+      long warehouseVersion,
       Instant availableFrom,
       Instant dataAsOf) {}
 
-  private record SupplyLotKey(UUID supplyPoolId, UUID skuId) {}
+  private record SupplyLotKey(UUID supplyPoolId, UUID skuId, QuantityUnit quantityUnit) {}
 }

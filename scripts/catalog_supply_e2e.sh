@@ -38,4 +38,11 @@ wait_for_health backend
 wait_for_health frontend
 
 cd "${ROOT_DIR}/frontend"
-corepack pnpm test:e2e:catalog
+if command -v corepack >/dev/null 2>&1; then
+  corepack pnpm test:e2e:catalog
+elif command -v pnpm >/dev/null 2>&1; then
+  pnpm test:e2e:catalog
+else
+  printf 'corepack or pnpm is required to run the catalog E2E suite.\n' >&2
+  exit 1
+fi

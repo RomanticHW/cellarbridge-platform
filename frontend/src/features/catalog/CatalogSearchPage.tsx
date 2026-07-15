@@ -22,6 +22,7 @@ import {
   type AvailabilityClass,
   type CatalogSearchQuery,
   type CatalogSku,
+  type QuantityUnit,
   type SupplySummary,
   type SupplyType,
 } from '../../api/catalog';
@@ -42,6 +43,7 @@ const availabilityClasses: AvailabilityClass[] = [
   'UNAVAILABLE',
   'REQUIRES_CONFIRMATION',
 ];
+const quantityUnits: QuantityUnit[] = ['CASE', 'BOTTLE'];
 const sorts = ['relevance', 'name', '-updatedAt', 'vintage'] as const;
 
 function displayEnum(value: string) {
@@ -67,6 +69,7 @@ function queryFromUrl(searchParams: URLSearchParams): CatalogSearchQuery {
     vintage: searchParams.get('vintage') || undefined,
     supplyType: valuesFromUrl(searchParams, 'supplyType', supplyTypes),
     availabilityClass: valuesFromUrl(searchParams, 'availabilityClass', availabilityClasses),
+    quantityUnit: valuesFromUrl(searchParams, 'quantityUnit', quantityUnits),
     automaticallyReservable:
       automatic === 'true' ? true : automatic === 'false' ? false : undefined,
     sort: sorts.includes(sort as (typeof sorts)[number])
@@ -91,12 +94,17 @@ function SupplyDetail({ supplies }: { supplies: SupplySummary[] }) {
   return (
     <Space orientation="vertical" size="middle" className="catalog-supply-list">
       {supplies.map((supply) => (
-        <Card key={supply.supplyPoolId} size="small">
+        <Card
+          key={`${supply.supplyPoolId}:${supply.quantityUnit}`}
+          size="small"
+          aria-label={`${supply.quantityUnit} supply at ${supply.locationLabel}`}
+        >
           <Space wrap>
             <Tag color={supply.automaticallyReservable ? 'green' : 'gold'}>
               {displayEnum(supply.supplyType)}
             </Tag>
             <Tag>{displayEnum(supply.availabilityLevel)}</Tag>
+            <Tag color="blue">{supply.quantityUnit}</Tag>
             <Typography.Text strong>{supply.locationLabel}</Typography.Text>
           </Space>
           <Descriptions size="small" column={{ xs: 1, sm: 2, md: 3 }}>
@@ -124,27 +132,60 @@ function SupplyDetail({ supplies }: { supplies: SupplySummary[] }) {
                   key: 'lots',
                   label: `${supply.exactLots.length} authorized lot${supply.exactLots.length === 1 ? '' : 's'}`,
                   children: (
-                    <Table
-                      size="small"
-                      pagination={false}
-                      rowKey="lotId"
-                      dataSource={supply.exactLots}
-                      columns={[
-                        { title: 'Lot', dataIndex: 'lotCode' },
-                        { title: 'Warehouse', dataIndex: 'warehouseLabel' },
-                        {
-                          title: 'Available',
-                          dataIndex: 'availableQuantity',
-                          render: (quantity: { value: string; unit: string }) =>
-                            `${quantity.value} ${quantity.unit}`,
-                        },
-                        {
-                          title: 'Available from',
-                          dataIndex: 'availableFrom',
-                          render: (value: string | null | undefined) => timestamp(value),
-                        },
-                      ]}
-                    />
+                    <Space orientation="vertical" className="catalog-lot-evidence">
+                      <Alert
+                        type="info"
+                        showIcon
+                        title="Warehouse priority is readiness evidence only"
+                        description="A lower number is the designed future allocation preference. This page does not execute allocation or reservation policy."
+                      />
+                      <div
+                        role="region"
+                        aria-label={`${supply.quantityUnit} authorized lot evidence`}
+                      >
+                        <Table
+                          size="small"
+                          pagination={false}
+                          rowKey="lotId"
+                          dataSource={supply.exactLots}
+                          scroll={{ x: 920 }}
+                          columns={[
+                            { title: 'Lot', dataIndex: 'lotCode' },
+                            { title: 'Warehouse', dataIndex: 'warehouseLabel' },
+                            {
+                              title: 'Unit',
+                              dataIndex: 'availableQuantity',
+                              render: (quantity: { unit: string }) => quantity.unit,
+                            },
+                            {
+                              title: 'On hand',
+                              dataIndex: 'onHandQuantity',
+                              render: (quantity: { value: string; unit: string }) =>
+                                `${quantity.value} ${quantity.unit}`,
+                            },
+                            {
+                              title: 'Reserved',
+                              dataIndex: 'reservedQuantity',
+                              render: (quantity: { value: string; unit: string }) =>
+                                `${quantity.value} ${quantity.unit}`,
+                            },
+                            {
+                              title: 'Available',
+                              dataIndex: 'availableQuantity',
+                              render: (quantity: { value: string; unit: string }) =>
+                                `${quantity.value} ${quantity.unit}`,
+                            },
+                            { title: 'Priority', dataIndex: 'warehouseAllocationPriority' },
+                            { title: 'Warehouse version', dataIndex: 'warehouseVersion' },
+                            {
+                              title: 'Available from',
+                              dataIndex: 'availableFrom',
+                              render: (value: string | null | undefined) => timestamp(value),
+                            },
+                          ]}
+                        />
+                      </div>
+                    </Space>
                   ),
                 },
               ]}
@@ -304,6 +345,16 @@ export function CatalogSearchPage() {
               value,
               label: displayEnum(value),
             }))}
+          />
+          <Select
+            aria-label="Filter by quantity unit"
+            value={currentQuery.quantityUnit?.length === 1 ? currentQuery.quantityUnit[0] : 'ALL'}
+            onChange={(value) => replaceFilter('quantityUnit', value === 'ALL' ? undefined : value)}
+            options={[
+              { value: 'ALL', label: 'All quantity units' },
+              { value: 'CASE', label: 'CASE' },
+              { value: 'BOTTLE', label: 'BOTTLE' },
+            ]}
           />
           <Select
             aria-label="Sort catalog"

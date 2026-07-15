@@ -110,13 +110,33 @@ class QuotationApiIntegrationTest extends PostgresIntegrationTestSupport {
             {"requestedRouteCode":"NB_BONDED_B2B","overrideReason":"Use bonded delivery"}
             """);
     assertThat(evaluated.status()).withFailMessage(evaluated.raw()).isEqualTo(200);
-    assertThat(evaluated.body().path("policyVersion").asText()).isEqualTo("ROUTE-2026-01");
+    assertThat(evaluated.body().path("policyVersion").asText()).isEqualTo("ROUTE-2026-02");
     assertThat(evaluated.body().path("recommendedRouteCode").asText())
         .isEqualTo("SH_GENERAL_TRADE");
     assertThat(evaluated.body().path("selectedRouteCode").asText()).isEqualTo("NB_BONDED_B2B");
     assertThat(evaluated.body().path("override").path("originalRecommendation").asText())
         .isEqualTo("SH_GENERAL_TRADE");
     assertThat(evaluated.body().path("candidates").size()).isEqualTo(3);
+    String evaluationId = evaluated.body().path("evaluationId").asText();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT input_hash FROM trade_planning.evaluation WHERE id = ?::uuid",
+                String.class,
+                evaluationId))
+        .isEqualTo(evaluated.body().path("inputHash").asText());
+    String storedInput =
+        jdbc.queryForObject(
+            "SELECT input_summary::text FROM trade_planning.evaluation WHERE id = ?::uuid",
+            String.class,
+            evaluationId);
+    assertThat(storedInput)
+        .contains("\"schemaVersion\": 2")
+        .contains("\"policyVersion\": \"ROUTE-2026-02\"")
+        .contains("\"requestedQuantity\": 6")
+        .contains("\"quantityUnit\": \"CASE\"")
+        .contains("\"moqCaseEquivalentQuantity\": 6")
+        .contains("\"preferredSupplyPoolId\": null")
+        .contains("\"availability\"");
 
     ApiResponse routed = get("/api/v1/quotations/" + quotationId, NORTH_SALES);
     assertThat(routed.body().path("version").asLong()).isEqualTo(1);
@@ -201,6 +221,27 @@ class QuotationApiIntegrationTest extends PostgresIntegrationTestSupport {
     assertThat(publicView.body().path("code").asText()).isEqualTo("RESOURCE_NOT_FOUND");
   }
 
+  @Test
+  void evaluatesDemoSupplyCoverageWithoutMixingCaseAndBottleQuantities() throws Exception {
+    ApiResponse sixtyCases = createAndEvaluate("60", "CASE");
+    assertThat(sixtyCases.status()).withFailMessage(sixtyCases.raw()).isEqualTo(422);
+    assertThat(sixtyCases.body().path("code").asText()).isEqualTo("QUOTE_HAS_NO_ELIGIBLE_ROUTE");
+
+    ApiResponse fiftySixCases = createAndEvaluate("56", "CASE");
+    assertThat(fiftySixCases.status()).withFailMessage(fiftySixCases.raw()).isEqualTo(200);
+    assertThat(fiftySixCases.body().path("recommendedRouteCode").asText())
+        .isEqualTo("SH_GENERAL_TRADE");
+
+    ApiResponse tenBottles = createAndEvaluate("10", "BOTTLE");
+    assertThat(tenBottles.status()).withFailMessage(tenBottles.raw()).isEqualTo(200);
+    assertThat(tenBottles.body().path("recommendedRouteCode").asText())
+        .isEqualTo("SH_GENERAL_TRADE");
+
+    ApiResponse elevenBottles = createAndEvaluate("11", "BOTTLE");
+    assertThat(elevenBottles.status()).withFailMessage(elevenBottles.raw()).isEqualTo(422);
+    assertThat(elevenBottles.body().path("code").asText()).isEqualTo("QUOTE_HAS_NO_ELIGIBLE_ROUTE");
+  }
+
   private ApiResponse get(String path, String token) throws Exception {
     return request("GET", path, token, null, null);
   }
@@ -216,6 +257,48 @@ class QuotationApiIntegrationTest extends PostgresIntegrationTestSupport {
     } catch (Exception exception) {
       throw new IllegalStateException(exception);
     }
+  }
+
+  private ApiResponse createAndEvaluate(String quantity, String quantityUnit) throws Exception {
+    Instant now = Instant.now();
+    String createRequest =
+        """
+        {
+          "partnerId": "%s",
+          "currency": "CNY",
+          "requestedDeliveryDate": "%s",
+          "expiresAt": "%s",
+          "paymentTermDays": 30,
+          "deliveryAddress": {
+            "countryCode": "CN",
+            "province": "Shanghai",
+            "city": "Shanghai",
+            "district": "Pudong",
+            "line1": "88 Harbor Avenue",
+            "postalCode": "200120"
+          },
+          "lines": [{
+            "skuId": "%s",
+            "quantity": {"value": "%s", "unit": "%s"},
+            "discountRate": "0.0000"
+          }]
+        }
+        """
+            .formatted(
+                PARTNER,
+                LocalDate.now(ZoneOffset.UTC).plusDays(20),
+                now.plusSeconds(10 * 86_400L),
+                SKU,
+                quantity,
+                quantityUnit);
+    ApiResponse created = request("POST", "/api/v1/quotations", NORTH_SALES, null, createRequest);
+    assertThat(created.status()).withFailMessage(created.raw()).isEqualTo(201);
+    return request(
+        "POST",
+        "/api/v1/quotations/" + created.body().path("id").asText() + "/route-evaluations",
+        NORTH_MANAGER,
+        "\"0\"",
+        "{}");
   }
 
   private ApiResponse request(String method, String path, String token, String ifMatch, String body)

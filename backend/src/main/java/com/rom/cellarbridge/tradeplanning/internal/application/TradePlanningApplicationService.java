@@ -9,6 +9,7 @@ import com.rom.cellarbridge.partner.PartnerEligibilityException;
 import com.rom.cellarbridge.partner.PartnerEligibilityService;
 import com.rom.cellarbridge.partner.PartnerEligibilityService.EligibilitySnapshot;
 import com.rom.cellarbridge.tradeplanning.TradePlanningException;
+import com.rom.cellarbridge.tradeplanning.TradePlanningQuantityUnit;
 import com.rom.cellarbridge.tradeplanning.TradePlanningService;
 import com.rom.cellarbridge.tradeplanning.TradePlanningService.Eligibility;
 import com.rom.cellarbridge.tradeplanning.TradePlanningService.RouteCandidate;
@@ -111,7 +112,7 @@ public class TradePlanningApplicationService implements TradePlanningService {
     }
     Instant now = clock.instant();
     RouteOverride override = override(command, recommended, selected, now);
-    String inputSummary = inputSummary(command, partner, availability);
+    String inputSummary = inputSummary(command, partner, input);
     RouteEvaluation evaluation =
         new RouteEvaluation(
             UUID.randomUUID(),
@@ -159,7 +160,14 @@ public class TradePlanningApplicationService implements TradePlanningService {
         command.paymentTermDays(),
         clock.instant().atZone(ZoneOffset.UTC).toLocalDate(),
         command.lines().stream()
-            .map(line -> new LineInput(line.skuId(), line.quantity(), line.preferredSupplyPoolId()))
+            .map(
+                line ->
+                    new LineInput(
+                        line.skuId(),
+                        line.requestedQuantity(),
+                        line.quantityUnit(),
+                        line.moqCaseEquivalentQuantity(),
+                        line.preferredSupplyPoolId()))
             .toList(),
         availability.stream()
             .map(
@@ -168,6 +176,7 @@ public class TradePlanningApplicationService implements TradePlanningService {
                         item.supplyPoolId(),
                         item.skuId(),
                         TradeRouteCode.valueOf(item.routeCode()),
+                        TradePlanningQuantityUnit.valueOf(item.quantityUnit().name()),
                         item.availableQuantity(),
                         item.confidence()))
             .toList());
@@ -189,20 +198,20 @@ public class TradePlanningApplicationService implements TradePlanningService {
     return new RouteOverride(command.overrideReason().strip(), command.actorId(), now, recommended);
   }
 
-  private String inputSummary(
-      EvaluationCommand command,
-      EligibilitySnapshot partner,
-      List<RouteAvailability> availability) {
+  private String inputSummary(EvaluationCommand command, EligibilitySnapshot partner, Input input) {
     Map<String, Object> summary = new LinkedHashMap<>();
-    summary.put("schemaVersion", 1);
+    summary.put("schemaVersion", 2);
+    summary.put("policyVersion", RouteEvaluationPolicy.VERSION);
     summary.put("partnerId", command.partnerId());
     summary.put("partnerEligibilityVersion", partner.sourceVersion());
-    summary.put("currency", command.currency());
-    summary.put("destinationCountryCode", command.destinationCountryCode());
-    summary.put("requestedDeliveryDate", command.requestedDeliveryDate());
-    summary.put("paymentTermDays", command.paymentTermDays());
-    summary.put("lines", command.lines());
-    summary.put("availability", availability);
+    summary.put("partnerRoutes", input.partnerRoutes().stream().map(Enum::name).sorted().toList());
+    summary.put("currency", input.currency());
+    summary.put("destinationCountryCode", input.destinationCountryCode());
+    summary.put("requestedDeliveryDate", input.requestedDeliveryDate());
+    summary.put("paymentTermDays", input.paymentTermDays());
+    summary.put("evaluationDate", input.evaluationDate());
+    summary.put("lines", input.lines());
+    summary.put("availability", input.availability());
     try {
       return jsonMapper.writeValueAsString(summary);
     } catch (JacksonException exception) {
@@ -233,7 +242,12 @@ public class TradePlanningApplicationService implements TradePlanningService {
     }
     if (command.lines().stream()
         .anyMatch(
-            line -> line.quantity() == null || line.quantity().compareTo(BigDecimal.ZERO) <= 0)) {
+            line ->
+                line.requestedQuantity() == null
+                    || line.requestedQuantity().compareTo(BigDecimal.ZERO) <= 0
+                    || line.quantityUnit() == null
+                    || line.moqCaseEquivalentQuantity() == null
+                    || line.moqCaseEquivalentQuantity().compareTo(BigDecimal.ZERO) <= 0)) {
       throw new TradePlanningException("VALIDATION_FAILED", "Line quantities must be positive");
     }
   }

@@ -144,6 +144,7 @@ public class JdbcCatalogSearchRepository implements CatalogSearchRepository {
         SELECT sp.sku_id,
                sp.supply_pool_id,
                sp.supply_type,
+               sp.quantity_unit,
                sp.location_label,
                sp.availability_class,
                sp.display_quantity_band,
@@ -154,6 +155,7 @@ public class JdbcCatalogSearchRepository implements CatalogSearchRepository {
           %s
          ORDER BY sp.sku_id,
                   sp.automatically_reservable DESC,
+                  sp.quantity_unit,
                   sp.location_label,
                   sp.supply_pool_id
         """
@@ -202,6 +204,10 @@ public class JdbcCatalogSearchRepository implements CatalogSearchRepository {
     if (!criteria.availabilityClasses().isEmpty()) {
       sql.append(" AND ").append(alias).append(".availability_class IN (:availabilityClasses)");
       parameters.addValue("availabilityClasses", criteria.availabilityClasses());
+    }
+    if (!criteria.quantityUnits().isEmpty()) {
+      sql.append(" AND ").append(alias).append(".quantity_unit IN (:quantityUnits)");
+      parameters.addValue("quantityUnits", criteria.quantityUnits());
     }
     if (criteria.automaticallyReservable() != null) {
       sql.append(" AND ")
@@ -307,6 +313,7 @@ public class JdbcCatalogSearchRepository implements CatalogSearchRepository {
         resultSet.getObject("sku_id", UUID.class),
         resultSet.getObject("supply_pool_id", UUID.class),
         resultSet.getString("supply_type"),
+        resultSet.getString("quantity_unit"),
         resultSet.getString("location_label"),
         resultSet.getString("availability_class"),
         resultSet.getString("display_quantity_band"),

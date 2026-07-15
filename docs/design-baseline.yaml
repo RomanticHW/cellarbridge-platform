@@ -8,6 +8,10 @@ baseline:
   status: approved-for-implementation
   approved_on: 2026-07-13
   implementation_present: true
+  current_openapi_contract: "1.5.0"
+  current_database_migration: 11
+  inventory_unit_readiness: available
+  inventory_reservation: designed-not-implemented
   architecture_style: domain-oriented-modular-monolith
   primary_scenario: b2b-quotation-to-order-to-fulfillment
   data_policy: synthetic-only

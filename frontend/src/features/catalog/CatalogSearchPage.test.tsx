@@ -51,9 +51,21 @@ const page: CatalogSearchPage = {
         {
           supplyPoolId: '36000000-0000-4000-8000-000000000001',
           supplyType: 'DOMESTIC_ON_HAND',
+          quantityUnit: 'CASE',
           locationLabel: 'Eastbank Distribution Center',
           availabilityLevel: 'AVAILABLE',
           displayQuantityBand: 'HIGH',
+          automaticallyReservable: true,
+          exactLots: [],
+          updatedAt: '2026-07-13T00:00:00Z',
+        },
+        {
+          supplyPoolId: '36000000-0000-4000-8000-000000000001',
+          supplyType: 'DOMESTIC_ON_HAND',
+          quantityUnit: 'BOTTLE',
+          locationLabel: 'Eastbank Distribution Center',
+          availabilityLevel: 'AVAILABLE',
+          displayQuantityBand: 'LOW',
           automaticallyReservable: true,
           exactLots: [],
           updatedAt: '2026-07-13T00:00:00Z',
@@ -97,11 +109,21 @@ describe('catalog and supply workspace', () => {
       catalogRequests.push(incoming);
       return Promise.resolve(response(page));
     });
-    await router.navigate('/app/catalog');
+    await router.navigate('/app/catalog?quantityUnit=CASE&quantityUnit=BOTTLE');
     renderApplication();
 
     expect(await screen.findByRole('heading', { name: 'Catalog & supply search' })).toBeVisible();
     expect(screen.getByText('Moonlit Terrace')).toBeVisible();
+    expect(new URL(catalogRequests.at(-1)?.url ?? '').searchParams.getAll('quantityUnit')).toEqual([
+      'CASE',
+      'BOTTLE',
+    ]);
+    expect(screen.getByText('All quantity units')).toBeVisible();
+    expect(screen.getAllByText('CASE').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('BOTTLE').length).toBeGreaterThan(0);
+    expect(
+      screen.queryByText('Warehouse priority is readiness evidence only'),
+    ).not.toBeInTheDocument();
     fireEvent.change(screen.getByRole('textbox', { name: 'Search catalog' }), {
       target: { value: 'Moonlit' },
     });
@@ -119,6 +141,63 @@ describe('catalog and supply workspace', () => {
     expect(screen.getByText(/No quotation, reservation, or order has been created/)).toBeVisible();
     expect(catalogRequests.every((catalogRequest) => catalogRequest.method === 'GET')).toBe(true);
   }, 10_000);
+
+  it('shows complete exact-lot evidence without implying allocation execution', async () => {
+    const exactPage: CatalogSearchPage = {
+      ...page,
+      items: page.items.map((item) => ({
+        ...item,
+        supplies: [
+          {
+            ...item.supplies[0]!,
+            displayedAvailableQuantity: { value: '56', unit: 'CASE' },
+            exactLots: [
+              {
+                lotId: '37000000-0000-4000-8000-000000000001',
+                lotCode: 'LOT-EAST-2019-A',
+                warehouseLabel: 'Eastbank Distribution Center',
+                onHandQuantity: { value: '42', unit: 'CASE' },
+                reservedQuantity: { value: '6', unit: 'CASE' },
+                availableQuantity: { value: '36', unit: 'CASE' },
+                warehouseAllocationPriority: 10,
+                warehouseVersion: 3,
+                availableFrom: '2026-07-13T00:00:00Z',
+                dataAsOf: '2026-07-13T00:00:00Z',
+              },
+            ],
+          },
+        ],
+      })),
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const path = new URL(request(input).url).pathname;
+      if (path.endsWith('/me')) return Promise.resolve(response(currentUser));
+      return Promise.resolve(response(exactPage));
+    });
+    await router.navigate('/app/catalog');
+    renderApplication();
+
+    fireEvent.click(await screen.findByRole('button', { name: /1 authorized lot/ }));
+    expect(
+      await screen.findByText('Warehouse priority is readiness evidence only'),
+    ).toBeInTheDocument();
+    for (const heading of [
+      'Unit',
+      'On hand',
+      'Reserved',
+      'Available',
+      'Priority',
+      'Warehouse version',
+      'Available from',
+    ]) {
+      expect(screen.getByRole('columnheader', { name: heading, hidden: true })).toBeInTheDocument();
+    }
+    expect(screen.getByRole('cell', { name: '10', hidden: true })).toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: '3', hidden: true })).toBeInTheDocument();
+    expect(
+      screen.getByText(/lower number is the designed future allocation preference/i),
+    ).toBeInTheDocument();
+  });
 
   it('renders loading and empty search states', async () => {
     let resolveCatalog: ((value: Response) => void) | undefined;

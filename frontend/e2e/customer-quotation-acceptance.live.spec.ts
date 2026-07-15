@@ -84,7 +84,7 @@ test('accepts once, renders a durable receipt, and refreshes without a duplicate
   await expect(customer.getByText('Moonlit Terrace')).toBeVisible();
   await expect(customer.getByText('Estimated margin')).toHaveCount(0);
   await expect(customer.getByText('Weighted score')).toHaveCount(0);
-  await expect(customer.getByText('ROUTE-2026-01')).toHaveCount(0);
+  await expect(customer.getByText('ROUTE-2026-02')).toHaveCount(0);
   await customer.getByRole('checkbox').check();
 
   const acceptanceResponse = customer.waitForResponse(
