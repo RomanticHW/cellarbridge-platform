@@ -31,7 +31,12 @@ public interface TradePlanningService {
     }
   }
 
-  record LineDemand(UUID skuId, BigDecimal quantity, UUID preferredSupplyPoolId) {}
+  record LineDemand(
+      UUID skuId,
+      BigDecimal requestedQuantity,
+      TradePlanningQuantityUnit quantityUnit,
+      BigDecimal moqCaseEquivalentQuantity,
+      UUID preferredSupplyPoolId) {}
 
   record RouteEvaluation(
       UUID evaluationId,
