@@ -117,7 +117,7 @@ INSERT INTO catalog.sku_supply_projection
 SELECT :'tenant_id'::uuid,
        md5('catalog-benchmark-sku-' || product_sequence || '-' || variant)::uuid,
        md5('catalog-benchmark-pool-' || pool_sequence)::uuid,
-       CASE WHEN variant = 3 THEN 'BOTTLE' ELSE 'CASE' END,
+       quantity_unit,
        CASE pool_sequence WHEN 1 THEN 'DOMESTIC_ON_HAND' WHEN 2 THEN 'BONDED_ON_HAND'
             ELSE 'IN_TRANSIT_PRESALE' END,
        'Benchmark Warehouse ' || pool_sequence,
@@ -129,25 +129,31 @@ SELECT :'tenant_id'::uuid,
        '2026-07-13T00:00:00Z', :'actor_id'::uuid,
        '2026-07-13T00:00:00Z', :'actor_id'::uuid, 0
   FROM generate_series(1, 4000) AS product_sequence
- CROSS JOIN generate_series(1, 3) AS variant
- CROSS JOIN (VALUES (1), (2), (4)) AS pools(pool_sequence);
+ CROSS JOIN (VALUES
+     (1, 1, 'CASE'), (1, 1, 'BOTTLE'), (1, 2, 'CASE'),
+     (2, 1, 'CASE'), (2, 2, 'CASE'), (2, 4, 'CASE'),
+     (3, 1, 'BOTTLE'), (3, 2, 'BOTTLE'), (3, 4, 'BOTTLE')
+ ) AS fixtures(variant, pool_sequence, quantity_unit);
 
 INSERT INTO inventory.inventory_lot
     (id, tenant_id, supply_pool_id, sku_id, lot_code, status,
      quantity_unit, on_hand_quantity, reserved_quantity, available_from, received_at,
      created_at, created_by, updated_at, updated_by, version)
-SELECT md5('catalog-benchmark-lot-' || product_sequence || '-' || variant || '-' || pool_sequence)::uuid,
+SELECT md5('catalog-benchmark-lot-' || product_sequence || '-' || variant || '-' || pool_sequence || '-' || quantity_unit)::uuid,
        :'tenant_id'::uuid,
        md5('catalog-benchmark-pool-' || pool_sequence)::uuid,
        md5('catalog-benchmark-sku-' || product_sequence || '-' || variant)::uuid,
-       'BENCH-LOT-' || product_sequence || '-' || variant || '-' || pool_sequence,
-       'AVAILABLE', CASE WHEN variant = 3 THEN 'BOTTLE' ELSE 'CASE' END, 48 + variant, variant,
+       'BENCH-LOT-' || product_sequence || '-' || variant || '-' || pool_sequence || '-' || quantity_unit,
+       'AVAILABLE', quantity_unit, 48 + variant, variant,
        '2026-07-13T00:00:00Z', '2026-07-01T00:00:00Z',
        '2026-07-13T00:00:00Z', :'actor_id'::uuid,
        '2026-07-13T00:00:00Z', :'actor_id'::uuid, 0
   FROM generate_series(1, 4000) AS product_sequence
- CROSS JOIN generate_series(1, 3) AS variant
- CROSS JOIN (VALUES (1), (2), (4)) AS pools(pool_sequence);
+ CROSS JOIN (VALUES
+     (1, 1, 'CASE'), (1, 1, 'BOTTLE'), (1, 2, 'CASE'),
+     (2, 1, 'CASE'), (2, 2, 'CASE'), (2, 4, 'CASE'),
+     (3, 1, 'BOTTLE'), (3, 2, 'BOTTLE'), (3, 4, 'BOTTLE')
+ ) AS fixtures(variant, pool_sequence, quantity_unit);
 
 ANALYZE catalog.sku;
 ANALYZE catalog.wine_product;

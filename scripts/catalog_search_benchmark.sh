@@ -87,9 +87,15 @@ mv "${times_file}.sorted" "${times_file}"
 p50="$(awk '{ values[NR] = $1 } END { idx = int(NR * 0.50 + 0.999999); print values[idx] }' "${times_file}")"
 p95="$(awk '{ values[NR] = $1 } END { idx = int(NR * 0.95 + 0.999999); print values[idx] }' "${times_file}")"
 counts="$(compose exec -T postgres psql --username cellarbridge --dbname cellarbridge --no-align --tuples-only --command "SELECT (SELECT count(*) FROM catalog.sku), (SELECT count(*) FROM catalog.sku_supply_projection), (SELECT count(*) FROM inventory.inventory_lot);")"
+dual_unit_counts="$(compose exec -T postgres psql --username cellarbridge --dbname cellarbridge --no-align --tuples-only --command "SELECT (SELECT count(*) FROM (SELECT tenant_id, sku_id, supply_pool_id FROM catalog.sku_supply_projection GROUP BY 1, 2, 3 HAVING count(DISTINCT quantity_unit) = 2) groups), (SELECT count(*) FROM (SELECT tenant_id, sku_id, supply_pool_id FROM inventory.inventory_lot GROUP BY 1, 2, 3 HAVING count(DISTINCT quantity_unit) = 2) groups);")"
+if [[ "${counts}" != "12000|36000|36000" || "${dual_unit_counts}" != "4000|4000" ]]; then
+  printf 'Benchmark fixture cardinality mismatch: rows=%s dual-unit-groups=%s\n' "${counts}" "${dual_unit_counts}" >&2
+  exit 1
+fi
 postgres_version="$(compose exec -T postgres psql --username cellarbridge --dbname cellarbridge --no-align --tuples-only --command 'SHOW server_version;')"
 
 printf 'SKU rows | supply projection rows | inventory lot rows: %s\n' "${counts}"
+printf 'Projection dual-unit groups | lot dual-unit groups: %s\n' "${dual_unit_counts}"
 printf 'Warm runs: 5; measured runs: %s\n' "${RUNS}"
 printf 'Execution time p50: %s ms\n' "${p50}"
 printf 'Execution time p95: %s ms\n' "${p95}"
