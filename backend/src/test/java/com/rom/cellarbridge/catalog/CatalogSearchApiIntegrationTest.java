@@ -11,6 +11,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -120,7 +121,7 @@ class CatalogSearchApiIntegrationTest extends PostgresIntegrationTestSupport {
 
   @Test
   void separatesAndFiltersSamePoolSupplyByQuantityUnit() throws Exception {
-    Instant priorityCorrectionTime = Instant.now().minusSeconds(1);
+    Instant priorityCorrectionTime = Instant.now().minusSeconds(1).truncatedTo(ChronoUnit.MICROS);
     jdbc.update(
         """
         UPDATE inventory.warehouse
