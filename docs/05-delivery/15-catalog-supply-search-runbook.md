@@ -82,16 +82,16 @@ make catalog-benchmark
 
 | Metric | Result |
 |---|---:|
-| Execution p50 | 6.964 ms |
-| Execution p95 | 7.831 ms |
-| Sample min / max | 6.527 / 8.270 ms |
-| Representative execution | 7.239 ms |
-| Representative planning | 2.826 ms |
-| Top-level shared hit / read blocks | 2,913 / 0 |
+| Execution p50 | 7.971 ms |
+| Execution p95 | 11.478 ms |
+| Sample min / max | 7.262 / 16.838 ms |
+| Representative execution | 7.567 ms |
+| Representative planning | 2.915 ms |
+| Top-level shared hit / read blocks | 2,911 / 0 |
 
-主搜索计划包含 trigram GiST `Index Scan` / `Bitmap Index Scan`、供给投影和产品主键 `Index Scan`。planner 对相关供给子查询选择旧组合索引并把 `quantity_unit` 保留为 Filter；tenant-first 证据查询则通过 `ix_catalog_supply_projection_unit_filter` 的 `Index Only Scan` 将单位放入 `Index Cond`，执行 0.197 ms。所有计划均未关闭 seqscan。
+主搜索计划包含 trigram GiST `Index Scan` / `Bitmap Index Scan`、供给投影和产品主键 `Index Scan`。planner 对相关供给子查询选择旧组合索引并把 `quantity_unit` 保留为 Filter；tenant-first 证据查询则通过 `ix_catalog_supply_projection_unit_filter` 的 `Index Only Scan` 将单位放入 `Index Cond`，执行 0.302 ms。所有计划均未关闭 seqscan。
 
-Task 04 文档基线为 p50 **18.144 ms** / p95 **18.736 ms**；本次分别低约 61.6% / 58.2%，未发现回归。该比较只用于本地变化方向，不构成跨环境 SLA；完整 JSON 和逐次时间写入 ignored 的 `target/catalog-search-benchmark/`。
+Task 04 文档基线为 p50 **18.144 ms** / p95 **18.736 ms**；本次分别低约 56.1% / 38.7%，未发现回归。该比较只用于本地变化方向，不构成跨环境 SLA；完整 JSON 和逐次时间写入 ignored 的 `target/catalog-search-benchmark/`。
 
 这些结果只描述上述本机、容器配额、数据分布和 warm-cache 查询，不是生产 SLA，也不替代生产容量测试。
 
