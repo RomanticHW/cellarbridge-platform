@@ -1,6 +1,7 @@
 package com.rom.cellarbridge.tradeplanning.internal.infrastructure;
 
 import com.rom.cellarbridge.identityaccess.TenantId;
+import com.rom.cellarbridge.tradeplanning.SupplyDecisionSnapshot;
 import com.rom.cellarbridge.tradeplanning.TradePlanningService.Eligibility;
 import com.rom.cellarbridge.tradeplanning.TradePlanningService.RouteCandidate;
 import com.rom.cellarbridge.tradeplanning.TradePlanningService.RouteEvaluation;
@@ -9,7 +10,10 @@ import com.rom.cellarbridge.tradeplanning.TradePlanningService.RouteRejection;
 import com.rom.cellarbridge.tradeplanning.TradePlanningService.RouteScore;
 import com.rom.cellarbridge.tradeplanning.TradeRouteCode;
 import com.rom.cellarbridge.tradeplanning.internal.application.TradePlanningRepository;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -43,12 +47,16 @@ public class JdbcTradePlanningRepository implements TradePlanningRepository {
         INSERT INTO trade_planning.evaluation
           (id, tenant_id, partner_id, policy_version, input_hash, input_summary,
            recommended_route_code, selected_route_code, override_reason, override_actor_id,
-           override_at, original_recommendation, evaluated_at, created_at, created_by,
+           override_at, original_recommendation, supply_decision_schema_version,
+           supply_decision_policy_version, supply_decision_at, supply_decision_hash,
+           supply_decision_summary, evaluated_at, created_at, created_by,
            updated_at, updated_by, version)
         VALUES
           (:id, :tenantId, :partnerId, :policyVersion, :inputHash, CAST(:inputSummary AS jsonb),
            :recommendedRoute, :selectedRoute, :overrideReason, :overrideActorId,
-           :overrideAt, :originalRecommendation, :evaluatedAt, :evaluatedAt, :actorId,
+           :overrideAt, :originalRecommendation, :decisionSchemaVersion, :decisionPolicyVersion,
+           :decisionAt, :decisionHash, CAST(:decisionSummary AS jsonb),
+           :evaluatedAt, :evaluatedAt, :actorId,
            :evaluatedAt, :actorId, 0)
         """,
         new MapSqlParameterSource()
@@ -84,6 +92,11 @@ public class JdbcTradePlanningRepository implements TradePlanningRepository {
                 evaluation.override() == null
                     ? null
                     : evaluation.override().originalRecommendation().name())
+            .addValue("decisionSchemaVersion", evaluation.supplyDecision().schemaVersion())
+            .addValue("decisionPolicyVersion", evaluation.supplyDecision().policyVersion())
+            .addValue("decisionAt", Timestamp.from(evaluation.supplyDecision().decidedAt()))
+            .addValue("decisionHash", evaluation.supplyDecision().decisionHash())
+            .addValue("decisionSummary", supplyDecisionJson(evaluation.supplyDecision()))
             .addValue("evaluatedAt", Timestamp.from(evaluation.evaluatedAt()))
             .addValue("actorId", actorId));
     for (RouteCandidate candidate : evaluation.candidates()) {
@@ -98,7 +111,9 @@ public class JdbcTradePlanningRepository implements TradePlanningRepository {
             """
             SELECT id, policy_version, input_hash, recommended_route_code,
                    selected_route_code, override_reason, override_actor_id,
-                   override_at, original_recommendation, evaluated_at
+                   override_at, original_recommendation, evaluated_at,
+                   supply_decision_schema_version, supply_decision_policy_version,
+                   supply_decision_at, supply_decision_hash, supply_decision_summary
               FROM trade_planning.evaluation
              WHERE tenant_id = :tenantId AND id = :evaluationId
             """,
@@ -123,7 +138,8 @@ public class JdbcTradePlanningRepository implements TradePlanningRepository {
                   candidates(tenantId, evaluationId),
                   route(resultSet.getString("recommended_route_code")),
                   route(resultSet.getString("selected_route_code")),
-                  override);
+                  override,
+                  supplyDecision(resultSet));
             })
         .stream()
         .findFirst();
@@ -215,6 +231,53 @@ public class JdbcTradePlanningRepository implements TradePlanningRepository {
       return jsonMapper.readValue(json, new TypeReference<List<RouteRejection>>() {});
     } catch (JacksonException exception) {
       throw new IllegalStateException("Could not read route rejections", exception);
+    }
+  }
+
+  private String supplyDecisionJson(SupplyDecisionSnapshot decision) {
+    try {
+      return jsonMapper.writeValueAsString(decision);
+    } catch (JacksonException exception) {
+      throw new IllegalStateException("Could not serialize supply decision", exception);
+    }
+  }
+
+  private SupplyDecisionSnapshot supplyDecision(ResultSet resultSet) throws SQLException {
+    Integer schemaVersion = resultSet.getObject("supply_decision_schema_version", Integer.class);
+    String policyVersion = resultSet.getString("supply_decision_policy_version");
+    Timestamp decidedAtValue = resultSet.getTimestamp("supply_decision_at");
+    String decisionHash = resultSet.getString("supply_decision_hash");
+    String summary = resultSet.getString("supply_decision_summary");
+    int present =
+        (schemaVersion == null ? 0 : 1)
+            + (policyVersion == null ? 0 : 1)
+            + (decidedAtValue == null ? 0 : 1)
+            + (decisionHash == null ? 0 : 1)
+            + (summary == null ? 0 : 1);
+    if (present == 0) {
+      return null;
+    }
+    if (present != 5) {
+      throw new IllegalStateException("Supply decision root columns are incomplete");
+    }
+    try {
+      SupplyDecisionSnapshot decision = jsonMapper.readValue(summary, SupplyDecisionSnapshot.class);
+      Instant decidedAt = decidedAtValue.toInstant();
+      UUID evaluationId = resultSet.getObject("id", UUID.class);
+      String inputHash = resultSet.getString("input_hash");
+      TradeRouteCode selectedRoute = route(resultSet.getString("selected_route_code"));
+      if (decision.schemaVersion() != schemaVersion
+          || !decision.policyVersion().equals(policyVersion)
+          || !decision.decidedAt().equals(decidedAt)
+          || !decision.decisionHash().equals(decisionHash)
+          || !decision.sourceRouteEvaluationId().equals(evaluationId)
+          || !decision.sourceRouteInputHash().equals(inputHash)
+          || decision.selectedRouteCode() != selectedRoute) {
+        throw new IllegalStateException("Supply decision root and JSON evidence conflict");
+      }
+      return decision;
+    } catch (JacksonException | IllegalArgumentException exception) {
+      throw new IllegalStateException("Could not read valid supply decision evidence", exception);
     }
   }
 

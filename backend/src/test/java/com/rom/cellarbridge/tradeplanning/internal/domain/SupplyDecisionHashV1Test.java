@@ -1,6 +1,7 @@
 package com.rom.cellarbridge.tradeplanning.internal.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.rom.cellarbridge.tradeplanning.SupplyAllocationMode;
 import com.rom.cellarbridge.tradeplanning.SupplyDecisionHashV1;
@@ -90,6 +91,37 @@ class SupplyDecisionHashV1Test extends SupplyDecisionTestFixtures {
     }
   }
 
+  @Test
+  void rejectsInvalidSourceHashTimeAndDuplicateLinesBeforeHashing() {
+    assertThatThrownBy(
+            () ->
+                new HashInput(
+                    1,
+                    SupplyDecisionPolicy.VERSION,
+                    DECIDED_AT,
+                    EVALUATION_ID,
+                    "A".repeat(64),
+                    TradeRouteCode.NB_BONDED_B2B,
+                    DATA_AS_OF_2,
+                    hashLines()))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(
+            () ->
+                new HashInput(
+                    1,
+                    SupplyDecisionPolicy.VERSION,
+                    DECIDED_AT.plusNanos(1),
+                    EVALUATION_ID,
+                    SOURCE_INPUT_HASH,
+                    TradeRouteCode.NB_BONDED_B2B,
+                    DATA_AS_OF_2,
+                    hashLines()))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> hashInput(List.of(hashLines().getFirst(), hashLines().getFirst())))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("quotationLineId must be unique");
+  }
+
   private static HashInput hashInput(List<LineDecision> lines) {
     return new HashInput(
         1,
@@ -170,7 +202,9 @@ class SupplyDecisionHashV1Test extends SupplyDecisionTestFixtures {
 
   private static LineDecision change(LineDecision line, LineField field) {
     return new LineDecision(
-        field == LineField.QUOTATION_LINE_ID ? LINE_2 : line.quotationLineId(),
+        field == LineField.QUOTATION_LINE_ID
+            ? uuid("72000000-0000-4000-8000-000000000009")
+            : line.quotationLineId(),
         field == LineField.SKU_ID ? SKU_2 : line.skuId(),
         field == LineField.REQUESTED_QUANTITY ? new BigDecimal("6.6") : line.requestedQuantity(),
         field == LineField.QUANTITY_UNIT ? TradePlanningQuantityUnit.BOTTLE : line.quantityUnit(),

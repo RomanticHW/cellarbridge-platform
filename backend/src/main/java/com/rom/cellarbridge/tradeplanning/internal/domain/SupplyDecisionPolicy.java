@@ -7,6 +7,7 @@ import com.rom.cellarbridge.tradeplanning.TradePlanningQuantityUnit;
 import com.rom.cellarbridge.tradeplanning.TradePlanningSupplyType;
 import com.rom.cellarbridge.tradeplanning.TradeRouteCode;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -22,7 +23,7 @@ import java.util.UUID;
 /** Pure, deterministic selection of route-bound supply evidence. */
 public final class SupplyDecisionPolicy {
 
-  public static final String VERSION = "SUPPLY-DECISION-2026-01";
+  public static final String VERSION = SupplyDecisionSnapshot.POLICY_VERSION;
   public static final String FIXED_POOL_INELIGIBLE_CODE = "QUOTE_FIXED_SUPPLY_POOL_INELIGIBLE";
   public static final String NO_PROMISABLE_SUPPLY_CODE = "NO_PROMISABLE_SUPPLY";
 
@@ -263,16 +264,10 @@ public final class SupplyDecisionPolicy {
     public LineInput {
       quotationLineId = Objects.requireNonNull(quotationLineId, "quotationLineId");
       skuId = Objects.requireNonNull(skuId, "skuId");
-      requestedQuantity = Objects.requireNonNull(requestedQuantity, "requestedQuantity");
-      if (requestedQuantity.signum() <= 0) {
-        throw new IllegalArgumentException("requestedQuantity must be positive");
-      }
+      requestedQuantity = persistenceQuantity(requestedQuantity, "requestedQuantity", false);
       quantityUnit = Objects.requireNonNull(quantityUnit, "quantityUnit");
       moqCaseEquivalentQuantity =
-          Objects.requireNonNull(moqCaseEquivalentQuantity, "moqCaseEquivalentQuantity");
-      if (moqCaseEquivalentQuantity.signum() <= 0) {
-        throw new IllegalArgumentException("moqCaseEquivalentQuantity must be positive");
-      }
+          persistenceQuantity(moqCaseEquivalentQuantity, "moqCaseEquivalentQuantity", false);
     }
   }
 
@@ -294,15 +289,22 @@ public final class SupplyDecisionPolicy {
       routeCode = Objects.requireNonNull(routeCode, "routeCode");
       supplyType = Objects.requireNonNull(supplyType, "supplyType");
       quantityUnit = Objects.requireNonNull(quantityUnit, "quantityUnit");
-      availableQuantity = Objects.requireNonNull(availableQuantity, "availableQuantity");
-      if (availableQuantity.signum() < 0) {
-        throw new IllegalArgumentException("availableQuantity must not be negative");
-      }
+      availableQuantity = persistenceQuantity(availableQuantity, "availableQuantity", true);
       confidence = Objects.requireNonNull(confidence, "confidence");
       inventoryPolicyVersion =
           Objects.requireNonNull(inventoryPolicyVersion, "inventoryPolicyVersion");
       dataAsOf = Objects.requireNonNull(dataAsOf, "dataAsOf");
     }
+  }
+
+  private static BigDecimal persistenceQuantity(BigDecimal value, String field, boolean allowZero) {
+    BigDecimal normalized =
+        Objects.requireNonNull(value, field).setScale(6, RoundingMode.UNNECESSARY);
+    if ((allowZero ? normalized.signum() < 0 : normalized.signum() <= 0)
+        || normalized.precision() - normalized.scale() > 13) {
+      throw new IllegalArgumentException(field + " is outside numeric(19,6)");
+    }
+    return normalized;
   }
 
   public record Failure(UUID quotationLineId, String code) {

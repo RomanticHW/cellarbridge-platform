@@ -51,7 +51,7 @@ test('creates, routes, approves, issues, and safely previews a revisioned quotat
   await expect(sales.page.getByRole('heading', { name: /QUO-\d{6}-\d{6}/ })).toBeVisible();
   const quotationPath = new URL(sales.page.url()).pathname;
   await sales.page.getByRole('button', { name: 'Evaluate routes' }).click();
-  await expect(sales.page.getByText('ROUTE-2026-02')).toBeVisible();
+  await expect(sales.page.getByText('ROUTE-2026-03')).toBeVisible();
   await expect(sales.page.getByText(/Selected route:/)).toBeVisible();
   await sales.page.getByRole('button', { name: 'Submit for approval' }).click();
   await expect(sales.page.getByText('PENDING APPROVAL')).toBeVisible();
@@ -84,7 +84,7 @@ test('creates, routes, approves, issues, and safely previews a revisioned quotat
   await expect(manager.page.getByRole('button', { name: 'Reject quotation' })).toBeVisible();
   await expect(manager.page.getByText('Estimated margin')).toHaveCount(0);
   await expect(manager.page.getByText('Weighted score')).toHaveCount(0);
-  await expect(manager.page.getByText('ROUTE-2026-02')).toHaveCount(0);
+  await expect(manager.page.getByText('ROUTE-2026-03')).toHaveCount(0);
 
   expect(sales.browserErrors).toEqual([]);
   expect(manager.browserErrors).toEqual([]);

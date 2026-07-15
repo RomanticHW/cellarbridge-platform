@@ -1,8 +1,12 @@
 package com.rom.cellarbridge.quotation;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.rom.cellarbridge.identityaccess.TenantId;
 import com.rom.cellarbridge.test.PostgresIntegrationTestSupport;
+import com.rom.cellarbridge.tradeplanning.TradePlanningException;
+import com.rom.cellarbridge.tradeplanning.TradePlanningService;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -11,6 +15,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,6 +24,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.oauth2.jwt.BadJwtException;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -47,6 +53,8 @@ class QuotationApiIntegrationTest extends PostgresIntegrationTestSupport {
   @Autowired private JsonMapper jsonMapper;
 
   @Autowired private JdbcTemplate jdbc;
+
+  @Autowired private TradePlanningService tradePlanningService;
 
   @Test
   void createsEvaluatesApprovesIssuesAndReturnsCustomerSafeSnapshot() throws Exception {
@@ -88,6 +96,8 @@ class QuotationApiIntegrationTest extends PostgresIntegrationTestSupport {
         .isEqualTo("CB-MTV-2019-750X6");
     String quotationId = created.body().path("id").asText();
 
+    Integer evaluationsBeforeOverride =
+        jdbc.queryForObject("SELECT count(*) FROM trade_planning.evaluation", Integer.class);
     ApiResponse unauthorizedOverride =
         request(
             "POST",
@@ -99,6 +109,8 @@ class QuotationApiIntegrationTest extends PostgresIntegrationTestSupport {
             """);
     assertThat(unauthorizedOverride.status()).isEqualTo(403);
     assertThat(unauthorizedOverride.body().path("code").asText()).isEqualTo("ACCESS_DENIED");
+    assertThat(jdbc.queryForObject("SELECT count(*) FROM trade_planning.evaluation", Integer.class))
+        .isEqualTo(evaluationsBeforeOverride);
 
     ApiResponse evaluated =
         request(
@@ -110,13 +122,15 @@ class QuotationApiIntegrationTest extends PostgresIntegrationTestSupport {
             {"requestedRouteCode":"NB_BONDED_B2B","overrideReason":"Use bonded delivery"}
             """);
     assertThat(evaluated.status()).withFailMessage(evaluated.raw()).isEqualTo(200);
-    assertThat(evaluated.body().path("policyVersion").asText()).isEqualTo("ROUTE-2026-02");
+    assertThat(evaluated.body().path("policyVersion").asText()).isEqualTo("ROUTE-2026-03");
     assertThat(evaluated.body().path("recommendedRouteCode").asText())
         .isEqualTo("SH_GENERAL_TRADE");
     assertThat(evaluated.body().path("selectedRouteCode").asText()).isEqualTo("NB_BONDED_B2B");
     assertThat(evaluated.body().path("override").path("originalRecommendation").asText())
         .isEqualTo("SH_GENERAL_TRADE");
     assertThat(evaluated.body().path("candidates").size()).isEqualTo(3);
+    assertThat(evaluated.raw())
+        .doesNotContain("supplyDecision", "decisionHash", "inventoryDataAsOf");
     String evaluationId = evaluated.body().path("evaluationId").asText();
     assertThat(
             jdbc.queryForObject(
@@ -130,15 +144,30 @@ class QuotationApiIntegrationTest extends PostgresIntegrationTestSupport {
             String.class,
             evaluationId);
     assertThat(storedInput)
-        .contains("\"schemaVersion\": 2")
-        .contains("\"policyVersion\": \"ROUTE-2026-02\"")
-        .contains("\"requestedQuantity\": 6")
+        .contains("\"schemaVersion\": 3")
+        .contains("\"routePolicyVersion\": \"ROUTE-2026-03\"")
+        .contains("\"supplyDecisionPolicyVersion\": \"SUPPLY-DECISION-2026-01\"")
+        .contains("\"requestedQuantity\": \"6.000000\"")
         .contains("\"quantityUnit\": \"CASE\"")
-        .contains("\"moqCaseEquivalentQuantity\": 6")
+        .contains("\"moqCaseEquivalentQuantity\": \"6.000000\"")
         .contains("\"preferredSupplyPoolId\": null")
         .contains("\"availability\"");
+    var internalEvaluation =
+        tradePlanningService.get(
+            TenantId.of(java.util.UUID.fromString("10000000-0000-4000-8000-000000000001")),
+            java.util.UUID.fromString(evaluationId));
+    assertThat(internalEvaluation.supplyDecision()).isNotNull();
+    assertThat(internalEvaluation.supplyDecision().sourceRouteEvaluationId().toString())
+        .isEqualTo(evaluationId);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT supply_decision_hash FROM trade_planning.evaluation WHERE id = ?::uuid",
+                String.class,
+                evaluationId))
+        .isEqualTo(internalEvaluation.supplyDecision().decisionHash());
 
     ApiResponse routed = get("/api/v1/quotations/" + quotationId, NORTH_SALES);
+    assertThat(routed.raw()).doesNotContain("supplyDecision", "decisionHash", "inventoryDataAsOf");
     assertThat(routed.body().path("version").asLong()).isEqualTo(1);
     ApiResponse submitted =
         request(
@@ -223,9 +252,13 @@ class QuotationApiIntegrationTest extends PostgresIntegrationTestSupport {
 
   @Test
   void evaluatesDemoSupplyCoverageWithoutMixingCaseAndBottleQuantities() throws Exception {
+    Integer evaluationsBeforeRejection =
+        jdbc.queryForObject("SELECT count(*) FROM trade_planning.evaluation", Integer.class);
     ApiResponse sixtyCases = createAndEvaluate("60", "CASE");
     assertThat(sixtyCases.status()).withFailMessage(sixtyCases.raw()).isEqualTo(422);
     assertThat(sixtyCases.body().path("code").asText()).isEqualTo("QUOTE_HAS_NO_ELIGIBLE_ROUTE");
+    assertThat(jdbc.queryForObject("SELECT count(*) FROM trade_planning.evaluation", Integer.class))
+        .isEqualTo(evaluationsBeforeRejection);
 
     ApiResponse fiftySixCases = createAndEvaluate("56", "CASE");
     assertThat(fiftySixCases.status()).withFailMessage(fiftySixCases.raw()).isEqualTo(200);
@@ -240,6 +273,82 @@ class QuotationApiIntegrationTest extends PostgresIntegrationTestSupport {
     ApiResponse elevenBottles = createAndEvaluate("11", "BOTTLE");
     assertThat(elevenBottles.status()).withFailMessage(elevenBottles.raw()).isEqualTo(422);
     assertThat(elevenBottles.body().path("code").asText()).isEqualTo("QUOTE_HAS_NO_ELIGIBLE_ROUTE");
+  }
+
+  @Test
+  void rejectsInvalidDecisionColumnsAndDetectsJsonTamperingAcrossTenantBoundaries()
+      throws Exception {
+    ApiResponse evaluated = createAndEvaluate("6", "CASE");
+    assertThat(evaluated.status()).withFailMessage(evaluated.raw()).isEqualTo(200);
+    UUID evaluationId = UUID.fromString(evaluated.body().path("evaluationId").asText());
+    assertThatThrownBy(
+            () ->
+                tradePlanningService.get(
+                    TenantId.of(UUID.fromString("20000000-0000-4000-8000-000000000001")),
+                    evaluationId))
+        .isInstanceOfSatisfying(
+            TradePlanningException.class,
+            exception -> assertThat(exception.code()).isEqualTo("RESOURCE_NOT_FOUND"));
+    assertThatThrownBy(
+            () ->
+                jdbc.update(
+                    "UPDATE trade_planning.evaluation SET supply_decision_hash = NULL WHERE id = ?",
+                    evaluationId))
+        .isInstanceOf(DataIntegrityViolationException.class);
+    assertThatThrownBy(
+            () ->
+                jdbc.update(
+                    "UPDATE trade_planning.evaluation SET supply_decision_hash = ? WHERE id = ?",
+                    "A".repeat(64),
+                    evaluationId))
+        .isInstanceOf(DataIntegrityViolationException.class);
+    assertThatThrownBy(
+            () ->
+                jdbc.update(
+                    "UPDATE trade_planning.evaluation SET supply_decision_summary = '{\"schemaVersion\":1}'::jsonb WHERE id = ?",
+                    evaluationId))
+        .isInstanceOf(DataIntegrityViolationException.class);
+    assertThatThrownBy(
+            () ->
+                jdbc.update(
+                    "UPDATE trade_planning.evaluation SET supply_decision_summary = jsonb_set(supply_decision_summary, '{sourceRouteInputHash}', 'null'::jsonb) WHERE id = ?",
+                    evaluationId))
+        .isInstanceOf(DataIntegrityViolationException.class);
+    assertThatThrownBy(
+            () ->
+                jdbc.update(
+                    "UPDATE trade_planning.evaluation SET supply_decision_summary = jsonb_set(supply_decision_summary, '{schemaVersion}', to_jsonb('1'::text)) WHERE id = ?",
+                    evaluationId))
+        .isInstanceOf(DataIntegrityViolationException.class);
+    assertThatThrownBy(
+            () ->
+                jdbc.update(
+                    "UPDATE trade_planning.evaluation SET supply_decision_summary = jsonb_set(supply_decision_summary, '{lineDecisions}', '[]'::jsonb) WHERE id = ?",
+                    evaluationId))
+        .isInstanceOf(DataIntegrityViolationException.class);
+    assertThatThrownBy(
+            () ->
+                jdbc.update(
+                    "UPDATE trade_planning.evaluation SET supply_decision_policy_version = '   ', supply_decision_summary = jsonb_set(supply_decision_summary, '{policyVersion}', to_jsonb('   '::text)) WHERE id = ?",
+                    evaluationId))
+        .isInstanceOf(DataIntegrityViolationException.class);
+    assertThatThrownBy(
+            () ->
+                jdbc.update(
+                    "UPDATE trade_planning.evaluation SET supply_decision_at = evaluated_at + interval '1 microsecond' WHERE id = ?",
+                    evaluationId))
+        .isInstanceOf(DataIntegrityViolationException.class);
+
+    jdbc.update(
+        "UPDATE trade_planning.evaluation SET supply_decision_summary = jsonb_set(supply_decision_summary, '{inventoryDataAsOf}', to_jsonb('2000-01-01T00:00:00Z'::text)) WHERE id = ?",
+        evaluationId);
+    assertThatThrownBy(
+            () ->
+                tradePlanningService.get(
+                    TenantId.of(UUID.fromString("10000000-0000-4000-8000-000000000001")),
+                    evaluationId))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage("Could not read valid supply decision evidence");
   }
 
   private ApiResponse get(String path, String token) throws Exception {

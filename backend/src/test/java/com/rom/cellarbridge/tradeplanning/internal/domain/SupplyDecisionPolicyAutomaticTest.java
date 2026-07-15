@@ -271,6 +271,36 @@ class SupplyDecisionPolicyAutomaticTest extends SupplyDecisionTestFixtures {
                     BigDecimal.ONE,
                     null))
         .isInstanceOf(IllegalArgumentException.class);
+    LineInput boundary =
+        new LineInput(
+            LINE_1,
+            SKU_1,
+            new BigDecimal("9999999999999.999999"),
+            TradePlanningQuantityUnit.CASE,
+            new BigDecimal("1.1234560"),
+            null);
+    assertThat(boundary.requestedQuantity().scale()).isEqualTo(6);
+    assertThat(boundary.moqCaseEquivalentQuantity()).isEqualByComparingTo("1.123456");
+    assertThatThrownBy(
+            () ->
+                new LineInput(
+                    LINE_1,
+                    SKU_1,
+                    new BigDecimal("10000000000000.000000"),
+                    TradePlanningQuantityUnit.CASE,
+                    BigDecimal.ONE,
+                    null))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(
+            () ->
+                new LineInput(
+                    LINE_1,
+                    SKU_1,
+                    new BigDecimal("1.1234567"),
+                    TradePlanningQuantityUnit.CASE,
+                    BigDecimal.ONE,
+                    null))
+        .isInstanceOf(ArithmeticException.class);
     assertThatThrownBy(
             () ->
                 new LineInput(
@@ -319,6 +349,23 @@ class SupplyDecisionPolicyAutomaticTest extends SupplyDecisionTestFixtures {
                     DATA_AS_OF_1)
                 .availableFrom())
         .isNull();
+    assertThat(
+            malformedAvailability(
+                    new BigDecimal("9999999999999.999999"),
+                    "HIGH",
+                    "INVENTORY-2026-01",
+                    DATA_AS_OF_1)
+                .availableQuantity()
+                .scale())
+        .isEqualTo(6);
+    assertThatThrownBy(
+            () ->
+                malformedAvailability(
+                    new BigDecimal("10000000000000.000000"),
+                    "HIGH",
+                    "INVENTORY-2026-01",
+                    DATA_AS_OF_1))
+        .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
