@@ -1,5 +1,6 @@
 package com.rom.cellarbridge.inventory.internal.domain;
 
+import com.rom.cellarbridge.inventory.QuantityUnit;
 import java.math.BigDecimal;
 import java.util.Objects;
 import java.util.UUID;
@@ -9,14 +10,21 @@ public final class InventoryLot {
   private final UUID id;
   private final UUID skuId;
   private final UUID supplyPoolId;
+  private final QuantityUnit quantityUnit;
   private final BigDecimal onHand;
   private final BigDecimal reserved;
 
   public InventoryLot(
-      UUID id, UUID skuId, UUID supplyPoolId, BigDecimal onHand, BigDecimal reserved) {
+      UUID id,
+      UUID skuId,
+      UUID supplyPoolId,
+      QuantityUnit quantityUnit,
+      BigDecimal onHand,
+      BigDecimal reserved) {
     this.id = Objects.requireNonNull(id, "id");
     this.skuId = Objects.requireNonNull(skuId, "skuId");
     this.supplyPoolId = Objects.requireNonNull(supplyPoolId, "supplyPoolId");
+    this.quantityUnit = Objects.requireNonNull(quantityUnit, "quantityUnit");
     this.onHand = requireNonNegative(onHand, "onHand");
     this.reserved = requireNonNegative(reserved, "reserved");
     if (reserved.compareTo(onHand) > 0) {
@@ -38,6 +46,10 @@ public final class InventoryLot {
 
   public UUID supplyPoolId() {
     return supplyPoolId;
+  }
+
+  public QuantityUnit quantityUnit() {
+    return quantityUnit;
   }
 
   public BigDecimal onHand() {
