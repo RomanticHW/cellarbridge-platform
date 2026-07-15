@@ -99,7 +99,7 @@ class TradePlanningApplicationServiceTest {
                     0,
                     NOW),
                 List.of()));
-    when(inventorySupplyQuery.findRouteAvailability(TENANT_ID, Set.of(SKU_ID)))
+    when(inventorySupplyQuery.findRouteAvailability(TENANT_ID, Set.of(SKU_ID), NOW))
         .thenReturn(
             List.of(
                 new RouteAvailability(

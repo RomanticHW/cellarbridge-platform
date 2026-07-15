@@ -14,7 +14,8 @@ public interface InventorySupplyQuery {
   List<ExactLotAvailability> findAuthorizedLots(Set<UUID> supplyPoolIds);
 
   /** Internal module collaboration query. Results are not a reservation or customer promise. */
-  List<RouteAvailability> findRouteAvailability(TenantId tenantId, Set<UUID> skuIds);
+  List<RouteAvailability> findRouteAvailability(
+      TenantId tenantId, Set<UUID> skuIds, Instant decisionAt);
 
   record ExactLotAvailability(
       UUID supplyPoolId,

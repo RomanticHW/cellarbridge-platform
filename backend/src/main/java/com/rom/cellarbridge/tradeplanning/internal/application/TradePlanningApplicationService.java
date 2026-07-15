@@ -88,7 +88,7 @@ public class TradePlanningApplicationService implements TradePlanningService {
     Set<UUID> skuIds =
         command.lines().stream().map(LineDemand::skuId).collect(Collectors.toUnmodifiableSet());
     List<RouteAvailability> availability =
-        inventorySupplyQuery.findRouteAvailability(tenantId, skuIds);
+        inventorySupplyQuery.findRouteAvailability(tenantId, skuIds, clock.instant());
     Input input = input(command, partner, availability);
     List<RouteCandidate> candidates = RouteEvaluationPolicy.evaluate(input);
     TradeRouteCode recommended = RouteEvaluationPolicy.recommend(candidates);
