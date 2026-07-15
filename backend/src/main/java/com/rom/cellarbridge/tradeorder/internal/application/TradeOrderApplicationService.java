@@ -7,9 +7,8 @@ import com.rom.cellarbridge.identityaccess.TenantContextHolder;
 import com.rom.cellarbridge.tradeorder.TradeOrderStatus;
 import com.rom.cellarbridge.tradeorder.internal.application.TradeOrderRepository.CursorPosition;
 import com.rom.cellarbridge.tradeorder.internal.application.TradeOrderRepository.OrderPage;
-import com.rom.cellarbridge.tradeorder.internal.application.TradeOrderRepository.TimelineEntry;
 import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrder;
-import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrderProblem;
+import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
@@ -75,7 +74,12 @@ public class TradeOrderApplicationService {
         repository
             .find(context.tenantId(), orderId, null, ownerScope(context))
             .orElseThrow(TradeOrderApplicationService::notFound);
-    return new DetailView(order, repository.timeline(context.tenantId(), order.id(), false), false);
+    return new DetailView(
+        order,
+        repository.timeline(context.tenantId(), order.id(), false).stream()
+            .map(TimelineView::from)
+            .toList(),
+        false);
   }
 
   @Transactional(readOnly = true)
@@ -85,7 +89,12 @@ public class TradeOrderApplicationService {
         repository
             .find(context.tenantId(), orderId, context.partnerId(), null)
             .orElseThrow(TradeOrderApplicationService::notFound);
-    return new DetailView(order, repository.timeline(context.tenantId(), order.id(), true), true);
+    return new DetailView(
+        order,
+        repository.timeline(context.tenantId(), order.id(), true).stream()
+            .map(TimelineView::from)
+            .toList(),
+        true);
   }
 
   private TenantContext requireInternalContext() {
@@ -168,9 +177,30 @@ public class TradeOrderApplicationService {
     }
   }
 
-  public record DetailView(TradeOrder order, List<TimelineEntry> timeline, boolean buyer) {
+  public record DetailView(TradeOrder order, List<TimelineView> timeline, boolean buyer) {
     public DetailView {
       timeline = List.copyOf(timeline);
+    }
+  }
+
+  public record TimelineView(
+      UUID id,
+      Instant occurredAt,
+      String action,
+      String previousState,
+      TradeOrderStatus newState,
+      String safeReason,
+      String visibility) {
+
+    private static TimelineView from(TradeOrderRepository.TimelineEntry entry) {
+      return new TimelineView(
+          entry.id(),
+          entry.occurredAt(),
+          entry.action(),
+          entry.previousState(),
+          entry.newState(),
+          entry.safeReason(),
+          entry.visibility());
     }
   }
 }

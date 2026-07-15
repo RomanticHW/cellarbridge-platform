@@ -10,6 +10,7 @@ import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrder.Customer;
 import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrder.DeliveryAddress;
 import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrder.Line;
 import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrder.Route;
+import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrderDomainException.FailureKind;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -35,7 +36,7 @@ class TradeOrderTest {
     assertThat(order.version()).isZero();
     assertThat(order.commercialSnapshot().lines()).hasSize(1);
     assertThat(order.commercialSnapshot().customer().displayName()).isEqualTo("North Buyer");
-    assertThat(order.snapshotHash()).isEqualTo("sha256:" + "a".repeat(64));
+    assertThat(order.snapshotHash()).isEqualTo("a".repeat(64));
   }
 
   @Test
@@ -50,9 +51,16 @@ class TradeOrderTest {
     assertThat(fulfilled.status()).isEqualTo(TradeOrderStatus.FULFILLED);
     assertThat(fulfilled.version()).isEqualTo(4);
     assertThatThrownBy(() -> fulfilled.requestCancellation(CREATED_AT.plusSeconds(5)))
-        .isInstanceOf(TradeOrderProblem.class)
-        .extracting("code")
-        .isEqualTo("INVALID_STATE_TRANSITION");
+        .isInstanceOfSatisfying(
+            TradeOrderDomainException.class,
+            failure -> {
+              assertThat(failure.code()).isEqualTo("INVALID_STATE_TRANSITION");
+              assertThat(failure.kind()).isEqualTo(FailureKind.STATE_CONFLICT);
+              assertThat(failure.currentState()).isEqualTo("FULFILLED");
+              assertThat(failure.details()).containsEntry("targetState", "CANCELLATION_PENDING");
+              assertThatThrownBy(() -> failure.details().put("targetState", "PENDING"))
+                  .isInstanceOf(UnsupportedOperationException.class);
+            });
   }
 
   @Test
@@ -82,6 +90,19 @@ class TradeOrderTest {
         .hasMessageContaining("line totals");
   }
 
+  @Test
+  void acceptsZeroAmountsAndRejectsNegativeAmountsOrNonPositiveQuantity() {
+    TradeOrder zero = order(snapshot(List.of(line("1", "0", "0")), "0"));
+    assertThat(zero.commercialSnapshot().totalAmount()).isEqualTo(new BigDecimal("0.0000"));
+    assertThat(order(snapshot(List.of(line("2", "10", "25")), "25"))).isNotNull();
+
+    assertThatThrownBy(() -> line("1", "-0.00001", "0"))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> line("1", "0", "-0.00001"))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> line("0", "0", "0")).isInstanceOf(IllegalArgumentException.class);
+  }
+
   private static TradeOrder order(CommercialSnapshot snapshot) {
     return TradeOrder.create(
         UUID.fromString("71000000-0000-4000-8000-000000000001"),
@@ -96,7 +117,7 @@ class TradeOrderTest {
         CREATED_AT.minusSeconds(10),
         UUID.fromString("11200000-0000-4000-8000-000000000001"),
         snapshot,
-        "sha256:" + "a".repeat(64),
+        "a".repeat(64),
         UUID.fromString("66000000-0000-4000-8000-000000000001"),
         UUID.fromString("64000000-0000-4000-8000-000000000001"),
         UUID.fromString("67000000-0000-4000-8000-000000000001"),
@@ -122,15 +143,19 @@ class TradeOrderTest {
   }
 
   private static Line line(String total) {
+    return line("1", total, total);
+  }
+
+  private static Line line(String quantity, String unitPrice, String total) {
     return new Line(
         UUID.randomUUID(),
         UUID.fromString("61100000-0000-4000-8000-000000000001"),
         UUID.fromString("34000000-0000-4000-8000-000000000001"),
         "SKU-001",
         "Synthetic wine case",
-        BigDecimal.ONE,
+        new BigDecimal(quantity),
         "CASE",
-        new BigDecimal(total),
+        new BigDecimal(unitPrice),
         new BigDecimal(total),
         null,
         "DOMESTIC_ON_HAND");

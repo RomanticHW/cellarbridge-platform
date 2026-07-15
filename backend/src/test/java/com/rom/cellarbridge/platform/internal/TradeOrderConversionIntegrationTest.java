@@ -3,25 +3,35 @@ package com.rom.cellarbridge.platform.internal;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.networknt.schema.SchemaLocation;
+import com.networknt.schema.SchemaRegistry;
+import com.networknt.schema.SpecificationVersion;
 import com.rom.cellarbridge.platform.EventDelivery;
+import com.rom.cellarbridge.quotation.QuotationAcceptedV1;
+import com.rom.cellarbridge.quotation.QuotationSnapshotHashV1;
 import com.rom.cellarbridge.quotation.internal.application.TradeOrderCreatedEventHandler;
 import com.rom.cellarbridge.test.PostgresIntegrationTestSupport;
 import com.rom.cellarbridge.tradeorder.internal.application.QuotationAcceptedEventHandler;
+import java.math.BigDecimal;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -37,6 +47,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 @Testcontainers
@@ -88,7 +99,7 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
   @Test
   void createsOneOrderAndOneReliableNextFactAcrossDuplicatesAndConcurrency() {
     UUID quotationId = UUID.randomUUID();
-    EventDelivery delivery = delivery(UUID.randomUUID(), quotationId, hash('a'), PARTNER_ID);
+    EventDelivery delivery = delivery(UUID.randomUUID(), quotationId, 'a', PARTNER_ID);
     int consumers = 12;
     CountDownLatch start = new CountDownLatch(1);
     List<CompletableFuture<LocalEventDeliveryService.DeliveryOutcome>> attempts;
@@ -121,6 +132,12 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
     assertOrderGraph(quotationId, 1, 1, 1);
     assertThat(inboxValue(delivery.eventId(), "status")).isEqualTo("PROCESSED");
     assertThat(inboxNumber(delivery.eventId(), "duplicate_count")).isEqualTo(consumers - 1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT updated_at >= created_at FROM platform_event.event_inbox WHERE event_id = ?",
+                Boolean.class,
+                delivery.eventId()))
+        .isTrue();
     assertThat(createdPublicationStatus(quotationId)).isEqualTo("PENDING");
     JsonNode createdPayload = createdPayload(quotationId);
     assertThat(createdPayload.propertyNames())
@@ -162,8 +179,7 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
             "supplyPoolId",
             "supplyType");
 
-    EventDelivery equivalentReplay =
-        delivery(UUID.randomUUID(), quotationId, hash('a'), PARTNER_ID);
+    EventDelivery equivalentReplay = delivery(UUID.randomUUID(), quotationId, 'a', PARTNER_ID);
     assertThat(deliveryService.deliver(handler, equivalentReplay))
         .isEqualTo(LocalEventDeliveryService.DeliveryOutcome.PROCESSED);
     assertOrderGraph(quotationId, 1, 1, 1);
@@ -174,7 +190,17 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
     UUID quotationId = UUID.randomUUID();
     EventDelivery legacyDelivery =
         withoutPayloadField(
-            delivery(UUID.randomUUID(), quotationId, hash('9'), PARTNER_ID), "sourceOwnerId");
+            mutate(
+                delivery(UUID.randomUUID(), quotationId, '9', PARTNER_ID),
+                payload -> {
+                  payload.put("totalAmount", "100.0000");
+                  ObjectNode line = (ObjectNode) payload.path("lines").path(0);
+                  line.put("netUnitPrice", "100.0000");
+                  line.put("lineTotal", "100.0000");
+                  JsonNode id = payload.remove("quotationId");
+                  payload.set("quotationId", id);
+                }),
+            "sourceOwnerId");
 
     assertThat(deliveryService.deliver(handler, legacyDelivery))
         .isEqualTo(LocalEventDeliveryService.DeliveryOutcome.PROCESSED);
@@ -192,10 +218,25 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
   }
 
   @Test
+  void createsAnImmutableZeroValueOrderFromAValidAcceptedEvent() {
+    UUID quotationId = UUID.randomUUID();
+    assertThat(
+            deliveryService.deliver(
+                handler, delivery(UUID.randomUUID(), quotationId, '0', PARTNER_ID)))
+        .isEqualTo(LocalEventDeliveryService.DeliveryOutcome.PROCESSED);
+    assertOrderGraph(quotationId, 1, 1, 1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT total_amount FROM trade_order.trade_order WHERE source_quotation_id = ?",
+                BigDecimal.class,
+                quotationId))
+        .isEqualTo(new BigDecimal("0.0000"));
+  }
+
+  @Test
   void rejectsAppendingALineAfterTheCommercialSnapshotIsSealed() {
     UUID quotationId = UUID.randomUUID();
-    deliveryService.deliver(
-        handler, delivery(UUID.randomUUID(), quotationId, hash('8'), PARTNER_ID));
+    deliveryService.deliver(handler, delivery(UUID.randomUUID(), quotationId, '8', PARTNER_ID));
     UUID orderId = orderId(quotationId);
 
     assertThatThrownBy(
@@ -230,10 +271,10 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
   @Test
   void preservesTheWinnerAndRecordsADifferentSnapshotAsFinal() {
     UUID quotationId = UUID.randomUUID();
-    EventDelivery winner = delivery(UUID.randomUUID(), quotationId, hash('b'), PARTNER_ID);
+    EventDelivery winner = delivery(UUID.randomUUID(), quotationId, 'b', PARTNER_ID);
     deliveryService.deliver(handler, winner);
 
-    EventDelivery conflict = delivery(UUID.randomUUID(), quotationId, hash('c'), PARTNER_ID);
+    EventDelivery conflict = delivery(UUID.randomUUID(), quotationId, 'c', PARTNER_ID);
     RuntimeException failure = catchFailure(() -> deliveryService.deliver(handler, conflict));
     assertThat(failureRecorder.record(handler, conflict, failure))
         .isEqualTo(JdbcEventFailureRecorder.FailureOutcome.FAILED_FINAL);
@@ -247,7 +288,7 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
   @Test
   void rollsBackBeforeCommitThenRecoversWithoutASecondOrder() {
     UUID quotationId = UUID.randomUUID();
-    EventDelivery delivery = delivery(UUID.randomUUID(), quotationId, hash('d'), PARTNER_ID);
+    EventDelivery delivery = delivery(UUID.randomUUID(), quotationId, 'd', PARTNER_ID);
     jdbc.execute(
         """
         CREATE FUNCTION platform_event.reject_order_publication_for_test()
@@ -302,15 +343,14 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
   void enforcesTenantOwnerAndBuyerPartnerScopeWithClosedResponseShapes() throws Exception {
     UUID buyerQuotationId = UUID.randomUUID();
     EventDelivery buyerOrder =
-        delivery(UUID.randomUUID(), buyerQuotationId, hash('e'), PARTNER_ID, OWNER_ID);
+        delivery(UUID.randomUUID(), buyerQuotationId, 'e', PARTNER_ID, OWNER_ID);
     deliveryService.deliver(handler, buyerOrder);
     UUID buyerOrderId = orderId(buyerQuotationId);
 
     UUID otherPartner = UUID.fromString("53000000-0000-4000-8000-000000000099");
     UUID otherPartnerQuotationId = UUID.randomUUID();
     deliveryService.deliver(
-        handler,
-        delivery(UUID.randomUUID(), otherPartnerQuotationId, hash('f'), otherPartner, OWNER_ID));
+        handler, delivery(UUID.randomUUID(), otherPartnerQuotationId, 'f', otherPartner, OWNER_ID));
     UUID otherPartnerOrderId = orderId(otherPartnerQuotationId);
 
     UUID managerOwnedQuotationId = UUID.randomUUID();
@@ -319,7 +359,7 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
         delivery(
             UUID.randomUUID(),
             managerOwnedQuotationId,
-            hash('1'),
+            '1',
             PARTNER_ID,
             UUID.fromString("11200000-0000-4000-8000-000000000003")));
     UUID managerOwnedOrderId = orderId(managerOwnedQuotationId);
@@ -333,6 +373,10 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
     assertThat(get("/api/v1/orders/" + managerOwnedOrderId, NORTH_TRADE).status()).isEqualTo(200);
     assertThat(get("/api/v1/buyer/orders/" + otherPartnerOrderId, NORTH_BUYER).status())
         .isEqualTo(404);
+    ApiResponse invalidPage = get("/api/v1/orders?pageSize=0", NORTH_MANAGER);
+    assertThat(invalidPage.status()).withFailMessage(invalidPage.raw()).isEqualTo(400);
+    assertThat(invalidPage.body().path("code").asText()).isEqualTo("VALIDATION_FAILED");
+    assertThat(invalidPage.body().path("retryable").asBoolean()).isFalse();
 
     ApiResponse buyerDetail = get("/api/v1/buyer/orders/" + buyerOrderId, NORTH_BUYER);
     assertThat(buyerDetail.status()).withFailMessage(buyerDetail.raw()).isEqualTo(200);
@@ -365,7 +409,7 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
     assertThat(allPropertyNames(internalDetail.body()))
         .doesNotContain("sourceEventId", "acceptanceId", "correlationId", "causationId");
     assertThat(internalDetail.body().path("commercialSnapshot").path("snapshotHash").asText())
-        .isEqualTo(hash('e'));
+        .isEqualTo(parsedPayload(buyerOrder.payloadJson()).snapshotHash());
 
     ApiResponse buyerPage = get("/api/v1/buyer/orders?pageSize=100", NORTH_BUYER);
     assertThat(buyerPage.status()).withFailMessage(buyerPage.raw()).isEqualTo(200);
@@ -406,6 +450,13 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
             .filter(event -> event.subject().id().equals(issued.quotationId()))
             .findFirst()
             .orElseThrow();
+    assertAcceptedEventSchema(acceptedDelivery);
+    QuotationAcceptedV1.Payload acceptedPayload = parsedPayload(acceptedDelivery.payloadJson());
+    assertThat(acceptedPayload.acceptedTermsVersion()).isNotBlank();
+    assertThat(acceptedPayload.requestedDeliveryDate()).isNotNull();
+    assertThat(acceptedPayload.deliveryAddress()).isNotNull();
+    assertThat(QuotationSnapshotHashV1.hash(QuotationSnapshotHashV1.Snapshot.from(acceptedPayload)))
+        .isEqualTo(acceptedPayload.snapshotHash());
     assertThat(deliveryService.deliver(handler, acceptedDelivery))
         .isEqualTo(LocalEventDeliveryService.DeliveryOutcome.PROCESSED);
     UUID orderId = orderId(issued.quotationId());
@@ -414,6 +465,8 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
             .filter(event -> event.subject().id().equals(orderId))
             .findFirst()
             .orElseThrow();
+    assertThat(jsonMapper.readTree(createdDelivery.payloadJson()).path("snapshotHash").asText())
+        .isEqualTo(acceptedPayload.snapshotHash());
     EventDelivery legacyCreatedDelivery = withoutPayloadField(createdDelivery, "acceptanceId");
     assertThat(deliveryService.deliver(quotationHandler, legacyCreatedDelivery))
         .isEqualTo(LocalEventDeliveryService.DeliveryOutcome.PROCESSED);
@@ -446,16 +499,154 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
         .isEqualTo("CONVERTED");
   }
 
-  private EventDelivery delivery(
-      UUID eventId, UUID quotationId, String snapshotHash, UUID partnerId) {
-    return delivery(eventId, quotationId, snapshotHash, partnerId, OWNER_ID);
+  @Test
+  void snapshotHashV1MatchesThePublishedGoldenVector() throws Exception {
+    JsonNode example =
+        jsonMapper.readTree(
+            Files.readString(
+                contractPath("examples", "events", "quotation-accepted-v1.example.json")));
+    QuotationAcceptedV1.Payload payload = parsedPayload(example.path("payload").toString());
+    String expected = "a61b70c8847bbc58e64fa9d3dacdcf1277868166ea2c6af5762e89a010a96fad";
+
+    assertThat(example.path("payload").path("snapshotHash").asText()).isEqualTo(expected);
+    assertThat(QuotationSnapshotHashV1.hash(QuotationSnapshotHashV1.Snapshot.from(payload)))
+        .isEqualTo(expected);
+
+    ObjectNode varied = (ObjectNode) example.path("payload");
+    varied.put("totalAmount", "256800.00");
+    ((ObjectNode) varied.path("deliveryAddress")).putNull("district").putNull("postalCode");
+    ArrayNode lines = (ArrayNode) varied.path("lines");
+    ObjectNode second = (ObjectNode) lines.get(0).deepCopy();
+    second.put("quotationLineId", "25000000-0000-4000-8000-000000000002");
+    second.putNull("supplyPoolId");
+    lines.add(second);
+    String nullAndLineOrderHash =
+        QuotationSnapshotHashV1.hash(
+            QuotationSnapshotHashV1.Snapshot.from(parsedPayload(varied.toString())));
+    assertThat(nullAndLineOrderHash)
+        .isEqualTo("05f4ca8d80dc03577b0ef432a5cfa421f06bf9f6d2d50421a02fed0a16412683");
+    lines.insert(0, lines.remove(1));
+    assertThat(
+            QuotationSnapshotHashV1.hash(
+                QuotationSnapshotHashV1.Snapshot.from(parsedPayload(varied.toString()))))
+        .isNotEqualTo(nullAndLineOrderHash);
+  }
+
+  @Test
+  void databaseCatalogMatchesTheCurrentFitnessBaseline() {
+    assertThat(
+            jdbc.queryForList(
+                """
+                WITH application_schema(name) AS (VALUES
+                  ('identity_access'),('partner'),('catalog'),('inventory'),('trade_planning'),
+                  ('quotation'),('trade_order'),('platform_event')
+                ), mutable(table_schema,table_name) AS (VALUES
+                  ('identity_access','tenant'),('identity_access','user_mapping'),
+                  ('partner','partner'),('catalog','wine_product'),('catalog','sku'),
+                  ('inventory','warehouse'),('inventory','supply_pool'),('inventory','inventory_lot'),
+                  ('trade_planning','evaluation'),('quotation','quotation'),
+                  ('quotation','quotation_revision'),('trade_order','trade_order')
+                ), owned AS (
+                  SELECT table_schema, table_name FROM information_schema.tables
+                   WHERE table_type = 'BASE TABLE'
+                     AND table_schema IN (SELECT name FROM application_schema)
+                ), violations AS (
+                  SELECT 'unmanaged-schema:'||n.nspname problem FROM pg_namespace n
+                   WHERE n.nspname NOT IN (SELECT name FROM application_schema)
+                     AND n.nspname NOT IN ('public','information_schema','pg_catalog') AND n.nspname !~ '^pg_'
+                  UNION ALL SELECT 'unmanaged:'||t.table_schema||'.'||t.table_name
+                    FROM information_schema.tables t WHERE t.table_type='BASE TABLE'
+                     AND t.table_schema NOT IN (SELECT name FROM application_schema)
+                     AND t.table_schema NOT IN ('information_schema','pg_catalog')
+                     AND t.table_schema !~ '^pg_'
+                     AND (t.table_schema,t.table_name) <> ('public','flyway_schema_history')
+                  UNION ALL SELECT 'tenant:'||o.table_schema||'.'||o.table_name FROM owned o
+                   WHERE (o.table_schema,o.table_name) <> ('identity_access','tenant') AND NOT EXISTS
+                     (SELECT FROM information_schema.columns c WHERE c.table_schema=o.table_schema
+                       AND c.table_name=o.table_name AND c.column_name='tenant_id' AND c.is_nullable='NO')
+                  UNION ALL SELECT 'version:'||m.table_schema||'.'||m.table_name FROM mutable m WHERE NOT EXISTS
+                    (SELECT FROM information_schema.columns c WHERE c.table_schema=m.table_schema
+                      AND c.table_name=m.table_name AND c.column_name='version' AND c.is_nullable='NO')
+                  UNION ALL SELECT 'foreign-key:'||sn.nspname||'.'||s.relname FROM pg_constraint k
+                    JOIN pg_class s ON s.oid=k.conrelid JOIN pg_namespace sn ON sn.oid=s.relnamespace
+                    JOIN pg_class r ON r.oid=k.confrelid JOIN pg_namespace rn ON rn.oid=r.relnamespace
+                   WHERE k.contype='f' AND sn.nspname<>rn.nspname
+                     AND (sn.nspname IN (SELECT table_schema FROM owned)
+                       OR rn.nspname IN (SELECT table_schema FROM owned))
+                  UNION ALL SELECT 'money:'||c.table_schema||'.'||c.table_name||'.'||c.column_name
+                    FROM information_schema.columns c JOIN owned o USING (table_schema,table_name)
+                   WHERE c.column_name ~ '(^|_)(amount|price|cost|charge|charges|fee|fees|tax|balance|total|subtotal)$'
+                     AND NOT (c.column_name='manual_price' AND c.data_type='boolean')
+                     AND (c.data_type IS DISTINCT FROM 'numeric'
+                       OR c.numeric_precision IS DISTINCT FROM 19 OR c.numeric_scale IS DISTINCT FROM 4)
+                  UNION ALL SELECT 'quantity:'||c.table_schema||'.'||c.table_name||'.'||c.column_name
+                    FROM information_schema.columns c JOIN owned o USING (table_schema,table_name)
+                   WHERE c.column_name LIKE '%quantity'
+                     AND (c.data_type IS DISTINCT FROM 'numeric'
+                       OR c.numeric_precision IS DISTINCT FROM 19 OR c.numeric_scale IS DISTINCT FROM 6)
+                  UNION ALL SELECT 'numeric-unclassified:'||c.table_schema||'.'||c.table_name||'.'||c.column_name
+                    FROM information_schema.columns c JOIN owned o USING (table_schema,table_name)
+                   WHERE c.data_type='numeric' AND c.column_name NOT LIKE '%quantity'
+                     AND c.column_name !~ '(^|_)(amount|price|cost|charge|charges|fee|fees|tax|balance|total|subtotal|score|rate)$'
+                  UNION ALL SELECT 'inventory-reservation-check' WHERE NOT EXISTS
+                    (SELECT FROM pg_constraint k JOIN pg_class t ON t.oid=k.conrelid
+                      JOIN pg_namespace n ON n.oid=t.relnamespace WHERE n.nspname='inventory'
+                      AND t.relname='inventory_lot' AND k.contype='c' AND k.convalidated
+                      AND k.conname='ck_inventory_lot_reservation'
+                      AND pg_get_constraintdef(k.oid) LIKE '%reserved_quantity <= on_hand_quantity%')
+                ) SELECT problem FROM violations
+                """,
+                String.class))
+        .isEmpty();
+  }
+
+  @Test
+  void rejectsInvalidAndMismatchedSnapshotsBeforeCreatingOrders() throws Exception {
+    for (String field :
+        List.of(
+            "acceptedTermsVersion",
+            "requestedDeliveryDate",
+            "deliveryAddress",
+            "paymentTermDays")) {
+      assertInvalid('r', payload -> payload.remove(field));
+    }
+    assertInvalid('s', payload -> ((ObjectNode) payload.path("customer")).remove("sourceVersion"));
+    assertInvalid('n', payload -> ((ObjectNode) payload.path("route")).putNull("code"));
+    assertInvalid(
+        'y', payload -> ((ObjectNode) payload.path("lines").path(0)).putNull("supplyType"));
+    assertInvalid('h', payload -> payload.put("snapshotHash", "sha256:not-a-v1-hash"));
+
+    UUID tamperedQuotation = UUID.randomUUID();
+    assertFinalFailure(
+        mutate(
+            delivery(UUID.randomUUID(), tamperedQuotation, 't', PARTNER_ID),
+            payload ->
+                ((ObjectNode) payload.path("customer")).put("displayName", "Tampered Buyer")),
+        tamperedQuotation,
+        "QUOTATION_ACCEPTED_SNAPSHOT_HASH_MISMATCH");
+
+    EventDelivery unexpected = delivery(UUID.randomUUID(), UUID.randomUUID(), 'u', PARTNER_ID);
+    QuotationAcceptedEventHandler broken =
+        new QuotationAcceptedEventHandler(null, null, jsonMapper, null);
+    RuntimeException failure = catchFailure(() -> deliveryService.deliver(broken, unexpected));
+    assertThat(failure).isInstanceOf(NullPointerException.class);
+    assertThat(failureRecorder.record(broken, unexpected, failure))
+        .isEqualTo(JdbcEventFailureRecorder.FailureOutcome.RETRY_SCHEDULED);
+    assertThat(inboxValue(unexpected.eventId(), "status")).isEqualTo("FAILED_RETRYABLE");
+    assertThat(inboxValue(unexpected.eventId(), "last_error_code"))
+        .isEqualTo("UNEXPECTED_HANDLER_FAILURE");
+  }
+
+  private EventDelivery delivery(UUID eventId, UUID quotationId, char variant, UUID partnerId) {
+    return delivery(eventId, quotationId, variant, partnerId, OWNER_ID);
   }
 
   private EventDelivery delivery(
-      UUID eventId, UUID quotationId, String snapshotHash, UUID partnerId, UUID sourceOwnerId) {
+      UUID eventId, UUID quotationId, char variant, UUID partnerId, UUID sourceOwnerId) {
     UUID revisionId = UUID.nameUUIDFromBytes(("revision:" + quotationId).getBytes());
     UUID acceptanceId = UUID.nameUUIDFromBytes(("acceptance:" + quotationId).getBytes());
     String quotationNumber = "QUO-" + quotationId.toString().substring(0, 8).toUpperCase();
+    String amount = variant == '0' ? "0" : "100.00";
     String payload =
         """
         {
@@ -473,7 +664,7 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
             "sourceVersion":1
           },
           "currency":"CNY",
-          "totalAmount":"100.00",
+          "totalAmount":"%s",
           "paymentTermDays":30,
           "route":{
             "code":"SH_GENERAL_TRADE",
@@ -495,11 +686,11 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
             "quotationLineId":"61100000-0000-4000-8000-000000000001",
             "skuId":"34000000-0000-4000-8000-000000000001",
             "skuCode":"SKU-001",
-            "description":"Synthetic wine case",
+            "description":"Synthetic wine case %s",
             "quantity":"1",
             "unit":"CASE",
-            "netUnitPrice":"100.00",
-            "lineTotal":"100.00",
+            "netUnitPrice":"%s",
+            "lineTotal":"%s",
             "supplyPoolId":null,
             "supplyType":"DOMESTIC_ON_HAND"
           }]
@@ -512,8 +703,22 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
                 acceptanceId,
                 sourceOwnerId,
                 partnerId,
-                snapshotHash)
+                amount,
+                "0".repeat(64),
+                variant,
+                amount,
+                amount)
             .strip();
+    try {
+      ObjectNode body = (ObjectNode) jsonMapper.readTree(payload);
+      body.put(
+          "snapshotHash",
+          QuotationSnapshotHashV1.hash(
+              QuotationSnapshotHashV1.Snapshot.from(parsedPayload(body.toString()))));
+      payload = jsonMapper.writeValueAsString(body);
+    } catch (tools.jackson.core.JacksonException exception) {
+      throw new IllegalStateException(exception);
+    }
     return new EventDelivery(
         eventId,
         TENANT_ID,
@@ -528,8 +733,13 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
   }
 
   private EventDelivery withoutPayloadField(EventDelivery delivery, String field) throws Exception {
+    return mutate(delivery, payload -> payload.remove(field));
+  }
+
+  private EventDelivery mutate(EventDelivery delivery, Consumer<ObjectNode> mutation)
+      throws Exception {
     ObjectNode payload = (ObjectNode) jsonMapper.readTree(delivery.payloadJson());
-    payload.remove(field);
+    mutation.accept(payload);
     return new EventDelivery(
         delivery.eventId(),
         delivery.tenantId(),
@@ -541,6 +751,70 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
         delivery.correlationId(),
         delivery.causationId(),
         jsonMapper.writeValueAsString(payload));
+  }
+
+  private QuotationAcceptedV1.Payload parsedPayload(String payload) {
+    try {
+      return jsonMapper.readValue(payload, QuotationAcceptedV1.Payload.class);
+    } catch (tools.jackson.core.JacksonException exception) {
+      throw new IllegalStateException(exception);
+    }
+  }
+
+  private void assertAcceptedEventSchema(EventDelivery delivery) throws Exception {
+    ObjectNode event = jsonMapper.createObjectNode();
+    event.put("id", delivery.eventId().toString());
+    event.put("type", delivery.eventType());
+    event.put("specVersion", "1.0");
+    event.put("occurredAt", delivery.occurredAt().toString());
+    event.put("tenantId", delivery.tenantId().toString());
+    event.put("producer", delivery.producer());
+    event.set("subject", jsonMapper.valueToTree(delivery.subject()));
+    event.put("correlationId", delivery.correlationId().toString());
+    event.put("causationId", delivery.causationId().toString());
+    event.set("payload", jsonMapper.readTree(delivery.payloadJson()));
+    String base = "https://cellarbridge.dev/schemas/events/";
+    String envelopeSchema =
+        Files.readString(contractPath("schemas", "events", "event-envelope.schema.json"));
+    String acceptedSchema =
+        Files.readString(contractPath("schemas", "events", "quotation-accepted-v1.schema.json"));
+    SchemaRegistry registry =
+        SchemaRegistry.withDefaultDialect(
+            SpecificationVersion.DRAFT_2020_12,
+            builder ->
+                builder.schemas(
+                    Map.of(
+                        base + "event-envelope.schema.json", envelopeSchema,
+                        base + "quotation-accepted-v1.schema.json", acceptedSchema)));
+    assertThat(
+            registry
+                .getSchema(SchemaLocation.of(base + "quotation-accepted-v1.schema.json"))
+                .validate(
+                    event,
+                    context ->
+                        context.executionConfig(config -> config.formatAssertionsEnabled(true))))
+        .isEmpty();
+  }
+
+  private static Path contractPath(String... path) {
+    Path candidate = Path.of("contracts", path);
+    return Files.exists(candidate) ? candidate : Path.of("..").resolve(candidate);
+  }
+
+  private void assertFinalFailure(EventDelivery delivery, UUID quotationId, String code) {
+    RuntimeException failure = catchFailure(() -> deliveryService.deliver(handler, delivery));
+    assertThat(failureRecorder.record(handler, delivery, failure))
+        .isEqualTo(JdbcEventFailureRecorder.FailureOutcome.FAILED_FINAL);
+    assertThat(inboxValue(delivery.eventId(), "last_error_code")).isEqualTo(code);
+    assertOrderGraph(quotationId, 0, 0, 0);
+  }
+
+  private void assertInvalid(char variant, Consumer<ObjectNode> mutation) throws Exception {
+    UUID quotationId = UUID.randomUUID();
+    assertFinalFailure(
+        mutate(delivery(UUID.randomUUID(), quotationId, variant, PARTNER_ID), mutation),
+        quotationId,
+        "QUOTATION_ACCEPTED_EVENT_INVALID");
   }
 
   private UUID orderId(UUID quotationId) {
@@ -580,6 +854,32 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
     ApiResponse created = request("POST", "/api/v1/quotations", NORTH_SALES, null, null, body);
     assertThat(created.status()).withFailMessage(created.raw()).isEqualTo(201);
     UUID quotationId = UUID.fromString(created.body().path("id").asText());
+    assertProblem(
+        request(
+            "POST", "/api/v1/quotations/" + quotationId + "/issue", NORTH_SALES, null, null, null),
+        428,
+        "PRECONDITION_REQUIRED");
+    assertProblem(
+        request(
+            "POST",
+            "/api/v1/quotations/" + quotationId + "/submission",
+            NORTH_SALES,
+            "\"0\"",
+            null,
+            null),
+        422,
+        "QUOTE_HAS_NO_ELIGIBLE_ROUTE");
+    assertProblem(
+        request(
+            "POST",
+            "/api/v1/quotations/" + quotationId + "/issue",
+            NORTH_SALES,
+            "\"0\"",
+            null,
+            null),
+        409,
+        "QUOTE_ROUTE_NOT_ELIGIBLE");
+    assertProblem(get("/api/v1/quotations?pageSize=0", NORTH_SALES), 400, "VALIDATION_FAILED");
     ApiResponse evaluated =
         request(
             "POST",
@@ -589,6 +889,17 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
             null,
             null);
     assertThat(evaluated.status()).withFailMessage(evaluated.raw()).isEqualTo(200);
+    ApiResponse stale =
+        request(
+            "POST",
+            "/api/v1/quotations/" + quotationId + "/submission",
+            NORTH_SALES,
+            "\"0\"",
+            null,
+            null);
+    assertProblem(stale, 412, "RESOURCE_VERSION_CONFLICT");
+    assertThat(stale.body().path("currentVersion").asLong()).isEqualTo(1);
+    assertThat(stale.body().path("currentState").asText()).isEqualTo("DRAFT");
     ApiResponse submitted =
         request(
             "POST",
@@ -614,6 +925,16 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
 
   private ApiResponse get(String path, String token) throws Exception {
     return request("GET", path, token, null, null, null);
+  }
+
+  private static void assertProblem(ApiResponse response, int status, String code) {
+    assertThat(response.status()).withFailMessage(response.raw()).isEqualTo(status);
+    assertThat(response.body().path("status").asInt()).isEqualTo(status);
+    assertThat(response.body().path("code").asText()).isEqualTo(code);
+    assertThat(response.body().path("type").asText())
+        .endsWith(code.toLowerCase().replace('_', '-'));
+    assertThat(response.body().path("detail").asText()).isNotBlank();
+    assertThat(response.body().path("retryable").asBoolean()).isFalse();
   }
 
   private ApiResponse request(
@@ -781,10 +1102,6 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
       Thread.currentThread().interrupt();
       throw new IllegalStateException(exception);
     }
-  }
-
-  private static String hash(char value) {
-    return "sha256:" + Character.toString(value).repeat(64);
   }
 
   record ApiResponse(int status, JsonNode body, String raw) {}

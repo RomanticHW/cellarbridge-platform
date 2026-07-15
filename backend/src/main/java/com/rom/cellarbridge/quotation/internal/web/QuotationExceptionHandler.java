@@ -1,7 +1,8 @@
 package com.rom.cellarbridge.quotation.internal.web;
 
 import com.rom.cellarbridge.platform.ProblemDetailsFactory;
-import com.rom.cellarbridge.quotation.internal.domain.QuotationProblem;
+import com.rom.cellarbridge.quotation.internal.application.QuotationProblem;
+import com.rom.cellarbridge.quotation.internal.domain.QuotationDomainException;
 import java.util.Map;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -39,6 +40,15 @@ final class QuotationExceptionHandler {
       problem.setProperty("currentState", exception.currentState());
     }
     return ResponseEntity.status(exception.status()).body(problem);
+  }
+
+  @ExceptionHandler(QuotationDomainException.class)
+  ResponseEntity<ProblemDetail> handleDomainProblem(QuotationDomainException exception) {
+    HttpStatus status = status(exception);
+    ProblemDetail problem =
+        problemDetailsFactory.create(
+            status, exception.code(), title(exception.code()), exception.safeMessage(), false);
+    return ResponseEntity.status(status).body(problem);
   }
 
   @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -96,6 +106,15 @@ final class QuotationExceptionHandler {
       case "QUOTE_HAS_NO_ELIGIBLE_ROUTE" -> "No eligible route";
       case "QUOTE_APPROVAL_REQUIRED" -> "Approval required";
       default -> "Quotation request rejected";
+    };
+  }
+
+  private static HttpStatus status(QuotationDomainException exception) {
+    return switch (exception.kind()) {
+      case VALIDATION -> HttpStatus.BAD_REQUEST;
+      case BUSINESS_RULE -> HttpStatus.UNPROCESSABLE_ENTITY;
+      case STATE_CONFLICT -> HttpStatus.CONFLICT;
+      case ACCESS_DENIED -> HttpStatus.FORBIDDEN;
     };
   }
 }

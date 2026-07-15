@@ -9,6 +9,10 @@ import java.util.UUID;
 /**
  * Public, immutable quotation fact consumed by downstream modules. The payload is deliberately
  * self-contained so consumers never need to read Quotation-owned tables.
+ *
+ * <p>V1 requires accepted terms, requested delivery date and delivery address; sourceOwnerId is
+ * optional. snapshotHash is the bare lowercase 64-hex result of {@link QuotationSnapshotHashV1}'s
+ * canonical commercial projection.
  */
 public record QuotationAcceptedV1(
     UUID id,

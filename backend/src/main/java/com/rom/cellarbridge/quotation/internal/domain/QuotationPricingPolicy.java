@@ -1,5 +1,6 @@
 package com.rom.cellarbridge.quotation.internal.domain;
 
+import com.rom.cellarbridge.quotation.internal.domain.QuotationDomainException.FailureKind;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
@@ -135,9 +136,8 @@ public final class QuotationPricingPolicy {
     return value.setScale(RATE_SCALE, ROUNDING);
   }
 
-  private static QuotationProblem problem(String code, String message) {
-    return new QuotationProblem(
-        org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY, code, message);
+  private static QuotationDomainException problem(String code, String message) {
+    return new QuotationDomainException(FailureKind.BUSINESS_RULE, code, message);
   }
 
   public enum QuantityUnit {

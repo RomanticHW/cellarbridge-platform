@@ -3,14 +3,14 @@ package com.rom.cellarbridge.partner.internal.web;
 import com.rom.cellarbridge.partner.PartnerStatus;
 import com.rom.cellarbridge.partner.internal.application.PartnerApplicationService;
 import com.rom.cellarbridge.partner.internal.application.PartnerApplicationService.CreateCommand;
+import com.rom.cellarbridge.partner.internal.application.PartnerApplicationService.EligibilityView;
 import com.rom.cellarbridge.partner.internal.application.PartnerApplicationService.ListCommand;
 import com.rom.cellarbridge.partner.internal.application.PartnerApplicationService.PartnerCommandView;
 import com.rom.cellarbridge.partner.internal.application.PartnerApplicationService.PartnerDetailView;
 import com.rom.cellarbridge.partner.internal.application.PartnerApplicationService.PartnerListView;
 import com.rom.cellarbridge.partner.internal.application.PartnerApplicationService.ReviewCommand;
+import com.rom.cellarbridge.partner.internal.application.PartnerApplicationService.TimelineView;
 import com.rom.cellarbridge.partner.internal.application.PartnerApplicationService.UpdateCommand;
-import com.rom.cellarbridge.partner.internal.application.PartnerRepository.EligibilityRecord;
-import com.rom.cellarbridge.partner.internal.application.PartnerRepository.TimelineEntry;
 import com.rom.cellarbridge.partner.internal.domain.Partner;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
@@ -343,7 +343,7 @@ final class PartnerController {
       int paymentTermDays,
       MoneyResponse creditLimit,
       Instant effectiveFrom) {
-    static EligibilityResponse from(EligibilityRecord source) {
+    static EligibilityResponse from(EligibilityView source) {
       Partner.Eligibility value = source.eligibility();
       MoneyResponse credit =
           value.creditLimitAmount() == null
@@ -369,7 +369,7 @@ final class PartnerController {
       String newState,
       String safeReason,
       List<String> changedFields) {
-    static TimelineResponse from(TimelineEntry source) {
+    static TimelineResponse from(TimelineView source) {
       return new TimelineResponse(
           source.id(),
           source.occurredAt(),

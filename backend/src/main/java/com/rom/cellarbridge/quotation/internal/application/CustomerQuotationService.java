@@ -3,6 +3,7 @@ package com.rom.cellarbridge.quotation.internal.application;
 import com.rom.cellarbridge.platform.PendingEvent;
 import com.rom.cellarbridge.platform.ReliableEventPublisher;
 import com.rom.cellarbridge.quotation.QuotationAcceptedV1;
+import com.rom.cellarbridge.quotation.QuotationSnapshotHashV1;
 import com.rom.cellarbridge.quotation.QuotationStatus;
 import com.rom.cellarbridge.quotation.internal.application.QuotationRepository.CustomerDecision;
 import com.rom.cellarbridge.quotation.internal.application.QuotationRepository.CustomerDecisionType;
@@ -16,7 +17,6 @@ import com.rom.cellarbridge.quotation.internal.domain.QuotationAggregate.Address
 import com.rom.cellarbridge.quotation.internal.domain.QuotationAggregate.PartnerSnapshot;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.PricedLine;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.QuantityUnit;
-import com.rom.cellarbridge.quotation.internal.domain.QuotationProblem;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -181,6 +181,9 @@ public class CustomerQuotationService {
     CommercialSnapshot snapshot = snapshot(before, context.termsVersion());
     String snapshotJson = json(snapshot);
     String snapshotHash = sha256(snapshotJson);
+    if (!snapshotHash.equals(QuotationSnapshotHashV1.hash(hashProjection(snapshot)))) {
+      throw new IllegalStateException("Snapshot Hash V1 projection differs from producer bytes");
+    }
     UUID acceptanceId = UUID.randomUUID();
     UUID eventId = UUID.randomUUID();
     CustomerDecision decision =
@@ -470,7 +473,7 @@ public class CustomerQuotationService {
             snapshot.acceptedTermsVersion(),
             snapshot.requestedDeliveryDate(),
             snapshot.deliveryAddress(),
-            "sha256:" + decision.snapshotHash(),
+            decision.snapshotHash(),
             snapshot.lines());
     return new QuotationAcceptedV1(
         eventId,
@@ -560,6 +563,24 @@ public class CustomerQuotationService {
 
   private static String quantity(BigDecimal value) {
     return value.stripTrailingZeros().toPlainString();
+  }
+
+  private static QuotationSnapshotHashV1.Snapshot hashProjection(CommercialSnapshot snapshot) {
+    return new QuotationSnapshotHashV1.Snapshot(
+        1,
+        snapshot.quotationId(),
+        snapshot.revisionId(),
+        snapshot.quotationNumber(),
+        snapshot.revision(),
+        snapshot.customer(),
+        snapshot.currency(),
+        snapshot.totalAmount(),
+        snapshot.paymentTermDays(),
+        snapshot.route(),
+        snapshot.acceptedTermsVersion(),
+        snapshot.requestedDeliveryDate(),
+        snapshot.deliveryAddress(),
+        snapshot.lines());
   }
 
   static String sha256(String value) {

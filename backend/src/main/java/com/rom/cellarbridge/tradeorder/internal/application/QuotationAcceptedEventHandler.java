@@ -7,6 +7,8 @@ import com.rom.cellarbridge.platform.EventHandlingResult;
 import com.rom.cellarbridge.platform.LocalEventHandler;
 import com.rom.cellarbridge.platform.PendingEvent;
 import com.rom.cellarbridge.platform.ReliableEventPublisher;
+import com.rom.cellarbridge.quotation.QuotationAcceptedV1;
+import com.rom.cellarbridge.quotation.QuotationSnapshotHashV1;
 import com.rom.cellarbridge.tradeorder.TradeOrderCreatedV1;
 import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrder;
 import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrder.CommercialSnapshot;
@@ -15,19 +17,23 @@ import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrder.DeliveryAddres
 import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrder.Line;
 import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrder.Route;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Instant;
-import java.time.LocalDate;
+import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Component;
 import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /** Creates at most one immutable order from a self-contained accepted-quotation fact. */
@@ -38,6 +44,15 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
   static final String EVENT_TYPE = "cellarbridge.quotation.accepted.v1";
   private static final UUID SYSTEM_ACTOR_ID =
       UUID.nameUUIDFromBytes(CONSUMER_NAME.getBytes(StandardCharsets.UTF_8));
+  private static final Set<String> ROUTES =
+      Set.of("SH_GENERAL_TRADE", "NB_BONDED_B2B", "HK_FREE_TRADE");
+  private static final Set<String> SUPPLY_TYPES =
+      Set.of(
+          "DOMESTIC_ON_HAND",
+          "BONDED_ON_HAND",
+          "HONG_KONG_ON_HAND",
+          "IN_TRANSIT_PRESALE",
+          "OVERSEAS_SOURCING");
 
   private final TradeOrderRepository repository;
   private final ReliableEventPublisher eventPublisher;
@@ -68,7 +83,7 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
   @Override
   public EventHandlingResult handle(EventDelivery delivery) {
     try {
-      AcceptedPayload payload = parse(delivery);
+      QuotationAcceptedV1.Payload payload = parse(delivery);
       TenantId tenantId = new TenantId(delivery.tenantId());
       TradeOrder existing =
           repository.findBySourceQuotation(tenantId, payload.quotationId()).orElse(null);
@@ -107,28 +122,124 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
       return result(order);
     } catch (EventHandlingException exception) {
       throw exception;
-    } catch (JacksonException | IllegalArgumentException | NullPointerException exception) {
+    } catch (JacksonException | ContractViolation exception) {
       throw EventHandlingException.finalFailure("QUOTATION_ACCEPTED_EVENT_INVALID");
     } catch (DataAccessException exception) {
       throw EventHandlingException.retryable("ORDER_STORAGE_UNAVAILABLE");
     }
   }
 
-  private AcceptedPayload parse(EventDelivery delivery) throws JacksonException {
+  private QuotationAcceptedV1.Payload parse(EventDelivery delivery) throws JacksonException {
     if (!EVENT_TYPE.equals(delivery.eventType()) || delivery.eventVersion() != 1) {
-      throw new IllegalArgumentException("Unsupported quotation-accepted event version");
+      throw invalid();
     }
-    AcceptedPayload payload = jsonMapper.readValue(delivery.payloadJson(), AcceptedPayload.class);
-    if (!"QUOTATION".equals(delivery.subject().type())
-        || !delivery.subject().id().equals(payload.quotationId())
-        || !delivery.subject().number().equals(payload.quotationNumber())) {
-      throw new IllegalArgumentException("Quotation-accepted subject does not match its payload");
+    JsonNode body = jsonMapper.readTree(delivery.payloadJson());
+    requiredInteger(body, "revision");
+    requiredInteger(body, "paymentTermDays");
+    requiredInteger(body.path("customer"), "sourceVersion");
+    QuotationAcceptedV1.Payload payload =
+        jsonMapper.readValue(body.toString(), QuotationAcceptedV1.Payload.class);
+    validate(delivery, payload);
+    if (!payload
+        .snapshotHash()
+        .equals(QuotationSnapshotHashV1.hash(QuotationSnapshotHashV1.Snapshot.from(payload)))) {
+      throw EventHandlingException.finalFailure("QUOTATION_ACCEPTED_SNAPSHOT_HASH_MISMATCH");
     }
     return payload;
   }
 
+  private static void validate(EventDelivery delivery, QuotationAcceptedV1.Payload payload) {
+    required(payload != null);
+    required(delivery.subject() != null);
+    required(
+        "QUOTATION".equals(delivery.subject().type())
+            && Objects.equals(delivery.subject().id(), payload.quotationId())
+            && Objects.equals(delivery.subject().number(), payload.quotationNumber()));
+    required(
+        payload.quotationId() != null
+            && payload.revisionId() != null
+            && payload.acceptanceId() != null
+            && payload.acceptedAt() != null
+            && payload.revision() >= 1);
+    text(payload.quotationNumber());
+    QuotationAcceptedV1.Customer customer = payload.customer();
+    required(customer != null && customer.partnerId() != null && customer.sourceVersion() >= 0);
+    text(customer.partnerNumber());
+    text(customer.displayName());
+    required(payload.currency() != null && payload.currency().matches("^[A-Z]{3}$"));
+    BigDecimal total = decimal(payload.totalAmount(), 4, false);
+    required(payload.paymentTermDays() >= 0 && payload.paymentTermDays() <= 180);
+    QuotationAcceptedV1.Route route = payload.route();
+    required(
+        route != null
+            && route.code() != null
+            && ROUTES.contains(route.code())
+            && route.estimatedDeliveryDate() != null);
+    text(route.policyVersion());
+    text(payload.acceptedTermsVersion());
+    required(
+        payload.acceptedTermsVersion().length() <= 50
+            && payload.requestedDeliveryDate() != null
+            && payload.deliveryAddress() != null);
+    address(payload.deliveryAddress());
+    required(payload.snapshotHash() != null && payload.snapshotHash().matches("^[0-9a-f]{64}$"));
+    required(payload.lines() != null && !payload.lines().isEmpty() && payload.lines().size() <= 50);
+    Set<UUID> lineIds = new HashSet<>();
+    BigDecimal sum = BigDecimal.ZERO;
+    for (QuotationAcceptedV1.Line line : payload.lines()) {
+      required(
+          line != null
+              && line.quotationLineId() != null
+              && lineIds.add(line.quotationLineId())
+              && line.skuId() != null
+              && ("CASE".equals(line.unit()) || "BOTTLE".equals(line.unit()))
+              && line.supplyType() != null
+              && SUPPLY_TYPES.contains(line.supplyType()));
+      text(line.skuCode());
+      text(line.description());
+      decimal(line.quantity(), 6, true);
+      decimal(line.netUnitPrice(), 4, false);
+      sum = sum.add(decimal(line.lineTotal(), 4, false));
+    }
+    required(
+        sum.setScale(4, RoundingMode.HALF_UP).compareTo(total.setScale(4, RoundingMode.HALF_UP))
+            == 0);
+  }
+
+  private static void address(QuotationAcceptedV1.DeliveryAddress address) {
+    required(address.countryCode() != null && address.countryCode().matches("^[A-Z]{2}$"));
+    text(address.province());
+    text(address.city());
+    text(address.line1());
+  }
+
+  private static BigDecimal decimal(String value, int scale, boolean positive) {
+    required(value != null && value.matches("^[0-9]+(?:\\.[0-9]{1," + scale + "})?$"));
+    BigDecimal decimal = new BigDecimal(value);
+    required(positive ? decimal.signum() > 0 : decimal.signum() >= 0);
+    return decimal;
+  }
+
+  private static void text(String value) {
+    required(value != null && !value.isBlank());
+  }
+
+  private static void requiredInteger(JsonNode node, String field) {
+    required(node.isObject() && node.hasNonNull(field) && node.path(field).isIntegralNumber());
+  }
+
+  private static void required(boolean valid) {
+    if (!valid) {
+      throw invalid();
+    }
+  }
+
+  private static ContractViolation invalid() {
+    return new ContractViolation();
+  }
+
   private TradeOrder createOrder(
-      TenantId tenantId, EventDelivery delivery, AcceptedPayload payload, Instant now) {
+      TenantId tenantId, EventDelivery delivery, QuotationAcceptedV1.Payload payload, Instant now) {
     List<Line> lines =
         payload.lines().stream()
             .map(
@@ -191,7 +302,7 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
         now);
   }
 
-  private static void requireSameSource(TradeOrder existing, AcceptedPayload payload) {
+  private static void requireSameSource(TradeOrder existing, QuotationAcceptedV1.Payload payload) {
     if (!existing.sourceRevisionId().equals(payload.revisionId())
         || existing.sourceRevision() != payload.revision()
         || !existing.sourceQuotationNumber().equals(payload.quotationNumber())
@@ -291,48 +402,5 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
     }
   }
 
-  private record AcceptedPayload(
-      UUID quotationId,
-      UUID revisionId,
-      String quotationNumber,
-      int revision,
-      UUID acceptanceId,
-      Instant acceptedAt,
-      UUID sourceOwnerId,
-      AcceptedCustomer customer,
-      String currency,
-      String totalAmount,
-      int paymentTermDays,
-      AcceptedRoute route,
-      String acceptedTermsVersion,
-      LocalDate requestedDeliveryDate,
-      AcceptedAddress deliveryAddress,
-      String snapshotHash,
-      List<AcceptedLine> lines) {}
-
-  private record AcceptedCustomer(
-      UUID partnerId, String partnerNumber, String displayName, int sourceVersion) {}
-
-  private record AcceptedRoute(
-      String code, String policyVersion, LocalDate estimatedDeliveryDate) {}
-
-  private record AcceptedAddress(
-      String countryCode,
-      String province,
-      String city,
-      String district,
-      String line1,
-      String postalCode) {}
-
-  private record AcceptedLine(
-      UUID quotationLineId,
-      UUID skuId,
-      String skuCode,
-      String description,
-      String quantity,
-      String unit,
-      String netUnitPrice,
-      String lineTotal,
-      UUID supplyPoolId,
-      String supplyType) {}
+  private static final class ContractViolation extends RuntimeException {}
 }

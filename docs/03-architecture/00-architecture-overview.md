@@ -17,7 +17,7 @@ CellarBridge 的架构服务于四个目标：
 - 多个具备明确数据和代码所有权的业务模块；
 - 同一模块内可使用强事务；
 - 跨模块通过公开 Java API、显式查询契约和可靠事件协作；
-- Spring Modulith 验证模块、支持模块集成测试和事件发布；
+- Spring Modulith 负责模块发现、验证和模块测试；当前可靠发布由自定义本地 publication/Inbox 实现；
 - ArchUnit 补充层次、命名和禁止依赖规则。
 
 这不是“以后一定拆微服务”的过渡代码，也不是一个按 Controller/Service/Repository 横向分层的大泥球。
@@ -31,14 +31,14 @@ flowchart TB
     Reviewer[技术审阅者]
     CB[CellarBridge]
     IDP[Keycloak / OIDC]
-    Sim[模拟外部适配器\n物流/仓库/邮件]
-    Obs[Prometheus/Grafana/Tracing]
+    Sim[模拟外部适配器\nPlanned]
+    Obs[Prometheus/Grafana/Tracing\nPlanned]
 
     Internal -->|React Operations Console| CB
     Buyer -->|React Customer Portal| CB
     CB -->|OIDC| IDP
-    CB -->|Versioned adapter contract| Sim
-    CB -->|Metrics, logs, traces| Obs
+    CB -.->|Planned adapter contract| Sim
+    CB -.->|Planned telemetry export| Obs
     Reviewer -->|Docs, API, tests, demo| CB
 ```
 
@@ -51,27 +51,27 @@ flowchart LR
     API[Spring Boot Application]
     DB[(PostgreSQL)]
     IAM[Keycloak]
-    Cache[(Redis\nfull profile)]
-    Bus[Kafka\nfull profile]
-    Collector[OpenTelemetry Collector]
-    Metrics[Prometheus + Grafana]
+    Cache[(Redis\nPlanned full profile)]
+    Bus[Kafka\nPlanned full profile]
+    Collector[OpenTelemetry Collector\nPlanned]
+    Metrics[Prometheus + Grafana\nPlanned]
 
     Browser --> Web
     Web -->|HTTPS REST/OpenAPI| API
     Web -->|OIDC Authorization Code + PKCE| IAM
     API -->|JWT validation/JWK| IAM
     API --> DB
-    API --> Cache
-    API --> Bus
-    API --> Collector
-    Collector --> Metrics
+    API -.-> Cache
+    API -.-> Bus
+    API -.-> Collector
+    Collector -.-> Metrics
 ```
 
 ### Core profile
 
 PostgreSQL + Keycloak + Spring Boot + React。跨模块事件由持久化的本地可靠发布机制处理，适合快速启动和主演示。
 
-### Full profile
+### Full profile（Planned）
 
 在 core 基础上增加 Kafka、Redis、OpenTelemetry Collector、Prometheus 和 Grafana，用于展示外部事件、缓存和可观测性。任何 full profile 组件不可成为 core 业务正确性的单点依赖。
 
@@ -96,6 +96,8 @@ platform (technical adapters only)
 模块划分按业务语言，不按技术类型。模块可具有自己的 `internal.domain`、`internal.application`、`internal.infrastructure` 和 `internal.interfaces`。
 
 ## 6. 主链路
+
+Task 01～07 已实现 `QuotationAcceptedV1 → TradeOrder → TradeOrderCreatedV1`，并由 Quotation 消费回链事实转为 `CONVERTED`；从订单预占开始的后续消息在下图中是 Designed/Planned 目标，不代表当前 handler 已存在。
 
 ```mermaid
 sequenceDiagram
@@ -139,11 +141,11 @@ sequenceDiagram
 |---|---|
 | 报价修订、审批、接受 | 单聚合本地事务 |
 | 报价接受 → 订单 | 可靠事件 + quote 唯一键 + Inbox |
-| 订单 → 库存预占 | 可靠事件 + 库存本地事务 |
-| 多订单行预占 | 单库存事务，全成全败 |
-| 预占 → 履约计划 | 可靠事件 + order 唯一计划 |
-| 履约失败 → 异常 | 至少一次 + 异常去重键 |
-| 业务 → 报表/时间线 | 最终一致投影 |
+| 订单 → 库存预占 | Designed：可靠事件 + 库存本地事务 |
+| 多订单行预占 | Designed：单库存事务，全成全败 |
+| 预占 → 履约计划 | Designed：可靠事件 + order 唯一计划 |
+| 履约失败 → 异常 | Designed：至少一次 + 异常去重键 |
+| 业务 → 报表/时间线 | Designed：最终一致投影 |
 
 ## 9. 安全
 
@@ -158,16 +160,18 @@ sequenceDiagram
 
 ## 10. 质量证据
 
+当前已有：Spring Modulith verification、部分 ArchUnit 规则、聚合/集成测试、Task 07 订单幂等并发测试、契约校验与已交付旅程的 Playwright。库存并发、完整事件重放、结构化 telemetry、SBOM 与镜像扫描是后续门禁，不能作为当前证据。
+
 - Spring Modulith `verify()`；
 - ArchUnit 依赖规则；
 - 聚合单元测试；
 - Testcontainers PostgreSQL 集成测试；
-- 并发库存与订单幂等测试；
+- 并发库存（Planned）与订单幂等测试（Available）；
 - OpenAPI/AsyncAPI/schema 校验；
 - Playwright 主流程；
-- 故障恢复和事件重放测试；
-- 结构化指标、日志和 trace；
-- SBOM、依赖和镜像扫描。
+- 故障恢复和事件重放测试（Partially available）；
+- 结构化指标、日志和 trace（日志部分可用；metrics/trace export Planned）；
+- SBOM、依赖和镜像扫描（Planned；当前仅部分依赖/secret 门禁）。
 
 ## 11. 架构限制
 

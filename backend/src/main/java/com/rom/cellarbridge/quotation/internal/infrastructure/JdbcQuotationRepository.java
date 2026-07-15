@@ -3,6 +3,7 @@ package com.rom.cellarbridge.quotation.internal.infrastructure;
 import com.rom.cellarbridge.identityaccess.GlobalRegistryAccess;
 import com.rom.cellarbridge.identityaccess.TenantId;
 import com.rom.cellarbridge.quotation.QuotationStatus;
+import com.rom.cellarbridge.quotation.internal.application.QuotationProblem;
 import com.rom.cellarbridge.quotation.internal.application.QuotationRepository;
 import com.rom.cellarbridge.quotation.internal.application.QuotationRepository.AcceptedOrderSource;
 import com.rom.cellarbridge.quotation.internal.application.QuotationRepository.CustomerDecision;
@@ -26,7 +27,6 @@ import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.Pri
 import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.PricingResult;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.QuantityUnit;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.SkuSnapshot;
-import com.rom.cellarbridge.quotation.internal.domain.QuotationProblem;
 import com.rom.cellarbridge.tradeplanning.TradeRouteCode;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -650,7 +650,7 @@ public class JdbcQuotationRepository implements QuotationRepository {
                 new AcceptedOrderSource(
                     resultSet.getObject("id", UUID.class),
                     resultSet.getObject("revision_id", UUID.class),
-                    "sha256:" + resultSet.getString("snapshot_hash")));
+                    resultSet.getString("snapshot_hash")));
     return rows.stream().findFirst();
   }
 

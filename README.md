@@ -17,13 +17,13 @@
 
 ### 1. Why this project exists
 
-CellarBridge models a realistic enterprise workflow for a wine importer and B2B supply-chain operator. It is not a consumer storefront and it is not a collection of disconnected CRUD screens. The platform coordinates customer eligibility, product and supply data, quotation approval, explainable trade-route evaluation, idempotent order creation, concurrent inventory reservation, fulfillment milestones, exception handling, receivables, and audit evidence.
+CellarBridge models a realistic target workflow for a wine importer and B2B supply-chain operator. It is not a consumer storefront and it is not a collection of disconnected CRUD screens. The executable scope currently runs from customer eligibility and supply search through quotation, customer decision, and idempotent order creation; inventory reservation and the later commercial stages remain designed or planned.
 
 The project is designed to make engineering decisions easy to inspect. A reviewer can trace a business requirement from the product specification to a bounded context, aggregate invariant, API or event contract, database ownership rule, acceptance scenario, and implementation task.
 
 ### 2. Core business scenario
 
-A sales representative prepares a customer-specific quotation for several wine SKUs. The platform evaluates eligible delivery routes, explains why each route is accepted or rejected, calculates a versioned price breakdown, and requests approval when margin or discount policies are exceeded. After the customer accepts the quotation, the platform creates exactly one order, reserves inventory without overselling, generates a route-specific fulfillment plan, tracks operational milestones, opens exceptions when service-level rules are breached, and closes the commercial loop through receivable and payment records.
+In the target scenario, a sales representative prepares a customer-specific quotation for several wine SKUs. The platform evaluates eligible delivery routes, explains why each route is accepted or rejected, calculates a versioned price breakdown, and requests approval when margin or discount policies are exceeded. The executable core currently continues through customer acceptance and exactly-one-order creation. Designed later stages cover inventory reservation, route-specific fulfillment, exceptions, receivables, and audit evidence.
 
 ```mermaid
 flowchart LR
@@ -33,12 +33,15 @@ flowchart LR
     D --> E[Approval]
     E --> F[Customer acceptance]
     F --> G[Idempotent order conversion]
-    G --> H[Atomic inventory reservation]
-    H --> I[Fulfillment orchestration]
-    I --> J[Exception handling]
-    I --> K[Receivable and payment]
-    J --> L[Audit and reporting]
-    K --> L
+    G -.-> H[Atomic inventory reservation<br/>Designed]
+    H -.-> I[Fulfillment orchestration<br/>Designed]
+    I -.-> J[Exception handling<br/>Designed]
+    I -.-> K[Receivable and payment<br/>Designed]
+    J -.-> L[Audit and reporting<br/>Designed]
+    K -.-> L
+
+    classDef planned fill:#fff7e6,stroke:#b26a00,color:#5f3700,stroke-dasharray:5 5;
+    class H,I,J,K,L planned;
 ```
 
 ### 3. Product capabilities
@@ -52,7 +55,7 @@ flowchart LR
 | Explainable trade-route evaluation | Compares delivery options by hard constraints and weighted scores | Available |
 | Secure customer quotation decision | Provides a strict public view, idempotent accept/reject, expiry processing, and a durable acceptance fact | Available |
 | Quote-to-order conversion | Uses an Inbox, immutable snapshots, and database uniqueness so an accepted quote produces at most one order | Available |
-| Inventory reservation | Uses atomic conditional updates and deterministic allocation to prevent overselling | Designed |
+| Inventory reservation | Designed to use atomic conditional updates and deterministic allocation to prevent overselling | Designed |
 | Fulfillment plans and milestones | Models different delivery routes without embedding customs-law assumptions | Designed |
 | Exception center | Turns shortages, delays, and failed process steps into owned work | Designed |
 | Receivables and payment records | Completes the order-to-cash demonstration without a real payment gateway | Designed |
@@ -84,12 +87,16 @@ flowchart TB
         EVT[Reliable event publication]
     end
 
-    subgraph Platform[Platform services]
+    subgraph CorePlatform[Available core services]
         PG[(PostgreSQL)]
         KC[Keycloak / OIDC]
-        REDIS[(Redis)]
-        KAFKA[Kafka - full profile]
-        OTEL[OpenTelemetry Collector]
+    end
+
+    subgraph PlannedPlatform[Planned full profile]
+        REDIS[(Redis - Planned)]
+        KAFKA[Kafka - Planned]
+        OTEL[OpenTelemetry Collector - Planned]
+        METRICS[Prometheus / Grafana - Planned]
     end
 
     UI -->|OIDC + REST| API
@@ -99,19 +106,23 @@ flowchart TB
     API --> INV
     API --> QUO
     API --> ORD
-    API --> FUL
-    API --> EXC
-    API --> SET
+    API -.-> FUL
+    API -.-> EXC
+    API -.-> SET
     QUO --> TRD
     ORD --> EVT
-    INV --> EVT
-    FUL --> EVT
-    EVT --> KAFKA
+    INV -.-> EVT
+    FUL -.-> EVT
+    EVT -.-> KAFKA
     App --> PG
-    App --> REDIS
+    App -.-> REDIS
     UI --> KC
     API --> KC
-    App --> OTEL
+    App -.-> OTEL
+    OTEL -.-> METRICS
+
+    classDef planned fill:#fff7e6,stroke:#b26a00,color:#5f3700,stroke-dasharray:5 5;
+    class FUL,EXC,SET,REP,REDIS,KAFKA,OTEL,METRICS planned;
 ```
 
 The principal architecture rules are:
@@ -129,18 +140,18 @@ The principal architecture rules are:
 
 | Area | Baseline |
 |---|---|
-| Backend | Java 21 LTS, Spring Boot 4.1, Spring Modulith 2.1, Spring Security, Spring Data JPA, JDBC for hot paths |
+| Backend | Current: Java 21 LTS, Spring Boot 4.1, Spring Modulith 2.1, Spring Security, Spring JDBC / SQL-first. JPA is optional and not installed |
 | API | REST, OpenAPI 3.1, RFC 9457-style problem details, generated TypeScript types |
 | Data | PostgreSQL 18, Flyway, schema-per-module ownership, JSONB only for snapshots and event envelopes |
-| Messaging | Transactional event publication, Kafka 4.3 in the full profile, inbox deduplication |
-| Cache | Redis 8 for safe read caching and reference data; never the inventory source of truth |
+| Messaging | Current: custom transactional local publication and Consumer Inbox. Kafka 4.3 is a planned full-profile external channel |
+| Cache | Redis 8 is planned for a future full profile and is not part of the current runtime |
 | Identity | Keycloak 26, OIDC Authorization Code with PKCE, JWT resource server |
-| Frontend | React 19.2, TypeScript, Vite 8, React Router, TanStack Query, Ant Design, React Hook Form, Zod, ECharts |
+| Frontend | Current: React 19.2, TypeScript, Vite 8, React Router, TanStack Query, Ant Design, React Hook Form, Zod. ECharts is planned for Task 12 |
 | Quality | JUnit, AssertJ, Testcontainers, ArchUnit, Spring Modulith verification, Vitest, Testing Library, Playwright |
-| Observability | Micrometer, OpenTelemetry, Prometheus, Grafana, structured logs and business metrics |
-| Delivery | Maven Wrapper, pnpm, Docker Compose, GitHub Actions, SBOM and dependency scanning |
+| Observability | Current: Actuator/Micrometer and safe application logs. OpenTelemetry, Prometheus, and Grafana are planned |
+| Delivery | Current: Maven Wrapper, pnpm, core Docker Compose, GitHub Actions, secret scan, and frontend dependency audit. SBOM and broader dependency/image scanning are planned |
 
-Exact versions are frozen in [the technology baseline](docs/03-architecture/13-technology-baseline.md) and may only move through a reviewed dependency change.
+Current versions and planned targets are recorded separately in [the technology baseline](docs/03-architecture/13-technology-baseline.md); a planned target is not evidence that the dependency is installed.
 
 ### 6. What is technically distinctive
 
@@ -148,11 +159,11 @@ Exact versions are frozen in [the technology baseline](docs/03-architecture/13-t
 
 **Explainable route decisions.** The trade-planning engine rejects invalid routes with machine-readable reason codes and scores valid routes using versioned policies. A manager may override a recommendation only with a recorded reason.
 
-**Concurrency that can be demonstrated.** Inventory reservation uses deterministic lot ordering and atomic conditional SQL. The test plan includes concurrent reservation attempts, transaction rollback, retry limits, and proof that reserved quantity never exceeds on-hand quantity.
+**Concurrency designed to be demonstrated.** Task 08 is designed to use deterministic lot ordering and atomic conditional SQL. Its planned evidence includes concurrent reservation attempts, transaction rollback, retry limits, and proof that reserved quantity never exceeds on-hand quantity.
 
-**Reliable asynchronous collaboration.** Cross-module work uses persisted event publications and idempotent handlers. Correlation and causation identifiers connect API requests, domain events, audit records, and traces.
+**Reliable asynchronous collaboration.** The current core uses persisted local event publications and idempotent Consumer Inbox handlers. Correlation and causation identifiers are retained for business evidence; external broker delivery and trace export remain planned.
 
-**Architecture as an executable constraint.** Spring Modulith verification and ArchUnit tests enforce module boundaries, dependency direction, public interfaces, and layer rules. These tests are part of the definition of done, not optional documentation.
+**Architecture as an executable constraint.** Current Spring Modulith and ArchUnit tests enforce module cycles, internal-package boundaries, selected dependency directions, and domain isolation. Remaining fitness functions are explicitly marked partial or planned.
 
 **Reviewer-friendly operation.** The target release provides synthetic demo data, role-based demo accounts, a deterministic walkthrough, one-command local startup, health checks, API documentation, dashboards, and a concise technical review path.
 
@@ -165,7 +176,7 @@ Exact versions are frozen in [the technology baseline](docs/03-architecture/13-t
 ├── backend/                    Spring Boot modular-monolith application
 ├── frontend/                   React operations console
 ├── contracts/                  OpenAPI, AsyncAPI, JSON Schemas, examples
-├── deploy/                     Local Docker Compose profiles
+├── deploy/                     Core Docker Compose environment; full profiles planned
 ├── docs/
 │   ├── 00-research/             Evidence, business model, scenario selection
 │   ├── 01-product/              Vision, requirements, workflows, page specs
@@ -259,13 +270,13 @@ CellarBridge is an independent technical demonstration based on public business 
 
 ### 1. 项目定位
 
-CellarBridge（酒桥）模拟一家进口酒饮供应链服务商的核心企业流程。它不是面向消费者的酒类商城，也不是把若干 CRUD 页面拼在一起的后台模板。平台围绕商业客户准入、酒款与货源、询报价、交付路径评估、订单、库存预占、履约节点、异常处理、应收与审计建立一条可运行、可追踪、可验证的完整链路。
+CellarBridge（酒桥）模拟一家进口酒饮供应链服务商的目标企业流程。它不是面向消费者的酒类商城，也不是把若干 CRUD 页面拼在一起的后台模板。当前可运行范围从商业客户准入、酒款与货源检索、报价和客户决定延伸到幂等转订单；库存预占及后续商业阶段仍为已设计或计划能力。
 
 本项目强调“设计可以被审阅”。技术评审者可以从一条业务需求出发，继续追踪到限界上下文、聚合不变量、接口或事件契约、数据库归属、验收场景和实现任务，而不需要依赖口头补充来理解系统。
 
 ### 2. 核心业务场景
 
-销售人员为商业客户选择多个酒款 SKU，并生成客户专属报价。系统根据客户资格、货源位置、目标交付时间、交付区域和成本构成评估可用的贸易交付路径；每个候选方案都给出可解释的通过、拒绝原因和评分。报价触发折扣或毛利规则时进入审批。客户接受报价后，系统必须只创建一个订单，在并发条件下安全预占库存，按照选定路径生成履约计划，持续记录物流与操作节点；若库存不足、节点逾期或处理失败，则进入异常中心，由明确责任人完成处置。交付完成后生成应收并记录付款，最终形成完整审计证据。
+在目标场景中，销售人员为商业客户选择多个酒款 SKU，并生成客户专属报价。系统根据客户资格、货源位置、目标交付时间、交付区域和成本构成评估可用的贸易交付路径；每个候选方案都给出可解释的通过、拒绝原因和评分。当前可运行核心继续覆盖审批、客户接受和“同一接受报价只创建一个订单”。库存预占、履约、异常、应收和完整审计证据属于后续已设计阶段。
 
 ```mermaid
 flowchart LR
@@ -275,12 +286,15 @@ flowchart LR
     D --> E[审批]
     E --> F[客户接受]
     F --> G[幂等转订单]
-    G --> H[原子库存预占]
-    H --> I[履约编排]
-    I --> J[异常处理]
-    I --> K[应收与付款]
-    J --> L[审计与报表]
-    K --> L
+    G -.-> H[原子库存预占<br/>已设计]
+    H -.-> I[履约编排<br/>已设计]
+    I -.-> J[异常处理<br/>已设计]
+    I -.-> K[应收与付款<br/>已设计]
+    J -.-> L[审计与报表<br/>已设计]
+    K -.-> L
+
+    classDef planned fill:#fff7e6,stroke:#b26a00,color:#5f3700,stroke-dasharray:5 5;
+    class H,I,J,K,L planned;
 ```
 
 ### 3. 产品能力
@@ -294,7 +308,7 @@ flowchart LR
 | 可解释贸易路径评估 | 用硬约束与加权评分比较多种交付方案 | 可运行 |
 | 客户安全报价决定 | 提供严格公开视图、幂等接受/拒绝、到期处理与可靠接受事实 | 可运行 |
 | 报价转订单 | 通过 Inbox、不可变快照与数据库唯一约束保证同一份已接受报价最多生成一个订单 | 可运行 |
-| 库存预占 | 通过原子条件更新和确定性分配防止超卖 | 已设计 |
+| 库存预占 | 设计为使用原子条件更新和确定性分配防止超卖 | 已设计 |
 | 履约计划与节点 | 用可配置模板表达不同交付路径，而不是把法规细节写死在代码中 | 已设计 |
 | 异常中心 | 将缺货、延迟、节点失败转化为可分派、可追踪的工作项 | 已设计 |
 | 应收与付款记录 | 在不接入真实支付网关的前提下完成订单到回款闭环 | 已设计 |
@@ -319,18 +333,18 @@ flowchart LR
 
 | 领域 | 选型 |
 |---|---|
-| 后端 | Java 21 LTS、Spring Boot 4.1、Spring Modulith 2.1、Spring Security、Spring Data JPA；热点路径使用 JDBC |
+| 后端 | 当前：Java 21 LTS、Spring Boot 4.1、Spring Modulith 2.1、Spring Security、Spring JDBC / SQL-first；JPA 为未安装的未来可选项 |
 | 接口 | REST、OpenAPI 3.1、Problem Details、自动生成 TypeScript 类型 |
 | 数据 | PostgreSQL 18、Flyway、按模块划分 Schema；JSONB 仅用于快照和事件信封 |
-| 消息 | 事务性事件发布；完整运行配置使用 Kafka 4.3；消费端 Inbox 去重 |
-| 缓存 | Redis 8，仅缓存安全的查询与参考数据，不作为库存事实来源 |
+| 消息 | 当前：自定义事务性本地发布与 Consumer Inbox；Kafka 4.3 是计划中的 full profile 外部通道 |
+| 缓存 | Redis 8 属于未来 full profile 计划，当前运行环境未安装 |
 | 身份 | Keycloak 26、OIDC 授权码模式与 PKCE、后端 JWT Resource Server |
-| 前端 | React 19.2、TypeScript、Vite 8、React Router、TanStack Query、Ant Design、React Hook Form、Zod、ECharts |
+| 前端 | 当前：React 19.2、TypeScript、Vite 8、React Router、TanStack Query、Ant Design、React Hook Form、Zod；ECharts 计划在 Task 12 引入 |
 | 测试 | JUnit、AssertJ、Testcontainers、ArchUnit、Spring Modulith Verification、Vitest、Testing Library、Playwright |
-| 可观测性 | Micrometer、OpenTelemetry、Prometheus、Grafana、结构化日志和业务指标 |
-| 交付 | Maven Wrapper、pnpm、Docker Compose、GitHub Actions、SBOM 与依赖扫描 |
+| 可观测性 | 当前：Actuator/Micrometer 与安全应用日志；OpenTelemetry、Prometheus、Grafana 尚在计划中 |
+| 交付 | 当前：Maven Wrapper、pnpm、core Docker Compose、GitHub Actions、秘密扫描和前端依赖审计；SBOM 与更完整的依赖/镜像扫描尚在计划中 |
 
-具体版本与升级规则见[技术基线](docs/03-architecture/13-technology-baseline.md)。
+当前版本和计划目标在[技术基线](docs/03-architecture/13-technology-baseline.md)中分别记录；计划目标不代表依赖已经安装。
 
 ### 6. 技术亮点
 
@@ -338,11 +352,11 @@ flowchart LR
 
 **决策过程可解释。** 贸易路径引擎先执行硬约束，再对合格方案评分。每个拒绝原因和得分项都可以展示、审计和测试。人工覆盖推荐结果时必须填写理由，并保存使用的策略版本。
 
-**并发行为可以被证明。** 库存预占采用确定性批次排序和原子条件 SQL。测试计划会同时发起多次预占，验证事务回滚、有限重试以及“预占数量永远不超过在库数量”的不变量。
+**并发行为被设计为可证明。** Task 08 计划采用确定性批次排序和原子条件 SQL，并通过并发预占、事务回滚、有限重试以及“预占数量永远不超过在库数量”证明该设计。
 
-**异步协作可恢复。** 跨模块事件拥有持久化发布记录、相关标识和幂等消费机制。API 请求、领域事件、审计日志和链路追踪使用同一组 correlation/causation 信息串联。
+**异步协作可恢复。** 当前 core 使用持久化本地发布记录和幂等 Consumer Inbox，并保留 correlation/causation 业务证据；外部 broker 投递和 trace 导出仍在计划中。
 
-**架构约束可执行。** Spring Modulith 和 ArchUnit 在 CI 中验证模块依赖、公开接口、分层规则和循环依赖。架构不是只存在于文档中的愿望，而是构建失败条件的一部分。
+**架构约束可执行。** 当前 Spring Modulith 和 ArchUnit 测试验证模块循环、internal 包边界、部分依赖方向和领域隔离；其余适应度函数明确标记为部分可用或计划中。
 
 **方便运行与评审。** 目标版本将提供合成演示数据、分角色账号、固定演示脚本、一键启动、健康检查、接口文档、指标看板和技术评审路径，使评审者能够在有限时间内验证关键能力。
 
@@ -355,7 +369,7 @@ flowchart LR
 ├── backend/                    Spring Boot 模块化单体应用
 ├── frontend/                   React 运营控制台
 ├── contracts/                  OpenAPI、AsyncAPI、JSON Schema 与示例
-├── deploy/                     本地 Docker Compose 环境
+├── deploy/                     当前 core Docker Compose 环境；full profiles 尚在计划中
 ├── docs/
 │   ├── 00-research/             证据、商业模式与场景选择
 │   ├── 01-product/              产品愿景、需求、流程和页面设计

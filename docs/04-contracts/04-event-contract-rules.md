@@ -33,6 +33,10 @@ AsyncAPI channel/topic 名：`cellarbridge.<domain>.<fact>.v1`。
 - 个人/商业敏感最小化；
 - 不把技术异常堆栈放 payload。
 
+`QuotationAcceptedV1` 的 Snapshot Hash V1 字段序固定为 `schemaVersion=1, quotationId, revisionId, quotationNumber, revision, customer, currency, totalAmount, paymentTermDays, route, acceptedTermsVersion, requestedDeliveryDate, deliveryAddress, lines`；排除 acceptance/envelope/hash 字段，保留行序，显式写 null，金额/数量用去尾零十进制字符串，日期用 ISO 格式，再对 UTF-8 紧凑 JSON 做 SHA-256。对外值固定为裸小写 64 位十六进制；消费者先校验契约、再重算 hash、最后查询或创建订单。
+
+嵌套字段序固定为 customer 的 `partnerId, partnerNumber, displayName, sourceVersion`，route 的 `code, policyVersion, estimatedDeliveryDate`，address 的 `countryCode, province, city, district, line1, postalCode`，line 的 `quotationLineId, skuId, skuCode, description, quantity, unit, netUnitPrice, lineTotal, supplyPoolId, supplyType`；`acceptanceId`、`acceptedAt`、`sourceOwnerId`、`snapshotHash` 和 envelope 不进入 projection。
+
 ## 4. 版本
 
 同版本兼容变化：新增可选字段；放宽消费者可忽略内容；补充非语义描述。
@@ -41,7 +45,9 @@ AsyncAPI channel/topic 名：`cellarbridge.<domain>.<fact>.v1`。
 
 v1/v2 可并行发布；消费者声明支持版本；删除旧版本需 release 记录。
 
-## 5. Kafka 约定
+## 5. Kafka 约定（Planned full profile）
+
+当前 core 使用 `platform_event.event_publication`、本地 dispatcher 与 Consumer Inbox 完成可靠模块协作，不包含 Kafka adapter。Kafka broker ack 与本地 Consumer 完成是不同状态，未来接入时不得混用。
 
 - key：tenant + subject type/id；
 - headers：eventId/type/schemaRef/correlation/trace context（不含敏感）；

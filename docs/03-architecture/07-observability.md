@@ -1,5 +1,7 @@
 # 可观测性设计
 
+状态：**Partially available**。当前 core 提供 Actuator/Micrometer 基础端点与安全应用日志；OpenTelemetry export、Prometheus/Grafana、完整业务指标、告警和 trace walkthrough 均为 Task 13 Planned。
+
 ## 1. 目标
 
 可观测性用于回答：
@@ -17,11 +19,13 @@
 
 ### 日志
 
-JSON 结构化字段：timestamp、level、service、module、useCase、tenantHash、actorType、businessNumber、traceId、spanId、correlationId、errorCode、outcome、durationMs。
+当前已有安全应用日志、审计日志 sanitizer 和部分 MDC/correlation 字段。下列 JSON 结构化字段目录为 Planned：timestamp、level、service、module、useCase、tenantHash、actorType、businessNumber、traceId、spanId、correlationId、errorCode、outcome、durationMs。
 
 禁止：访问令牌、密码、完整请求体、成本/毛利、客户门户 token、完整个人信息、事件完整敏感 payload。
 
 ### 指标
+
+下列为目标指标目录，不表示当前已全部注册。Kafka、Inventory reservation、Fulfillment、Exception 和 Settlement 指标随对应能力交付。
 
 技术：
 
@@ -49,6 +53,8 @@ JSON 结构化字段：timestamp、level、service、module、useCase、tenantHa
 
 ### Trace
 
+状态：**Planned**。
+
 OpenTelemetry spans：
 
 - HTTP request；
@@ -60,7 +66,9 @@ OpenTelemetry spans：
 
 异步使用 trace links + correlation/causation，而不是伪造同步 parent。
 
-## 3. Correlation 设计
+## 3. Correlation 设计（Partially available）
+
+事件 envelope 已保存 correlation/causation，部分 API 与日志也传播 correlation；`traceparent`、span link、全链路检索和 trace export 仍为 Planned。
 
 - 入站 `traceparent` 合法则继续；
 - 每个业务命令有 `commandId`；
@@ -70,7 +78,7 @@ OpenTelemetry spans：
 - 审计时间线可按 correlation 搜索；
 - 外部客户端提供的 correlation 仅作为候选，验证格式并防日志注入。
 
-## 4. Dashboard
+## 4. Dashboard（Planned）
 
 ### Technical Overview
 
@@ -99,7 +107,7 @@ pending oldest age、publish attempts、duplicates consumed、failed final、rep
 - invariant violation metric = 0；
 - failed-final events = 0 发布前。
 
-## 6. 告警演示
+## 6. 告警演示（Planned）
 
 - event backlog age；
 - reservation failure surge；
@@ -118,6 +126,6 @@ pending oldest age、publish attempts、duplicates consumed、failed final、rep
 - 不将完整事件 payload 复制到日志；
 - 审计业务记录与技术日志分开。
 
-## 8. 验收
+## 8. 验收（Planned）
 
 主 demo 可从一个订单页面复制 correlation ID，在 trace 中看到接受 → 订单 → 预占 → 计划；日志无敏感字段；故障注入后 backlog/重试/异常指标变化可解释。

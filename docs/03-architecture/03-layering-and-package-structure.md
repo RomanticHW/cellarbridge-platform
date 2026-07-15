@@ -1,15 +1,13 @@
 # 分层与包结构
 
-## 1. 仓库结构（实现后）
+## 1. 当前仓库结构
 
 ```text
 cellarbridge-platform/
 ├── backend/
 │   ├── pom.xml
 │   ├── .mvn/ + mvnw
-│   ├── cellarbridge-application/
-│   ├── cellarbridge-architecture-tests/
-│   └── ...（根据构建验证决定单/多 Maven module）
+│   └── src/                    单 Maven module，按 Java package 保持业务模块边界
 ├── frontend/
 │   ├── package.json
 │   ├── pnpm-lock.yaml
@@ -94,10 +92,11 @@ flowchart LR
 
 ## 4. 持久化模型
 
-优先保持领域对象与持久化映射清晰。两种方案允许按复杂度选择：
+当前实现使用 Spring JDBC / SQL-first，并以显式 record/mapper 隔离领域与持久化。JPA 未安装，只是 ADR-012 约束的未来可选 adapter：
 
-1. 简单聚合可使用 JPA 映射领域实体，但注解不得泄露到公开契约；
-2. 复杂/热点模型（库存、事件、读模型）使用独立 persistence record + mapper/JDBC。
+1. 当前聚合、Inventory、事件和读模型使用独立 persistence record + mapper/JDBC；
+2. 未来简单聚合只有在收益和 canonical write path 被明确审阅后才可选择 JPA，且注解不得泄露到公开契约；
+3. 同一聚合不得在没有迁移/对账/切换协议时混用 JPA 与 JDBC 写模型。
 
 禁止为了“纯洁”制造大量无价值复制，也禁止让 JPA lazy loading 决定聚合边界。
 

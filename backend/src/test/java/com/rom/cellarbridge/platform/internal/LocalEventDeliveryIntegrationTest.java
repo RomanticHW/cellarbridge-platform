@@ -144,7 +144,8 @@ class LocalEventDeliveryIntegrationTest extends PostgresIntegrationTestSupport {
            attempts, duplicate_count, first_received_at, last_attempt_at,
            created_at, updated_at, version)
         VALUES (?, ?, ?, ?, ?, 'PROCESSING', 3, 0,
-                CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0)
+                TIMESTAMPTZ '2000-01-01 00:00:00Z', TIMESTAMPTZ '2000-01-01 00:00:00Z',
+                TIMESTAMPTZ '2000-01-01 00:00:00Z', TIMESTAMPTZ '2000-01-01 00:00:00Z', 0)
         """,
         delivery.tenantId(),
         handler.consumerName(),

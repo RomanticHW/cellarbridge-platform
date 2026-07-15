@@ -3,7 +3,7 @@ package com.rom.cellarbridge.tradeorder.internal.web;
 import com.rom.cellarbridge.tradeorder.TradeOrderStatus;
 import com.rom.cellarbridge.tradeorder.internal.application.TradeOrderApplicationService.DetailView;
 import com.rom.cellarbridge.tradeorder.internal.application.TradeOrderApplicationService.PageView;
-import com.rom.cellarbridge.tradeorder.internal.application.TradeOrderRepository.TimelineEntry;
+import com.rom.cellarbridge.tradeorder.internal.application.TradeOrderApplicationService.TimelineView;
 import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrder;
 import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrder.CommercialSnapshot;
 import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrder.DeliveryAddress;
@@ -155,7 +155,7 @@ final class TradeOrderWebMapper {
         money(line.lineTotal(), currency));
   }
 
-  private static TimelineResponse internalTimeline(TimelineEntry entry) {
+  private static TimelineResponse internalTimeline(TimelineView entry) {
     return new TimelineResponse(
         entry.id(),
         entry.occurredAt(),
@@ -166,7 +166,7 @@ final class TradeOrderWebMapper {
         entry.visibility());
   }
 
-  private static BuyerTimelineResponse buyerTimeline(TimelineEntry entry) {
+  private static BuyerTimelineResponse buyerTimeline(TimelineView entry) {
     return new BuyerTimelineResponse(entry.occurredAt(), entry.action(), entry.newState());
   }
 

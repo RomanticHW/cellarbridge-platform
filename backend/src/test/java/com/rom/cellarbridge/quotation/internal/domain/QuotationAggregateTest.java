@@ -50,13 +50,15 @@ class QuotationAggregateTest {
     assertThat(submitted.status()).isEqualTo(QuotationStatus.PENDING_APPROVAL);
     assertThat(submitted.revision().frozenAt()).isNotNull();
     assertThatThrownBy(() -> submitted.applyRoute(evaluation(), pricing(), NOW.plusSeconds(3)))
-        .isInstanceOf(QuotationProblem.class);
+        .isInstanceOfSatisfying(
+            QuotationDomainException.class,
+            failure -> assertThat(failure.currentState()).isEqualTo("PENDING_APPROVAL"));
 
     QuotationAggregate changes =
         submitted.decide(
             Decision.REQUEST_CHANGES, MANAGER, "Please revise discount", NOW.plusSeconds(4));
     assertThatThrownBy(() -> changes.applyRoute(evaluation(), pricing(), NOW.plusSeconds(5)))
-        .isInstanceOf(QuotationProblem.class);
+        .isInstanceOf(QuotationDomainException.class);
     QuotationAggregate revised =
         changes.replaceDraft(partner(), terms(), pricing(), NOW.plusSeconds(6));
     assertThat(revised.currentRevision()).isEqualTo(2);
@@ -81,7 +83,7 @@ class QuotationAggregateTest {
             () ->
                 submitted.decide(Decision.APPROVE, OWNER, "Approve quotation", NOW.plusSeconds(3)))
         .isInstanceOfSatisfying(
-            QuotationProblem.class,
+            QuotationDomainException.class,
             problem -> assertThat(problem.code()).isEqualTo("QUOTE_REVIEWER_CONFLICT"));
   }
 
@@ -167,7 +169,7 @@ class QuotationAggregateTest {
   private static void assertProblem(Runnable transition, String code) {
     assertThatThrownBy(transition::run)
         .isInstanceOfSatisfying(
-            QuotationProblem.class, problem -> assertThat(problem.code()).isEqualTo(code));
+            QuotationDomainException.class, problem -> assertThat(problem.code()).isEqualTo(code));
   }
 
   private static PartnerSnapshot partner() {

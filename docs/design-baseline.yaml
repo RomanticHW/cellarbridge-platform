@@ -29,16 +29,29 @@ core_modules:
   - settlement
   - audit-reporting
 technology:
-  java: "21 LTS"
-  spring_boot: "4.1.0"
-  spring_modulith: "2.1.0"
-  postgresql: "18.4"
-  keycloak: "26.7.0"
-  kafka: "4.3"
-  redis: "8.8"
-  node: "24 LTS"
-  react: "19.2"
-  vite: "8.1.4"
+  current:
+    java: "21 LTS"
+    spring_boot: "4.1.0"
+    spring_modulith: "2.1.0"
+    persistence: spring-jdbc-sql-first
+    postgresql: "18.4"
+    keycloak: "26.7.0"
+    node: "24 LTS"
+    react: "19.2"
+    vite: "8.1.4"
+  optional:
+    jpa:
+      status: planned-not-installed
+      decision: ADR-012
+  planned_full_profile:
+    kafka: "4.3"
+    redis: "8.8"
+    opentelemetry: compatible-stable
+    prometheus_grafana: compose-version-not-yet-locked
+  planned_application:
+    echarts:
+      status: planned-not-installed
+      task: 12
 quality_gates:
   architecture_verification: required
   domain_unit_tests: required

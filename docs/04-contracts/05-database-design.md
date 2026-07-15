@@ -2,12 +2,14 @@
 
 ## 1. 设计原则
 
+状态边界：当前物理数据库由 V2～V9 migration 实现 Task 01～07。下文 ER 图和关键表同时包含后续逻辑设计；`inventory_reservation`、`reservation_allocation`、库存数量单位与仓库优先级在 Task 08 前均不是现有物理能力。
+
 - PostgreSQL 18；
 - module schema ownership；
 - UUID primary key + human business number；
 - tenant_id 每业务表；
 - UTC `timestamptz`；
-- 金额 `numeric(19,4)`（显示精度由币种控制）；
+- 金额列名以 amount/price/cost/charge(s)/fee(s)/tax/balance/total/subtotal 结尾并使用 `numeric(19,4)`（显示精度由币种控制）；
 - quantity `numeric(19,6)`；
 - mutable aggregate `version bigint`；
 - created/updated metadata；
@@ -70,10 +72,14 @@ erDiagram
 
 ### `inventory.inventory_reservation`
 
+状态：**Designed（Task 08）**。
+
 - id；tenant；number；order_id；status；request_hash；failure_summary JSONB；version。
 - unique `(tenant, order_id)`。
 
 ### `inventory.reservation_allocation`
+
+状态：**Designed（Task 08）**。
 
 - reservation_id；order_line_id；lot_id；quantity；status；version；unique business keys。
 
@@ -131,4 +137,4 @@ CHECK (version >= 0)
 
 ## 9. 详细 DDL
 
-Design Baseline 提供逻辑设计；实际 migration 在对应纵向切片创建，并通过 PostgreSQL catalog fitness tests 验证。不得在 Task 01 一次性创建所有空表。
+Design Baseline 提供逻辑设计；实际 migration 在对应纵向切片创建。当前 V2～V9 可由 Flyway/Testcontainers 执行，通用 PostgreSQL catalog fitness tests 已 Available；Inventory 专属约束留给 Inventory readiness PR 和 V10 migration。不得用逻辑表清单暗示尚未创建的表已经 Available。
