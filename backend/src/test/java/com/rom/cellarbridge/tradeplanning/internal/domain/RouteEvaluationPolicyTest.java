@@ -5,11 +5,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.rom.cellarbridge.tradeplanning.TradePlanningQuantityUnit;
 import com.rom.cellarbridge.tradeplanning.TradePlanningService.Eligibility;
 import com.rom.cellarbridge.tradeplanning.TradePlanningService.RouteCandidate;
+import com.rom.cellarbridge.tradeplanning.TradePlanningSupplyType;
 import com.rom.cellarbridge.tradeplanning.TradeRouteCode;
-import com.rom.cellarbridge.tradeplanning.internal.domain.RouteEvaluationPolicy.AvailabilityInput;
 import com.rom.cellarbridge.tradeplanning.internal.domain.RouteEvaluationPolicy.Input;
-import com.rom.cellarbridge.tradeplanning.internal.domain.RouteEvaluationPolicy.LineInput;
+import com.rom.cellarbridge.tradeplanning.internal.domain.SupplyDecisionPolicy.AvailabilityInput;
+import com.rom.cellarbridge.tradeplanning.internal.domain.SupplyDecisionPolicy.LineInput;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
@@ -19,6 +21,9 @@ import org.junit.jupiter.api.Test;
 class RouteEvaluationPolicyTest {
 
   private static final UUID SKU = UUID.fromString("34000000-0000-4000-8000-000000000001");
+  private static final UUID LINE = UUID.fromString("74000000-0000-4000-8000-000000000001");
+  private static final UUID SKU_2 = UUID.fromString("34000000-0000-4000-8000-000000000002");
+  private static final UUID LINE_2 = UUID.fromString("74000000-0000-4000-8000-000000000002");
   private static final UUID PRIMARY_POOL = UUID.fromString("36000000-0000-4000-8000-000000000001");
   private static final UUID SECONDARY_POOL =
       UUID.fromString("36000000-0000-4000-8000-000000000002");
@@ -26,7 +31,7 @@ class RouteEvaluationPolicyTest {
   @Test
   void keepsRejectedCandidateAndStablePartnerReason() {
     List<RouteCandidate> candidates =
-        RouteEvaluationPolicy.evaluate(input(Set.of(TradeRouteCode.SH_GENERAL_TRADE)));
+        RouteEvaluationPolicy.evaluate(input(Set.of(TradeRouteCode.SH_GENERAL_TRADE))).candidates();
 
     RouteCandidate bonded =
         candidates.stream()
@@ -48,10 +53,10 @@ class RouteEvaluationPolicyTest {
   @Test
   void recommendationAndScoresAreDeterministicAcrossRepeatedEvaluation() {
     Input input = input(Set.of(TradeRouteCode.SH_GENERAL_TRADE, TradeRouteCode.NB_BONDED_B2B));
-    List<RouteCandidate> first = RouteEvaluationPolicy.evaluate(input);
+    List<RouteCandidate> first = RouteEvaluationPolicy.evaluate(input).candidates();
 
     for (int repeat = 0; repeat < 100; repeat++) {
-      List<RouteCandidate> next = RouteEvaluationPolicy.evaluate(input);
+      List<RouteCandidate> next = RouteEvaluationPolicy.evaluate(input).candidates();
       assertThat(next).isEqualTo(first);
       assertThat(RouteEvaluationPolicy.recommend(next)).isEqualTo(TradeRouteCode.SH_GENERAL_TRADE);
     }
@@ -152,7 +157,7 @@ class RouteEvaluationPolicyTest {
 
   @Test
   void preferredPoolRequiresTheSamePoolAndUnit() {
-    assertNoPromisableSupply(
+    assertSupplyFailure(
         line("6", TradePlanningQuantityUnit.CASE, "6", PRIMARY_POOL),
         List.of(
             availability(
@@ -160,8 +165,9 @@ class RouteEvaluationPolicyTest {
                 TradeRouteCode.SH_GENERAL_TRADE,
                 TradePlanningQuantityUnit.CASE,
                 "56",
-                "HIGH")));
-    assertNoPromisableSupply(
+                "HIGH")),
+        "QUOTE_FIXED_SUPPLY_POOL_INELIGIBLE");
+    assertSupplyFailure(
         line("6", TradePlanningQuantityUnit.CASE, "6", PRIMARY_POOL),
         List.of(
             availability(
@@ -169,7 +175,8 @@ class RouteEvaluationPolicyTest {
                 TradeRouteCode.SH_GENERAL_TRADE,
                 TradePlanningQuantityUnit.BOTTLE,
                 "10",
-                "HIGH")));
+                "HIGH")),
+        "QUOTE_FIXED_SUPPLY_POOL_INELIGIBLE");
   }
 
   @Test
@@ -235,7 +242,49 @@ class RouteEvaluationPolicyTest {
 
   @Test
   void exposesCorrectedPolicyVersion() {
-    assertThat(RouteEvaluationPolicy.VERSION).isEqualTo("ROUTE-2026-02");
+    assertThat(RouteEvaluationPolicy.VERSION).isEqualTo("ROUTE-2026-03");
+  }
+
+  @Test
+  void supplyFailuresMapToStableRuleIdsAndSortedLineParameters() {
+    Input input =
+        new Input(
+            Set.of(TradeRouteCode.SH_GENERAL_TRADE),
+            "CNY",
+            "CN",
+            LocalDate.of(2026, 7, 30),
+            30,
+            LocalDate.of(2026, 7, 14),
+            List.of(
+                new LineInput(
+                    LINE_2,
+                    SKU_2,
+                    BigDecimal.ONE,
+                    TradePlanningQuantityUnit.CASE,
+                    BigDecimal.ONE,
+                    null),
+                new LineInput(
+                    LINE,
+                    SKU,
+                    BigDecimal.ONE,
+                    TradePlanningQuantityUnit.CASE,
+                    BigDecimal.ONE,
+                    PRIMARY_POOL)),
+            List.of());
+
+    RouteCandidate candidate = candidate(input, TradeRouteCode.SH_GENERAL_TRADE);
+
+    assertThat(candidate.rejections())
+        .filteredOn(rejection -> rejection.code().contains("SUPPLY"))
+        .extracting(rejection -> rejection.ruleId())
+        .containsExactly("TRD-SUPPLY-001", "TRD-SUPPLY-FIXED-001");
+    assertThat(candidate.rejections())
+        .filteredOn(rejection -> rejection.code().equals("NO_PROMISABLE_SUPPLY"))
+        .singleElement()
+        .satisfies(
+            rejection ->
+                assertThat(rejection.parameters().get("quotationLineIds"))
+                    .isEqualTo(LINE_2.toString()));
   }
 
   private static Input input(Set<TradeRouteCode> partnerRoutes) {
@@ -276,6 +325,7 @@ class RouteEvaluationPolicyTest {
       String moqCaseEquivalentQuantity,
       UUID preferredSupplyPoolId) {
     return new LineInput(
+        LINE,
         SKU,
         new BigDecimal(requestedQuantity),
         quantityUnit,
@@ -290,11 +340,20 @@ class RouteEvaluationPolicyTest {
       String availableQuantity,
       String confidence) {
     return new AvailabilityInput(
-        pool, SKU, route, quantityUnit, new BigDecimal(availableQuantity), confidence);
+        pool,
+        SKU,
+        route,
+        TradePlanningSupplyType.DOMESTIC_ON_HAND,
+        quantityUnit,
+        new BigDecimal(availableQuantity),
+        null,
+        confidence,
+        "INV-READY-2026-01",
+        Instant.parse("2026-07-14T12:00:00Z"));
   }
 
   private static RouteCandidate candidate(Input input, TradeRouteCode route) {
-    return RouteEvaluationPolicy.evaluate(input).stream()
+    return RouteEvaluationPolicy.evaluate(input).candidates().stream()
         .filter(candidate -> candidate.routeCode() == route)
         .findFirst()
         .orElseThrow();
@@ -302,12 +361,15 @@ class RouteEvaluationPolicyTest {
 
   private static void assertNoPromisableSupply(
       LineInput line, List<AvailabilityInput> availability) {
+    assertSupplyFailure(line, availability, "NO_PROMISABLE_SUPPLY");
+  }
+
+  private static void assertSupplyFailure(
+      LineInput line, List<AvailabilityInput> availability, String code) {
     RouteCandidate shanghai =
         candidate(
             input(Set.of(TradeRouteCode.SH_GENERAL_TRADE), line, availability),
             TradeRouteCode.SH_GENERAL_TRADE);
-    assertThat(shanghai.rejections())
-        .extracting(rejection -> rejection.code())
-        .contains("NO_PROMISABLE_SUPPLY");
+    assertThat(shanghai.rejections()).extracting(rejection -> rejection.code()).contains(code);
   }
 }
