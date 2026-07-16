@@ -399,7 +399,7 @@ public record QuotationAggregate(
       if (decision == null) {
         throw conflict("Planning Evaluation does not contain a supply decision");
       }
-      PricingResult decidedPricing = applyDecisions(routedPricing, decision);
+      PricingResult decidedPricing = applyDecisionsToLines(routedPricing, decision);
       return new Revision(
           id,
           number,
@@ -441,52 +441,12 @@ public record QuotationAggregate(
           createdAt);
     }
 
-    private static PricingResult applyDecisions(
+    private static PricingResult applyDecisionsToLines(
         PricingResult pricing, SupplyDecisionSnapshot decision) {
-      Map<UUID, LineDecision> byLine =
-          decision.lineDecisions().stream()
-              .collect(
-                  java.util.stream.Collectors.toUnmodifiableMap(
-                      LineDecision::quotationLineId, line -> line));
-      if (byLine.size() != pricing.lines().size()) {
-        throw conflict("Supply decision line set does not match the quotation revision");
-      }
+      Map<UUID, LineDecision> byLine = decisionsByLine(pricing, decision);
       List<QuotationPricingPolicy.PricedLine> lines =
           pricing.lines().stream()
-              .map(
-                  line -> {
-                    LineDecision decided = byLine.get(line.lineId());
-                    if (decided == null
-                        || !decided.skuId().equals(line.sku().skuId())
-                        || !decided
-                            .requestedQuantity()
-                            .equals(line.quantity().setScale(6, RoundingMode.UNNECESSARY))
-                        || decided.quantityUnit()
-                            != TradePlanningQuantityUnit.valueOf(line.unit().name())
-                        || !Objects.equals(decided.supplyPoolId(), line.preferredSupplyPoolId())) {
-                      throw conflict(
-                          "Supply decision line evidence conflicts with quotation input");
-                    }
-                    return new QuotationPricingPolicy.PricedLine(
-                        line.lineId(),
-                        line.sku(),
-                        line.quantity(),
-                        line.unit(),
-                        decided.supplyPoolId(),
-                        decided.allocationMode(),
-                        decided.supplyType().name(),
-                        line.listUnitPrice(),
-                        line.discountRate(),
-                        line.netUnitPrice(),
-                        line.allocatedCharges(),
-                        line.lineTotal(),
-                        line.costUnitPrice(),
-                        line.lineCost(),
-                        line.marginRate(),
-                        line.manualPrice(),
-                        line.currency(),
-                        line.priceSourceVersion());
-                  })
+              .map(line -> applyDecisionToLine(line, byLine.get(line.lineId())))
               .toList();
       return new PricingResult(
           lines,
@@ -495,6 +455,71 @@ public record QuotationAggregate(
           pricing.totalCost(),
           pricing.marginRate(),
           pricing.routeCharges());
+    }
+
+    private static QuotationPricingPolicy.PricedLine applyDecisionToLine(
+        QuotationPricingPolicy.PricedLine undecidedLine, LineDecision decision) {
+      verifyLineIdentity(undecidedLine, decision);
+      return new QuotationPricingPolicy.PricedLine(
+          undecidedLine.lineId(),
+          undecidedLine.sku(),
+          undecidedLine.quantity(),
+          undecidedLine.unit(),
+          decision.supplyPoolId(),
+          decision.allocationMode(),
+          decision.supplyType().name(),
+          undecidedLine.listUnitPrice(),
+          undecidedLine.discountRate(),
+          undecidedLine.netUnitPrice(),
+          undecidedLine.allocatedCharges(),
+          undecidedLine.lineTotal(),
+          undecidedLine.costUnitPrice(),
+          undecidedLine.lineCost(),
+          undecidedLine.marginRate(),
+          undecidedLine.manualPrice(),
+          undecidedLine.currency(),
+          undecidedLine.priceSourceVersion());
+    }
+
+    private static void verifyFrozenLines(PricingResult pricing, SupplyDecisionSnapshot decision) {
+      Map<UUID, LineDecision> byLine = decisionsByLine(pricing, decision);
+      pricing.lines().forEach(line -> verifyFrozenLine(line, byLine.get(line.lineId())));
+    }
+
+    private static void verifyFrozenLine(
+        QuotationPricingPolicy.PricedLine persistedLine, LineDecision decision) {
+      verifyLineIdentity(persistedLine, decision);
+      if (persistedLine.allocationMode() != decision.allocationMode()
+          || !Objects.equals(persistedLine.supplyType(), decision.supplyType().name())) {
+        throw conflict("Frozen quotation line supply evidence conflicts with its decision");
+      }
+    }
+
+    private static void verifyLineIdentity(
+        QuotationPricingPolicy.PricedLine line, LineDecision decision) {
+      if (decision == null
+          || !decision.skuId().equals(line.sku().skuId())
+          || !decision
+              .requestedQuantity()
+              .equals(line.quantity().setScale(6, RoundingMode.UNNECESSARY))
+          || decision.quantityUnit() != TradePlanningQuantityUnit.valueOf(line.unit().name())
+          || !Objects.equals(decision.supplyPoolId(), line.preferredSupplyPoolId())) {
+        throw conflict("Supply decision line evidence conflicts with quotation input");
+      }
+    }
+
+    private static Map<UUID, LineDecision> decisionsByLine(
+        PricingResult pricing, SupplyDecisionSnapshot decision) {
+      Map<UUID, LineDecision> byLine = new java.util.HashMap<>();
+      for (LineDecision line : decision.lineDecisions()) {
+        if (byLine.put(line.quotationLineId(), line) != null) {
+          throw conflict("Supply decision contains duplicate quotation line evidence");
+        }
+      }
+      if (byLine.size() != pricing.lines().size()) {
+        throw conflict("Supply decision line set does not match the quotation revision");
+      }
+      return Map.copyOf(byLine);
     }
 
     private static void requireFrozenDecision(
@@ -513,7 +538,7 @@ public record QuotationAggregate(
           || !SupplyDecisionSnapshot.POLICY_VERSION.equals(decision.policyVersion())) {
         throw conflict("Frozen supply decision does not match the selected route evidence");
       }
-      applyDecisions(pricing, decision);
+      verifyFrozenLines(pricing, decision);
     }
 
     private static QuotationDomainException conflict(String message) {

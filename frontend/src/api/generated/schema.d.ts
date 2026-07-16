@@ -943,9 +943,14 @@ export interface components {
             netUnitPrice: components["schemas"]["Money"];
             allocatedCharges?: components["schemas"]["Money"];
             lineTotal: components["schemas"]["Money"];
+            /** @description Null for UNDECIDED and Legacy revisions; complete and verified for FROZEN revisions. */
             allocationMode?: components["schemas"]["SupplyAllocationMode"] | null;
-            supplyType?: components["schemas"]["SupplyType"];
-            /** Format: uuid */
+            /** @description Null for UNDECIDED and Legacy revisions; complete and verified for FROZEN revisions. */
+            supplyType?: components["schemas"]["SupplyType"] | null;
+            /**
+             * Format: uuid
+             * @description An UNDECIDED fixed-pool preference, verified FROZEN evidence, or null for Legacy revisions.
+             */
             supplyPoolId?: string | null;
         };
         LineSupplyDecision: {

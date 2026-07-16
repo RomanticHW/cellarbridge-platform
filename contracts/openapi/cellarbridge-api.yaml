@@ -1635,9 +1635,15 @@ components:
         allocatedCharges: { $ref: '#/components/schemas/Money' }
         lineTotal: { $ref: '#/components/schemas/Money' }
         allocationMode:
+          description: Null for UNDECIDED and Legacy revisions; complete and verified for FROZEN revisions.
           oneOf: [{ $ref: '#/components/schemas/SupplyAllocationMode' }, { type: 'null' }]
-        supplyType: { $ref: '#/components/schemas/SupplyType' }
-        supplyPoolId: { type: [string, 'null'], format: uuid }
+        supplyType:
+          description: Null for UNDECIDED and Legacy revisions; complete and verified for FROZEN revisions.
+          oneOf: [{ $ref: '#/components/schemas/SupplyType' }, { type: 'null' }]
+        supplyPoolId:
+          description: An UNDECIDED fixed-pool preference, verified FROZEN evidence, or null for Legacy revisions.
+          type: [string, 'null']
+          format: uuid
     LineSupplyDecision:
       type: object
       required: [quotationLineId, skuId, requestedQuantity, quantityUnit, allocationMode, supplyPoolId, supplyType]

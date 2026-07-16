@@ -99,10 +99,15 @@ ALTER TABLE quotation.quotation_line
     ADD COLUMN allocation_mode varchar(40),
     ADD CONSTRAINT ck_quotation_line_allocation_mode CHECK ((
         allocation_mode IS NULL
-        OR (allocation_mode = 'FIXED_POOL'
-            AND preferred_supply_pool_id IS NOT NULL
-            AND supply_type IS NOT NULL)
-        OR (allocation_mode = 'ROUTE_ELIGIBLE_AUTO'
-            AND preferred_supply_pool_id IS NULL
-            AND supply_type IS NOT NULL)
+        OR (supply_type IN (
+                'DOMESTIC_ON_HAND',
+                'BONDED_ON_HAND',
+                'HONG_KONG_ON_HAND',
+                'IN_TRANSIT_PRESALE',
+                'OVERSEAS_SOURCING'
+            )
+            AND ((allocation_mode = 'FIXED_POOL'
+                  AND preferred_supply_pool_id IS NOT NULL)
+                 OR (allocation_mode = 'ROUTE_ELIGIBLE_AUTO'
+                     AND preferred_supply_pool_id IS NULL)))
     ) IS TRUE);

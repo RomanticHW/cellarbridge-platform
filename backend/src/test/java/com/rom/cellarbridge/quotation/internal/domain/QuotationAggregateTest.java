@@ -10,8 +10,10 @@ import com.rom.cellarbridge.quotation.internal.domain.QuotationAggregate.Address
 import com.rom.cellarbridge.quotation.internal.domain.QuotationAggregate.Decision;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationAggregate.DraftTerms;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationAggregate.PartnerSnapshot;
+import com.rom.cellarbridge.quotation.internal.domain.QuotationAggregate.Revision;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.LineDraft;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.PriceReference;
+import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.PricingResult;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.QuantityUnit;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.SkuSnapshot;
 import com.rom.cellarbridge.tradeplanning.SupplyAllocationMode;
@@ -28,7 +30,11 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 class QuotationAggregateTest {
 
@@ -38,6 +44,7 @@ class QuotationAggregateTest {
   private static final UUID LINE_ID = UUID.fromString("61000000-0000-4000-8000-000000000001");
   private static final UUID SKU_ID = UUID.fromString("34000000-0000-4000-8000-000000000001");
   private static final UUID EVALUATION_ID = UUID.fromString("62000000-0000-4000-8000-000000000001");
+  private static final UUID POOL_ID = UUID.fromString("36000000-0000-4000-8000-000000000001");
 
   @Test
   void freezesSubmittedRevisionAndRequiresNewRevisionAfterRequestedChanges() {
@@ -118,6 +125,69 @@ class QuotationAggregateTest {
     assertProblem(
         () -> draft().applyRoute(evaluation, pricing(), NOW.plusSeconds(1)),
         "QUOTE_SUPPLY_DECISION_CONFLICT");
+  }
+
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("frozenLineTamperCases")
+  void rejectsFrozenLineTamper(
+      String caseName,
+      SupplyAllocationMode persistedAllocationMode,
+      String persistedSupplyType,
+      String expectedCode) {
+    SupplyDecisionSnapshot decision =
+        decision(
+            SupplyAllocationMode.ROUTE_ELIGIBLE_AUTO,
+            null,
+            TradePlanningSupplyType.DOMESTIC_ON_HAND);
+
+    assertProblem(
+        () -> frozenRevision(pricing(persistedAllocationMode, persistedSupplyType, null), decision),
+        expectedCode);
+  }
+
+  private static Stream<Arguments> frozenLineTamperCases() {
+    return Stream.of(
+        Arguments.of(
+            "missing persisted allocation mode",
+            null,
+            "DOMESTIC_ON_HAND",
+            "QUOTE_SUPPLY_DECISION_CONFLICT"),
+        Arguments.of(
+            "missing persisted supply type",
+            SupplyAllocationMode.ROUTE_ELIGIBLE_AUTO,
+            null,
+            "QUOTE_SUPPLY_DECISION_CONFLICT"),
+        Arguments.of(
+            "mismatched persisted supply type",
+            SupplyAllocationMode.ROUTE_ELIGIBLE_AUTO,
+            "BONDED_ON_HAND",
+            "QUOTE_SUPPLY_DECISION_CONFLICT"));
+  }
+
+  @Test
+  void acceptsFrozenAutoLineWithExactSupplyEvidence() {
+    Revision revision =
+        frozenRevision(
+            pricing(SupplyAllocationMode.ROUTE_ELIGIBLE_AUTO, "DOMESTIC_ON_HAND", null),
+            decision(
+                SupplyAllocationMode.ROUTE_ELIGIBLE_AUTO,
+                null,
+                TradePlanningSupplyType.DOMESTIC_ON_HAND));
+
+    assertThat(revision.supplyDecisionStatus()).isEqualTo(QuotationSupplyDecisionStatus.FROZEN);
+  }
+
+  @Test
+  void acceptsFrozenFixedLineWithExactSupplyEvidence() {
+    Revision revision =
+        frozenRevision(
+            pricing(SupplyAllocationMode.FIXED_POOL, "DOMESTIC_ON_HAND", POOL_ID),
+            decision(
+                SupplyAllocationMode.FIXED_POOL,
+                POOL_ID,
+                TradePlanningSupplyType.DOMESTIC_ON_HAND));
+
+    assertThat(revision.supplyDecisionStatus()).isEqualTo(QuotationSupplyDecisionStatus.FROZEN);
   }
 
   @Test
@@ -246,6 +316,11 @@ class QuotationAggregateTest {
   }
 
   private static QuotationPricingPolicy.PricingResult pricing() {
+    return pricing(null, null, null);
+  }
+
+  private static QuotationPricingPolicy.PricingResult pricing(
+      SupplyAllocationMode allocationMode, String supplyType, UUID supplyPoolId) {
     SkuSnapshot sku =
         new SkuSnapshot(
             SKU_ID,
@@ -269,9 +344,9 @@ class QuotationAggregateTest {
                 sku,
                 new BigDecimal("6"),
                 QuantityUnit.CASE,
-                null,
-                null,
-                null,
+                supplyPoolId,
+                allocationMode,
+                supplyType,
                 new BigDecimal("0.0900"),
                 null,
                 new PriceReference(
@@ -284,24 +359,54 @@ class QuotationAggregateTest {
   }
 
   private static RouteEvaluation evaluation() {
-    SupplyDecisionSnapshot decision =
-        SupplyDecisionSnapshot.create(
-            SupplyDecisionSnapshot.POLICY_VERSION,
-            NOW,
-            EVALUATION_ID,
-            "a".repeat(64),
-            TradeRouteCode.SH_GENERAL_TRADE,
-            NOW,
-            List.of(
-                new SupplyDecisionSnapshot.LineDecision(
-                    LINE_ID,
-                    SKU_ID,
-                    new BigDecimal("6.000000"),
-                    TradePlanningQuantityUnit.CASE,
-                    SupplyAllocationMode.ROUTE_ELIGIBLE_AUTO,
-                    null,
-                    TradePlanningSupplyType.DOMESTIC_ON_HAND)));
-    return evaluation(decision);
+    return evaluation(
+        decision(
+            SupplyAllocationMode.ROUTE_ELIGIBLE_AUTO,
+            null,
+            TradePlanningSupplyType.DOMESTIC_ON_HAND));
+  }
+
+  private static SupplyDecisionSnapshot decision(
+      SupplyAllocationMode allocationMode, UUID supplyPoolId, TradePlanningSupplyType supplyType) {
+    return SupplyDecisionSnapshot.create(
+        SupplyDecisionSnapshot.POLICY_VERSION,
+        NOW,
+        EVALUATION_ID,
+        "a".repeat(64),
+        TradeRouteCode.SH_GENERAL_TRADE,
+        NOW,
+        List.of(
+            new SupplyDecisionSnapshot.LineDecision(
+                LINE_ID,
+                SKU_ID,
+                new BigDecimal("6.000000"),
+                TradePlanningQuantityUnit.CASE,
+                allocationMode,
+                supplyPoolId,
+                supplyType)));
+  }
+
+  private static Revision frozenRevision(
+      PricingResult frozenPricing, SupplyDecisionSnapshot decision) {
+    Revision draft = draft().revision();
+    return new Revision(
+        draft.id(),
+        draft.number(),
+        draft.partnerSnapshot(),
+        draft.terms(),
+        frozenPricing,
+        EVALUATION_ID,
+        "ROUTE-2026-03",
+        TradeRouteCode.SH_GENERAL_TRADE,
+        TradeRouteCode.SH_GENERAL_TRADE,
+        null,
+        QuotationSupplyDecisionStatus.FROZEN,
+        decision,
+        draft.pricePolicyVersion(),
+        draft.approvalPolicyVersion(),
+        List.of(),
+        null,
+        draft.createdAt());
   }
 
   private static RouteEvaluation evaluation(SupplyDecisionSnapshot decision) {

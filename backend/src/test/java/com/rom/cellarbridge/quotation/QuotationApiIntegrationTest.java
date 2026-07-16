@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.rom.cellarbridge.identityaccess.TenantId;
 import com.rom.cellarbridge.quotation.internal.application.QuotationRepository;
+import com.rom.cellarbridge.quotation.internal.domain.QuotationDomainException;
 import com.rom.cellarbridge.test.PostgresIntegrationTestSupport;
 import com.rom.cellarbridge.tradeplanning.TradePlanningException;
 import com.rom.cellarbridge.tradeplanning.TradePlanningService;
@@ -192,6 +193,8 @@ class QuotationApiIntegrationTest extends PostgresIntegrationTestSupport {
         .isEqualTo(evaluationId);
     assertThat(routed.body().path("lines").path(0).path("allocationMode").asText())
         .isEqualTo("ROUTE_ELIGIBLE_AUTO");
+    assertThat(routed.body().path("lines").path(0).path("supplyType").asText())
+        .isEqualTo("BONDED_ON_HAND");
     assertThat(routed.body().path("lines").path(0).path("supplyPoolId").isNull()).isTrue();
     assertThat(routed.body().path("version").asLong()).isEqualTo(1);
     ApiResponse submitted =
@@ -317,6 +320,10 @@ class QuotationApiIntegrationTest extends PostgresIntegrationTestSupport {
   void freezesTheRequestedFixedPoolWithoutAutomaticFallback() throws Exception {
     String poolId = "36000000-0000-4000-8000-000000000001";
     ApiResponse created = createQuotation("6", "CASE", poolId);
+    assertThat(created.body().path("lines").path(0).path("allocationMode").isNull()).isTrue();
+    assertThat(created.body().path("lines").path(0).path("supplyType").isNull()).isTrue();
+    assertThat(created.body().path("lines").path(0).path("supplyPoolId").asText())
+        .isEqualTo(poolId);
     ApiResponse evaluated =
         request(
             "POST",
@@ -332,8 +339,28 @@ class QuotationApiIntegrationTest extends PostgresIntegrationTestSupport {
   }
 
   @Test
+  void hidesHistoricalUndecidedSupplyTypeWhilePreservingFixedPoolPreference() throws Exception {
+    String poolId = "36000000-0000-4000-8000-000000000001";
+    ApiResponse created = createQuotation("6", "CASE", poolId);
+    String quotationId = created.body().path("id").asText();
+    assertThat(
+            jdbc.update(
+                "UPDATE quotation.quotation_line SET supply_type = 'DOMESTIC_ON_HAND' WHERE revision_id = (SELECT current_revision_id FROM quotation.quotation WHERE id = ?::uuid)",
+                quotationId))
+        .isEqualTo(1);
+
+    ApiResponse undecided = get("/api/v1/quotations/" + quotationId, NORTH_MANAGER);
+    JsonNode line = undecided.body().path("lines").path(0);
+    assertThat(undecided.body().path("supplyDecisionStatus").asText()).isEqualTo("UNDECIDED");
+    assertThat(line.path("allocationMode").isNull()).isTrue();
+    assertThat(line.path("supplyType").isNull()).isTrue();
+    assertThat(line.path("supplyPoolId").asText()).isEqualTo(poolId);
+  }
+
+  @Test
   void reevaluatesDraftLegacyEvidenceWithoutExposingUnverifiedLineSupply() throws Exception {
-    ApiResponse created = createQuotation("6", "CASE");
+    String poolId = "36000000-0000-4000-8000-000000000001";
+    ApiResponse created = createQuotation("6", "CASE", poolId);
     String quotationId = created.body().path("id").asText();
     ApiResponse frozen =
         request(
@@ -363,6 +390,7 @@ class QuotationApiIntegrationTest extends PostgresIntegrationTestSupport {
     assertThat(legacy.body().path("supplyDecision").isNull()).isTrue();
     assertThat(legacy.body().path("lines").path(0).path("allocationMode").isNull()).isTrue();
     assertThat(legacy.body().path("lines").path(0).path("supplyType").isNull()).isTrue();
+    assertThat(legacy.body().path("lines").path(0).path("supplyPoolId").isNull()).isTrue();
     assertThat(legacy.body().path("allowedActions"))
         .extracting(JsonNode::asText)
         .contains("EVALUATE_ROUTE");
@@ -404,6 +432,46 @@ class QuotationApiIntegrationTest extends PostgresIntegrationTestSupport {
     ApiResponse unchanged = get("/api/v1/quotations/" + quotationId, NORTH_SALES);
     assertThat(unchanged.body().path("version").asLong()).isZero();
     assertThat(unchanged.body().path("supplyDecisionStatus").asText()).isEqualTo("UNDECIDED");
+  }
+
+  @Test
+  void rejectsTamperedFrozenLineEvidenceAndRoundTripsUntamperedEvidence() throws Exception {
+    TenantId tenant = TenantId.of(UUID.fromString("10000000-0000-4000-8000-000000000001"));
+
+    ApiResponse missingEvidence = createQuotation("6", "CASE");
+    String missingEvidenceId = missingEvidence.body().path("id").asText();
+    evaluateQuotation(missingEvidenceId);
+    assertThat(
+            jdbc.update(
+                "UPDATE quotation.quotation_line SET allocation_mode = NULL, supply_type = NULL WHERE revision_id = (SELECT current_revision_id FROM quotation.quotation WHERE id = ?::uuid)",
+                missingEvidenceId))
+        .isEqualTo(1);
+    assertThatThrownBy(() -> quotationRepository.find(tenant, UUID.fromString(missingEvidenceId)))
+        .isInstanceOfSatisfying(
+            QuotationDomainException.class,
+            exception -> assertThat(exception.code()).isEqualTo("QUOTE_SUPPLY_DECISION_CONFLICT"));
+
+    ApiResponse mismatchedType = createQuotation("6", "CASE");
+    String mismatchedTypeId = mismatchedType.body().path("id").asText();
+    evaluateQuotation(mismatchedTypeId);
+    assertThat(
+            jdbc.update(
+                "UPDATE quotation.quotation_line SET supply_type = 'BONDED_ON_HAND' WHERE revision_id = (SELECT current_revision_id FROM quotation.quotation WHERE id = ?::uuid)",
+                mismatchedTypeId))
+        .isEqualTo(1);
+    assertThatThrownBy(() -> quotationRepository.find(tenant, UUID.fromString(mismatchedTypeId)))
+        .isInstanceOfSatisfying(
+            QuotationDomainException.class,
+            exception -> assertThat(exception.code()).isEqualTo("QUOTE_SUPPLY_DECISION_CONFLICT"));
+
+    ApiResponse untampered = createQuotation("6", "CASE");
+    String untamperedId = untampered.body().path("id").asText();
+    evaluateQuotation(untamperedId);
+    assertThat(quotationRepository.find(tenant, UUID.fromString(untamperedId)))
+        .hasValueSatisfying(
+            quotation ->
+                assertThat(quotation.revision().supplyDecisionStatus())
+                    .isEqualTo(QuotationSupplyDecisionStatus.FROZEN));
   }
 
   @Test
@@ -547,9 +615,13 @@ class QuotationApiIntegrationTest extends PostgresIntegrationTestSupport {
 
   private ApiResponse createAndEvaluate(String quantity, String quantityUnit) throws Exception {
     ApiResponse created = createQuotation(quantity, quantityUnit);
+    return evaluateQuotation(created.body().path("id").asText());
+  }
+
+  private ApiResponse evaluateQuotation(String quotationId) throws Exception {
     return request(
         "POST",
-        "/api/v1/quotations/" + created.body().path("id").asText() + "/route-evaluations",
+        "/api/v1/quotations/" + quotationId + "/route-evaluations",
         NORTH_MANAGER,
         "\"0\"",
         "{}");

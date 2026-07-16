@@ -74,6 +74,18 @@ class QuotationSupplyDecisionV13MigrationIntegrationTest extends PostgresIntegra
         .containsEntry("allocation_mode", null)
         .containsEntry("preferred_supply_pool_id", LEGACY_POOL)
         .containsEntry("supply_type", "DOMESTIC_ON_HAND");
+    assertThatThrownBy(
+            () ->
+                jdbc.update(
+                    "UPDATE quotation.quotation_line SET allocation_mode = 'ROUTE_ELIGIBLE_AUTO', preferred_supply_pool_id = NULL, supply_type = 'UNKNOWN_CURRENT_TYPE' WHERE revision_id = ?",
+                    LEGACY_REVISION))
+        .isInstanceOf(DataIntegrityViolationException.class);
+    assertThatThrownBy(
+            () ->
+                jdbc.update(
+                    "UPDATE quotation.quotation_line SET allocation_mode = 'FIXED_POOL', supply_type = 'UNKNOWN_CURRENT_TYPE' WHERE revision_id = ?",
+                    LEGACY_REVISION))
+        .isInstanceOf(DataIntegrityViolationException.class);
     assertThat(
             jdbc.queryForObject(
                 """

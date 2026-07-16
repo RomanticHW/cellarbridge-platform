@@ -330,7 +330,22 @@ final class QuotationController {
       SupplyAllocationMode allocationMode,
       String supplyType,
       UUID supplyPoolId) {
-    static PriceLineResponse from(PricedLine line, boolean exposeSupplyEvidence) {
+    static PriceLineResponse from(
+        PricedLine line, QuotationSupplyDecisionStatus supplyDecisionStatus) {
+      SupplyAllocationMode allocationMode = null;
+      String supplyType = null;
+      UUID supplyPoolId = null;
+      switch (supplyDecisionStatus) {
+        case UNDECIDED -> supplyPoolId = line.preferredSupplyPoolId();
+        case FROZEN -> {
+          allocationMode = line.allocationMode();
+          supplyType = line.supplyType();
+          supplyPoolId = line.preferredSupplyPoolId();
+        }
+        case LEGACY_REEVALUATION_REQUIRED -> {
+          // Legacy line fields predate verified route-bound evidence and remain hidden.
+        }
+      }
       return new PriceLineResponse(
           line.lineId(),
           new SkuSnapshotResponse(
@@ -353,9 +368,9 @@ final class QuotationController {
           MoneyResponse.of(line.netUnitPrice(), line.currency()),
           MoneyResponse.of(line.allocatedCharges(), line.currency()),
           MoneyResponse.of(line.lineTotal(), line.currency()),
-          exposeSupplyEvidence ? line.allocationMode() : null,
-          exposeSupplyEvidence ? line.supplyType() : null,
-          exposeSupplyEvidence ? line.preferredSupplyPoolId() : null);
+          allocationMode,
+          supplyType,
+          supplyPoolId);
     }
   }
 
@@ -441,12 +456,7 @@ final class QuotationController {
           revision.terms().paymentTermDays(),
           AddressResponse.from(revision.terms().deliveryAddress()),
           revision.pricing().lines().stream()
-              .map(
-                  line ->
-                      PriceLineResponse.from(
-                          line,
-                          revision.supplyDecisionStatus()
-                              != QuotationSupplyDecisionStatus.LEGACY_REEVALUATION_REQUIRED))
+              .map(line -> PriceLineResponse.from(line, revision.supplyDecisionStatus()))
               .toList(),
           MoneyResponse.of(revision.pricing().subtotal(), revision.terms().currency()),
           view.estimatedMarginRate() == null ? null : view.estimatedMarginRate().toPlainString(),
