@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.rom.cellarbridge.identityaccess.TenantId;
 import com.rom.cellarbridge.tradeorder.TradeOrderStatus;
+import com.rom.cellarbridge.tradeorder.TradeOrderSupplyDecisionStatus;
 import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrder.CommercialSnapshot;
 import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrder.Customer;
 import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrder.DeliveryAddress;
@@ -33,6 +34,9 @@ class TradeOrderTest {
     sourceLines.clear();
 
     assertThat(order.status()).isEqualTo(TradeOrderStatus.PENDING_RESERVATION);
+    assertThat(order.supplyDecisionStatus())
+        .isEqualTo(TradeOrderSupplyDecisionStatus.LEGACY_UNVERIFIED);
+    assertThat(order.supplyDecision()).isNull();
     assertThat(order.version()).isZero();
     assertThat(order.commercialSnapshot().lines()).hasSize(1);
     assertThat(order.commercialSnapshot().customer().displayName()).isEqualTo("North Buyer");
@@ -104,7 +108,7 @@ class TradeOrderTest {
   }
 
   private static TradeOrder order(CommercialSnapshot snapshot) {
-    return TradeOrder.create(
+    return TradeOrder.createLegacy(
         UUID.fromString("71000000-0000-4000-8000-000000000001"),
         new TenantId(UUID.fromString("10000000-0000-4000-8000-000000000001")),
         "ORD-202607-000001",
@@ -157,6 +161,7 @@ class TradeOrderTest {
         "CASE",
         new BigDecimal(unitPrice),
         new BigDecimal(total),
+        null,
         null,
         "DOMESTIC_ON_HAND");
   }
