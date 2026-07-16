@@ -41,6 +41,8 @@ AsyncAPI channel/topic 名：`cellarbridge.<domain>.<fact>.v1`。
 
 同版本兼容变化：新增可选字段；放宽消费者可忽略内容；补充非语义描述。
 
+pre-1.0 仓库内同步升级允许 V1 Current 增加完整 `supplyDecision`/`allocationMode`；Legacy 必须同时缺失，显式 null 或混合形态失败关闭。消费者从 Root+Lines 重建并重算 Decision Hash。
+
 新版本：删除/重命名、必填新增、单位变化、enum 语义变化、subject/key 变化、敏感级别变化。
 
 v1/v2 可并行发布；消费者声明支持版本；删除旧版本需 release 记录。

@@ -5,13 +5,8 @@
 
 [English](#english) · [简体中文](#简体中文)
 
-> **Project status — Unit-aware inventory evidence available**
-> The approved design baseline now runs through secure customer acceptance, transactional Inbox
-> consumption, one immutable order per accepted quotation, reliable order-created publication,
-> eventual quotation linking, and tenant/Partner-scoped order views. Inventory lots and supply
-> projections now preserve CASE/BOTTLE units; ROUTE-2026-02 keeps MOQ case-equivalent separate from
-> exact-unit coverage, while authorized exact-stock views expose warehouse priority/version evidence. Availability remains informational until Task 08 reservation succeeds;
-> reservation and later workflows remain planned.
+> **Project status — Supply Decision propagation implemented in stacked review**
+> Quotation freezing and event-to-order propagation are implemented on stacked review branches but are not yet `main` capabilities. They preserve one verified decision through V13/V14 and Current V1 events without reserving inventory. Task 08 reservation remains designed, blocked, and not implemented.
 
 ---
 

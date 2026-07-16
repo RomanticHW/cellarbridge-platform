@@ -33,6 +33,8 @@
 
 ## 3. InventoryLot
 
+Trade Order 的 FROZEN Root、JSON 与行证据必须一致；Legacy 不得从历史 Pool/Type 推断已验证决定。该不变量不写 Inventory。
+
 ### 数量方程
 
 ```text

@@ -2,7 +2,7 @@
 
 ## 1. 设计原则
 
-状态边界：Task 07C Quotation 分支由 V2～V13 migration 实现。V12 保存 Planning selected-route Decision；quotation-only V13 保存修订状态、独立 Snapshot 副本与行 `allocation_mode`。事件传播、`inventory_reservation`、`reservation_allocation`、release/consume 与订单 `RESERVED` 仍不可用。
+状态边界：Task 07C 堆叠 review 分支由 V2～V14 实现；V13 只改 `quotation`，V14 只改 `trade_order` 并保存 FROZEN/Legacy 订单证据。Reservation、Allocation、Movement、release/consume 与订单 `RESERVED` 仍不可用。
 
 - PostgreSQL 18；
 - module schema ownership；
@@ -153,4 +153,4 @@ CHECK (version >= 0)
 
 ## 9. 详细 DDL
 
-Design Baseline 提供逻辑设计；实际 migration 在对应纵向切片创建。当前分支可由 Flyway/Testcontainers 从空库执行到 V13，并验证 V12 → V13 历史报价保留。V10 只改 `inventory`、V11 只改 `catalog`、V12 只改 `trade_planning`、V13 只改 `quotation`；V13 不创建跨 Schema FK，也不执行库存写入。
+Design Baseline 提供逻辑设计；Flyway/Testcontainers 可从空库执行到 V14，并验证 V12→V13 报价和 V13→V14 历史订单保留。V14 owner=`trade_order`，不创建跨 Schema FK 或库存写入。

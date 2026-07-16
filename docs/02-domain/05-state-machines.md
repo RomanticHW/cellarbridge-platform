@@ -66,6 +66,8 @@ stateDiagram-v2
 
 ## 4. Trade Order
 
+供给证据状态与订单状态正交：`FROZEN` 或 `LEGACY_UNVERIFIED` 都从 `PENDING_RESERVATION` 开始；Propagation 不执行任何 Reservation 转移。
+
 ```mermaid
 stateDiagram-v2
     [*] --> PENDING_RESERVATION

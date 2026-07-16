@@ -14,6 +14,7 @@
 6. 内部 API 可以展示审计摘要和行级决定；客户与 Buyer 边界继续隐藏内部证据。事件 V1、AsyncAPI、Trade Order 与 Inventory 均不在本层变更范围。
 7. Quotation PR 不得独立合并；只有基于本分支的 Propagation PR 实现、审阅并 Ready 后，二者才可进入最终顺序合并。
 8. Task 08 才进行实时库存复核与 Reservation 写入；`FROZEN` 不承诺物理库存可用。
+9. 堆叠 Propagation 按 ADR-018 以可选 V1 字段同步传播同一决定；本 ADR 与该层均处于 review、尚未进入 main。
 
 ## 后果
 

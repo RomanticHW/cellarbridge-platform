@@ -22,6 +22,8 @@ Requirements: **UC-QUO-001–003, UC-TRD-001, FR-QUO-001–009, FR-TRD-001–006
 
 `V6` 保存评估与候选；Planning-only V12 保存 selected-route Decision；quotation-only V13 保存独立 Revision 副本与行模式。FROZEN 是分配约束，不是 Reservation，AUTO 不冻结 Pool/Lot。
 
+Propagation review 以 Current V1 将同一 Hash 传播到 trade_order-only V14；Legacy 输入保持不可验证且阻止 Reservation。
+
 策略版本固定为：
 
 | Policy | Version |
