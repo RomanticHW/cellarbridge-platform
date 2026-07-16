@@ -25,6 +25,13 @@ async function login(browser: Browser, username: string): Promise<AuthenticatedP
   return { page, browserErrors };
 }
 
+async function openSelect(page: Page, label: string) {
+  await page
+    .locator('.ant-select')
+    .filter({ has: page.getByLabel(label) })
+    .click();
+}
+
 function markQuotationLegacy(quotationId: string) {
   expect(quotationId).toMatch(/^[0-9a-f-]{36}$/);
   execFileSync('docker', [
@@ -71,6 +78,7 @@ test('creates, routes, approves, issues, and safely previews a revisioned quotat
   await sales.page.getByLabel('Active customer').click();
   await sales.page.getByText('Aurora Market Services · PAR-DEMO-QUOTATION').click();
   await sales.page.getByLabel('Address line').fill('88 Harbor Avenue');
+  await sales.page.getByLabel('Line 1 quantity').fill('6');
   await sales.page.getByLabel('Line 1 discount rate').fill('0.0900');
   await sales.page.getByRole('button', { name: 'Save quotation draft' }).click();
 
@@ -157,7 +165,13 @@ test('creates, routes, approves, issues, and safely previews a revisioned quotat
 test('freezes an explicitly selected supply pool without fallback', async ({ browser }) => {
   const sales = await login(browser, 'north.sales');
   await sales.page.getByRole('menuitem', { name: 'Catalog & supply' }).click();
+  const catalogResponse = sales.page.waitForResponse(
+    (response) =>
+      response.url().includes('/api/v1/catalog/skus') &&
+      new URL(response.url()).searchParams.get('keyword') === 'Moonlit Terrace',
+  );
   await sales.page.getByRole('textbox', { name: 'Search catalog' }).fill('Moonlit Terrace');
+  expect((await catalogResponse).ok()).toBe(true);
   await expect(sales.page.getByText('CB-MTV-2019-750X6')).toBeVisible();
   await sales.page.getByRole('button', { name: 'Add to quote selection' }).first().click();
   await sales.page.getByRole('link', { name: 'Create quotation with selection' }).click();
@@ -165,14 +179,17 @@ test('freezes an explicitly selected supply pool without fallback', async ({ bro
   await sales.page.getByLabel('Active customer').click();
   await sales.page.getByText('Aurora Market Services · PAR-DEMO-QUOTATION').click();
   await sales.page.getByLabel('Address line').fill('88 Harbor Avenue');
-  await sales.page.getByLabel('Line 1 supply strategy').click();
-  await sales.page.getByText('Specific supply pool').click();
-  await sales.page.getByLabel('Line 1 specific supply pool').click();
+  await openSelect(sales.page, 'Line 1 supply strategy');
+  await sales.page.keyboard.press('ArrowDown');
+  await sales.page.keyboard.press('Enter');
+  await openSelect(sales.page, 'Line 1 specific supply pool');
   await sales.page
-    .getByRole('option')
+    .locator('.ant-select-item-option')
     .filter({ hasText: /DOMESTIC ON HAND.*CASE/ })
-    .first()
     .click();
+  await expect(
+    sales.page.getByText(/Eastbank.*DOMESTIC ON HAND.*CASE.*HIGH/).first(),
+  ).toBeVisible();
   await sales.page.getByRole('button', { name: 'Save quotation draft' }).click();
   await sales.page.getByRole('button', { name: 'Evaluate routes' }).click();
 
