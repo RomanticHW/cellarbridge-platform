@@ -363,6 +363,14 @@ public class CustomerQuotationService {
 
   private static void requireAction(PortalContext context, String action) {
     if (!context.allowedActions().contains(action)) {
+      if (context.quotation().revision().supplyDecisionStatus()
+              != QuotationSupplyDecisionStatus.FROZEN
+          || context.quotation().revision().supplyDecision() == null) {
+        throw problem(
+            HttpStatus.CONFLICT,
+            "QUOTE_SUPPLY_DECISION_REQUIRED",
+            "A complete frozen supply decision is required for this quotation action");
+      }
       throw problem(
           HttpStatus.CONFLICT,
           "QUOTE_NOT_ACCEPTABLE",
@@ -580,12 +588,14 @@ public class CustomerQuotationService {
   private static void requireFrozenPropagation(QuotationAggregate quotation) {
     SupplyDecisionSnapshot decision = quotation.revision().supplyDecision();
     if (quotation.revision().supplyDecisionStatus() != QuotationSupplyDecisionStatus.FROZEN
-        || decision == null
-        || quotation.revision().selectedRouteCode() != decision.selectedRouteCode()) {
+        || decision == null) {
       throw problem(
           HttpStatus.CONFLICT,
-          "QUOTE_NOT_ACCEPTABLE",
-          "Quotation revision does not contain a verified frozen supply decision");
+          "QUOTE_SUPPLY_DECISION_REQUIRED",
+          "A complete frozen supply decision is required for this quotation action");
+    }
+    if (quotation.revision().selectedRouteCode() != decision.selectedRouteCode()) {
+      throw frozenEvidenceConflict();
     }
     Map<UUID, LineDecision> decisions = new HashMap<>();
     for (LineDecision line : decision.lineDecisions()) {
