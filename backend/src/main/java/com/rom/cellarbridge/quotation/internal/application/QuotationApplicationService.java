@@ -14,6 +14,7 @@ import com.rom.cellarbridge.partner.PartnerEligibilityService;
 import com.rom.cellarbridge.partner.PartnerEligibilityService.AddressSnapshot;
 import com.rom.cellarbridge.partner.PartnerEligibilityService.EligibilitySnapshot;
 import com.rom.cellarbridge.quotation.QuotationStatus;
+import com.rom.cellarbridge.quotation.QuotationSupplyDecisionStatus;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationAggregate;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationAggregate.Address;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationAggregate.ApprovalDecision;
@@ -29,6 +30,7 @@ import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.Pri
 import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.PricingResult;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.QuantityUnit;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.SkuSnapshot;
+import com.rom.cellarbridge.tradeplanning.SupplyDecisionSnapshot;
 import com.rom.cellarbridge.tradeplanning.TradePlanningException;
 import com.rom.cellarbridge.tradeplanning.TradePlanningQuantityUnit;
 import com.rom.cellarbridge.tradeplanning.TradePlanningService;
@@ -243,19 +245,7 @@ public class QuotationApplicationService {
     QuotationAggregate before = requireQuotation(context, quotationId);
     before.requireOwnerOrManager(context.userId(), canManage(context));
     requireExpected(before, expectedVersion);
-    RouteEvaluation current = evaluate(before, context, null, null, false);
-    boolean stillEligible =
-        current.candidates().stream()
-            .anyMatch(
-                candidate ->
-                    candidate.routeCode() == before.revision().selectedRouteCode()
-                        && candidate.eligibility() == TradePlanningService.Eligibility.ELIGIBLE);
-    if (!stillEligible) {
-      throw problem(
-          HttpStatus.CONFLICT,
-          "QUOTE_ROUTE_NOT_ELIGIBLE",
-          "The selected route no longer satisfies current hard constraints");
-    }
+    verifyOriginalEvaluation(before, context);
     QuotationAggregate after = before.issue(clock.instant());
     byte[] tokenBytes = new byte[32];
     SECURE_RANDOM.nextBytes(tokenBytes);
@@ -324,6 +314,40 @@ public class QuotationApplicationService {
     }
   }
 
+  private void verifyOriginalEvaluation(QuotationAggregate quotation, TenantContext context) {
+    if (quotation.revision().supplyDecisionStatus() != QuotationSupplyDecisionStatus.FROZEN
+        || quotation.revision().supplyDecision() == null
+        || quotation.revision().routeEvaluationId() == null) {
+      throw problem(
+          HttpStatus.UNPROCESSABLE_ENTITY,
+          "QUOTE_SUPPLY_DECISION_REQUIRED",
+          "A complete frozen supply decision is required before issue");
+    }
+    RouteEvaluation source;
+    try {
+      source =
+          tradePlanningService.get(context.tenantId(), quotation.revision().routeEvaluationId());
+    } catch (TradePlanningException | IllegalStateException exception) {
+      throw problem(
+          HttpStatus.CONFLICT,
+          "QUOTE_SUPPLY_DECISION_CONFLICT",
+          "The original route evaluation can no longer be verified");
+    }
+    SupplyDecisionSnapshot frozen = quotation.revision().supplyDecision();
+    if (!source.evaluationId().equals(quotation.revision().routeEvaluationId())
+        || !source.policyVersion().equals(quotation.revision().routePolicyVersion())
+        || source.selectedRouteCode() != quotation.revision().selectedRouteCode()
+        || source.supplyDecision() == null
+        || !source.inputHash().equals(frozen.sourceRouteInputHash())
+        || !source.supplyDecision().decisionHash().equals(frozen.decisionHash())
+        || !source.supplyDecision().equals(frozen)) {
+      throw problem(
+          HttpStatus.CONFLICT,
+          "QUOTE_SUPPLY_DECISION_CONFLICT",
+          "The frozen supply decision conflicts with its original route evaluation");
+    }
+  }
+
   private PreparedDraft prepare(TenantContext context, CreateCommand command, Instant now) {
     validate(command, now);
     EligibilitySnapshot eligibility;
@@ -383,15 +407,6 @@ public class QuotationApplicationService {
             "QUOTE_PRICE_STALE",
             "No effective price exists for one or more quotation lines");
       }
-      String supplyType =
-          item.supplies().stream()
-              .filter(
-                  supply ->
-                      input.preferredSupplyPoolId() == null
-                          || supply.supplyPoolId().equals(input.preferredSupplyPoolId()))
-              .findFirst()
-              .map(CatalogSearchQuery.SupplyProjectionView::supplyType)
-              .orElse(null);
       lines.add(
           new LineDraft(
               UUID.randomUUID(),
@@ -399,7 +414,8 @@ public class QuotationApplicationService {
               input.quantity(),
               input.unit(),
               input.preferredSupplyPoolId(),
-              supplyType,
+              null,
+              null,
               input.discountRate() == null
                   ? BigDecimal.ZERO.setScale(QuotationPricingPolicy.RATE_SCALE)
                   : QuotationPricingPolicy.rate(input.discountRate()),
@@ -429,7 +445,8 @@ public class QuotationApplicationService {
                         line.quantity(),
                         line.unit(),
                         line.preferredSupplyPoolId(),
-                        line.supplyType(),
+                        null,
+                        null,
                         line.discountRate(),
                         line.manualPrice() ? manualBasePrice(line) : null,
                         new PriceReference(
@@ -500,6 +517,15 @@ public class QuotationApplicationService {
   private List<String> allowedActions(QuotationAggregate quotation, TenantContext context) {
     List<String> actions = new ArrayList<>();
     actions.add("VIEW");
+    if (quotation.revision().supplyDecisionStatus()
+        == QuotationSupplyDecisionStatus.LEGACY_REEVALUATION_REQUIRED) {
+      if (quotation.status() == QuotationStatus.DRAFT
+          && (quotation.ownerId().equals(context.userId()) || canManage(context))
+          && context.hasPermission(PermissionCode.QUOTATION_CREATE)) {
+        actions.add("EVALUATE_ROUTE");
+      }
+      return List.copyOf(actions);
+    }
     boolean ownerOrManager = quotation.ownerId().equals(context.userId()) || canManage(context);
     if (ownerOrManager
         && context.hasPermission(PermissionCode.QUOTATION_CREATE)
@@ -508,7 +534,9 @@ public class QuotationApplicationService {
       actions.add("EDIT");
       if (quotation.status() == QuotationStatus.DRAFT) {
         actions.add("EVALUATE_ROUTE");
-        actions.add("SUBMIT");
+        if (quotation.revision().supplyDecisionStatus() == QuotationSupplyDecisionStatus.FROZEN) {
+          actions.add("SUBMIT");
+        }
       }
     }
     if (context.hasPermission(PermissionCode.QUOTATION_APPROVE)
@@ -518,7 +546,8 @@ public class QuotationApplicationService {
     }
     if (ownerOrManager
         && context.hasPermission(PermissionCode.QUOTATION_ISSUE)
-        && quotation.status() == QuotationStatus.APPROVED) {
+        && quotation.status() == QuotationStatus.APPROVED
+        && quotation.revision().supplyDecisionStatus() == QuotationSupplyDecisionStatus.FROZEN) {
       actions.add("ISSUE");
     }
     return List.copyOf(actions);

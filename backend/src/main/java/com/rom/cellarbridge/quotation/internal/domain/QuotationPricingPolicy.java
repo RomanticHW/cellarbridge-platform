@@ -1,6 +1,7 @@
 package com.rom.cellarbridge.quotation.internal.domain;
 
 import com.rom.cellarbridge.quotation.internal.domain.QuotationDomainException.FailureKind;
+import com.rom.cellarbridge.tradeplanning.SupplyAllocationMode;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
@@ -80,6 +81,7 @@ public final class QuotationPricingPolicy {
         draft.quantity(),
         draft.unit(),
         draft.preferredSupplyPoolId(),
+        draft.allocationMode(),
         draft.supplyType(),
         listUnitPrice,
         draft.discountRate(),
@@ -173,10 +175,35 @@ public final class QuotationPricingPolicy {
       BigDecimal quantity,
       QuantityUnit unit,
       UUID preferredSupplyPoolId,
+      SupplyAllocationMode allocationMode,
       String supplyType,
       BigDecimal discountRate,
       BigDecimal manualUnitPrice,
-      PriceReference reference) {}
+      PriceReference reference) {
+
+    public LineDraft(
+        UUID lineId,
+        SkuSnapshot sku,
+        BigDecimal quantity,
+        QuantityUnit unit,
+        UUID preferredSupplyPoolId,
+        String supplyType,
+        BigDecimal discountRate,
+        BigDecimal manualUnitPrice,
+        PriceReference reference) {
+      this(
+          lineId,
+          sku,
+          quantity,
+          unit,
+          preferredSupplyPoolId,
+          null,
+          supplyType,
+          discountRate,
+          manualUnitPrice,
+          reference);
+    }
+  }
 
   public record PricedLine(
       UUID lineId,
@@ -184,6 +211,7 @@ public final class QuotationPricingPolicy {
       BigDecimal quantity,
       QuantityUnit unit,
       UUID preferredSupplyPoolId,
+      SupplyAllocationMode allocationMode,
       String supplyType,
       BigDecimal listUnitPrice,
       BigDecimal discountRate,
