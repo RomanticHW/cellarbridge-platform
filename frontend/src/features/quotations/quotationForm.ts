@@ -19,13 +19,28 @@ export const quotationFormSchema = z.object({
   postalCode: z.string().trim().max(20),
   lines: z
     .array(
-      z.object({
-        skuId: z.string().uuid('Select an active SKU'),
-        quantity: z.string().regex(decimal, 'Use a positive quantity'),
-        unit: z.enum(['CASE', 'BOTTLE']),
-        discountRate: z.string().regex(rate, 'Use a rate from 0 up to, but not including, 1'),
-        manualUnitPrice: z.string().regex(money, 'Use up to four decimal places').or(z.literal('')),
-      }),
+      z
+        .object({
+          skuId: z.string().uuid('Select an active SKU'),
+          quantity: z.string().regex(decimal, 'Use a positive quantity'),
+          unit: z.enum(['CASE', 'BOTTLE']),
+          supplyStrategy: z.enum(['AUTO', 'FIXED']),
+          preferredSupplyPoolId: z.string().uuid().optional(),
+          discountRate: z.string().regex(rate, 'Use a rate from 0 up to, but not including, 1'),
+          manualUnitPrice: z
+            .string()
+            .regex(money, 'Use up to four decimal places')
+            .or(z.literal('')),
+        })
+        .superRefine((line, context) => {
+          if (line.supplyStrategy === 'FIXED' && line.preferredSupplyPoolId === undefined) {
+            context.addIssue({
+              code: 'custom',
+              path: ['preferredSupplyPoolId'],
+              message: 'Select an automatically reservable supply pool',
+            });
+          }
+        }),
     )
     .min(1, 'Add at least one line')
     .max(50)
@@ -57,7 +72,17 @@ export const emptyQuotationForm: QuotationFormValues = {
   district: '',
   line1: '',
   postalCode: '',
-  lines: [{ skuId: '', quantity: '1', unit: 'CASE', discountRate: '0', manualUnitPrice: '' }],
+  lines: [
+    {
+      skuId: '',
+      quantity: '1',
+      unit: 'CASE',
+      supplyStrategy: 'AUTO',
+      preferredSupplyPoolId: undefined,
+      discountRate: '0',
+      manualUnitPrice: '',
+    },
+  ],
 };
 
 export function toQuotationRequest(values: QuotationFormValues): QuotationDraftRequest {
@@ -78,6 +103,8 @@ export function toQuotationRequest(values: QuotationFormValues): QuotationDraftR
     lines: values.lines.map((line) => ({
       skuId: line.skuId,
       quantity: { value: line.quantity, unit: line.unit },
+      preferredSupplyPoolId:
+        line.supplyStrategy === 'FIXED' ? line.preferredSupplyPoolId : undefined,
       discountRate: line.discountRate,
       manualUnitPrice:
         line.manualUnitPrice === ''
@@ -104,6 +131,8 @@ export function formFromQuotation(quotation: QuotationDetail): QuotationFormValu
       skuId: line.sku.skuId,
       quantity: line.quantity.value,
       unit: line.quantity.unit,
+      supplyStrategy: line.supplyPoolId == null ? 'AUTO' : 'FIXED',
+      preferredSupplyPoolId: line.supplyPoolId ?? undefined,
       discountRate: line.discountRate ?? '0',
       manualUnitPrice: '',
     })),

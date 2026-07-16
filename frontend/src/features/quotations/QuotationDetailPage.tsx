@@ -55,6 +55,7 @@ const decisionSchema = z.object({
 });
 type OverrideValues = z.infer<typeof overrideSchema>;
 type DecisionValues = z.infer<typeof decisionSchema>;
+type SupplyDecisionLine = NonNullable<QuotationDetail['supplyDecision']>['lineDecisions'][number];
 
 const lineColumns: TableProps<QuotationDetail['lines'][number]>['columns'] = [
   {
@@ -84,6 +85,40 @@ const lineColumns: TableProps<QuotationDetail['lines'][number]>['columns'] = [
   {
     title: 'Line total',
     render: (_, line) => `${line.lineTotal.currency} ${line.lineTotal.amount}`,
+  },
+  {
+    title: 'Supply allocation',
+    render: (_, line) =>
+      line.allocationMode === 'FIXED_POOL'
+        ? 'Specific pool'
+        : line.allocationMode === 'ROUTE_ELIGIBLE_AUTO'
+          ? 'Automatic'
+          : 'Not decided',
+  },
+];
+
+const supplyDecisionColumns: TableProps<SupplyDecisionLine>['columns'] = [
+  {
+    title: 'SKU',
+    dataIndex: 'skuId',
+    render: (value: string) => <Typography.Text code>{value}</Typography.Text>,
+  },
+  {
+    title: 'Allocation',
+    dataIndex: 'allocationMode',
+    render: (value: SupplyDecisionLine['allocationMode']) =>
+      value === 'FIXED_POOL' ? 'Specific pool' : 'Automatic (route eligible)',
+  },
+  {
+    title: 'Supply type',
+    dataIndex: 'supplyType',
+    render: (value: string) => value.replaceAll('_', ' '),
+  },
+  {
+    title: 'Supply pool',
+    dataIndex: 'supplyPoolId',
+    render: (value?: string | null) =>
+      value ? <Typography.Text code>{value}</Typography.Text> : 'Selected at reservation time',
   },
 ];
 
@@ -311,6 +346,68 @@ export function QuotationDetailPage() {
             pagination={false}
             scroll={{ x: 800 }}
           />
+        </Card>
+        <Card
+          title="Supply decision"
+          extra={
+            <Tag color={quotation.supplyDecisionStatus === 'FROZEN' ? 'success' : 'warning'}>
+              {quotation.supplyDecisionStatus.replaceAll('_', ' ')}
+            </Tag>
+          }
+        >
+          {quotation.supplyDecisionStatus === 'LEGACY_REEVALUATION_REQUIRED' ? (
+            <Alert
+              showIcon
+              type="warning"
+              title="Historical revision requires a verified supply decision"
+              description="This route evidence predates decision freezing. The revision is view-only and cannot be submitted, issued, accepted, or rejected."
+            />
+          ) : quotation.supplyDecisionStatus === 'UNDECIDED' || !quotation.supplyDecision ? (
+            <Alert
+              showIcon
+              type="info"
+              title="Supply has not been decided"
+              description="Evaluate a route to freeze a line-level supply type. Inventory is not reserved by this step."
+            />
+          ) : (
+            <Space orientation="vertical" size="middle" className="quotation-page-stack">
+              <Alert
+                showIcon
+                type="success"
+                title="Route-bound supply decision frozen"
+                description="This evidence constrains later reservation; it does not reserve inventory or a Lot."
+              />
+              <Descriptions column={{ xs: 1, md: 2, lg: 3 }} size="small">
+                <Descriptions.Item label="Policy">
+                  {quotation.supplyDecision.policyVersion}
+                </Descriptions.Item>
+                <Descriptions.Item label="Selected route">
+                  {quotation.supplyDecision.selectedRouteCode.replaceAll('_', ' ')}
+                </Descriptions.Item>
+                <Descriptions.Item label="Decided">
+                  {new Date(quotation.supplyDecision.decidedAt).toLocaleString()}
+                </Descriptions.Item>
+                <Descriptions.Item label="Inventory evidence as of">
+                  {new Date(quotation.supplyDecision.inventoryDataAsOf).toLocaleString()}
+                </Descriptions.Item>
+                <Descriptions.Item label="Evaluation ID">
+                  <Typography.Text code>
+                    {quotation.supplyDecision.sourceRouteEvaluationId}
+                  </Typography.Text>
+                </Descriptions.Item>
+                <Descriptions.Item label="Decision hash">
+                  <Typography.Text code>{quotation.supplyDecision.decisionHash}</Typography.Text>
+                </Descriptions.Item>
+              </Descriptions>
+              <Table
+                rowKey="quotationLineId"
+                columns={supplyDecisionColumns}
+                dataSource={quotation.supplyDecision.lineDecisions}
+                pagination={false}
+                scroll={{ x: 760 }}
+              />
+            </Space>
+          )}
         </Card>
         <Card title="Trade route explanation" extra={route && <Tag>{route.policyVersion}</Tag>}>
           {!route ? (

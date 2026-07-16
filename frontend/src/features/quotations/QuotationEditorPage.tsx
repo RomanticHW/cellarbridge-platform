@@ -50,6 +50,8 @@ export function QuotationEditorPage() {
         skuId,
         quantity: '1',
         unit: 'CASE',
+        supplyStrategy: 'AUTO',
+        preferredSupplyPoolId: undefined,
         discountRate: '0',
         manualUnitPrice: '',
       })) ?? emptyQuotationForm.lines;
@@ -73,6 +75,7 @@ export function QuotationEditorPage() {
     control,
     handleSubmit,
     reset,
+    setValue,
     formState: { errors, isDirty },
   } = useForm<QuotationFormValues>({
     resolver: zodResolver(quotationFormSchema),
@@ -83,6 +86,7 @@ export function QuotationEditorPage() {
   });
   const { fields, append, remove } = useFieldArray({ control, name: 'lines' });
   const currency = useWatch({ control, name: 'currency' });
+  const lineValues = useWatch({ control, name: 'lines' });
 
   useEffect(() => {
     if (quotationQuery.data !== undefined) reset(formFromQuotation(quotationQuery.data.data));
@@ -355,6 +359,8 @@ export function QuotationEditorPage() {
                       skuId: '',
                       quantity: '1',
                       unit: 'CASE',
+                      supplyStrategy: 'AUTO',
+                      preferredSupplyPoolId: undefined,
                       discountRate: '0',
                       manualUnitPrice: '',
                     })
@@ -383,6 +389,15 @@ export function QuotationEditorPage() {
                             showSearch
                             optionFilterProp="label"
                             options={skuOptions}
+                            onChange={(value) => {
+                              if (value !== input.value) {
+                                setValue(`lines.${index}.preferredSupplyPoolId`, undefined, {
+                                  shouldDirty: true,
+                                  shouldValidate: true,
+                                });
+                              }
+                              input.onChange(value);
+                            }}
                           />
                         )}
                       />
@@ -413,10 +428,98 @@ export function QuotationEditorPage() {
                               { value: 'CASE', label: 'Case' },
                               { value: 'BOTTLE', label: 'Bottle' },
                             ]}
+                            onChange={(value) => {
+                              if (value !== input.value) {
+                                setValue(`lines.${index}.preferredSupplyPoolId`, undefined, {
+                                  shouldDirty: true,
+                                  shouldValidate: true,
+                                });
+                              }
+                              input.onChange(value);
+                            }}
                           />
                         )}
                       />
                     </Form.Item>
+                    <Form.Item label="Supply strategy" required>
+                      <Controller
+                        control={control}
+                        name={`lines.${index}.supplyStrategy`}
+                        render={({ field: input }) => (
+                          <Select
+                            {...input}
+                            aria-label={`Line ${index + 1} supply strategy`}
+                            options={[
+                              { value: 'AUTO', label: 'Automatic' },
+                              { value: 'FIXED', label: 'Specific supply pool' },
+                            ]}
+                            onChange={(value) => {
+                              input.onChange(value);
+                              if (value === 'AUTO') {
+                                setValue(`lines.${index}.preferredSupplyPoolId`, undefined, {
+                                  shouldDirty: true,
+                                  shouldValidate: true,
+                                });
+                              }
+                            }}
+                          />
+                        )}
+                      />
+                    </Form.Item>
+                    {lineValues?.[index]?.supplyStrategy === 'FIXED' && (
+                      <Form.Item
+                        label="Specific supply pool"
+                        required
+                        validateStatus={
+                          errors.lines?.[index]?.preferredSupplyPoolId ? 'error' : undefined
+                        }
+                        help={errors.lines?.[index]?.preferredSupplyPoolId?.message}
+                      >
+                        <Controller
+                          control={control}
+                          name={`lines.${index}.preferredSupplyPoolId`}
+                          render={({ field: input }) => {
+                            const current = lineValues[index];
+                            const choices =
+                              catalog.data?.items
+                                .find((item) => item.sku.skuId === current.skuId)
+                                ?.supplies.filter(
+                                  (supply) =>
+                                    supply.quantityUnit === current.unit &&
+                                    supply.automaticallyReservable,
+                                ) ?? [];
+                            const unavailable =
+                              input.value !== undefined &&
+                              !choices.some((supply) => supply.supplyPoolId === input.value);
+                            return (
+                              <Space
+                                orientation="vertical"
+                                size="small"
+                                className="quotation-page-stack"
+                              >
+                                <Select
+                                  {...input}
+                                  aria-label={`Line ${index + 1} specific supply pool`}
+                                  placeholder="Select a reservable pool"
+                                  options={choices.map((supply) => ({
+                                    value: supply.supplyPoolId,
+                                    label: `${supply.locationLabel} · ${supply.supplyType.replaceAll('_', ' ')} · ${supply.quantityUnit} · ${supply.displayQuantityBand}`,
+                                  }))}
+                                />
+                                {unavailable && (
+                                  <Alert
+                                    showIcon
+                                    type="warning"
+                                    title="Previously selected pool is no longer available"
+                                    description="Choose another automatically reservable pool or switch this line to Automatic."
+                                  />
+                                )}
+                              </Space>
+                            );
+                          }}
+                        />
+                      </Form.Item>
+                    )}
                     <Form.Item
                       label="Discount rate"
                       required
