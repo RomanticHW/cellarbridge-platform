@@ -192,8 +192,9 @@ Current versions and planned targets are recorded separately in [the technology 
 ```
 
 The executable application keeps every Spring Modulith business module as a direct child of
-`com.rom.cellarbridge`. Identity/access, partner onboarding, catalog/supply search, quotation/trade planning, customer quotation decisions, and quote-to-order conversion are available;
-unit-aware inventory visibility is also available as readiness evidence. Remaining business navigation is marked `Planned` until its complete vertical slice is delivered.
+`com.rom.cellarbridge`. Identity/access, partner onboarding, catalog/supply search, quotation/trade planning, customer quotation decisions, quote-to-order conversion, and unit-aware inventory visibility are available. Remaining business navigation is marked `Planned` until its complete vertical slice is delivered.
+
+> Quotation-owned route-bound Supply Decision freezing, V13, OpenAPI 1.6, and the AUTO/FIXED editor are implemented in review on the Task 07C Quotation branch. They are not a `main` capability until the later Propagation layer is review-ready and the sequential merge gate is approved.
 
 ### 8. Run the foundation
 

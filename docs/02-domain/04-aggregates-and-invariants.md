@@ -84,6 +84,9 @@ available = on_hand - reserved
 11. 接受、拒绝、撤销和过期为互斥终态；
 12. 接受命令按报价修订和客户操作幂等；
 13. 发出/接受后商品、客户、价格、路径和条款快照不可修改。
+14. 提交、签发和客户接受/拒绝要求当前修订拥有完整 `FROZEN` Supply Decision；路线、Decision 与按 `quotationLineId` 匹配的报价行必须一致。
+15. `ROUTE_ELIGIBLE_AUTO` 冻结供给类型但不冻结 Pool/Lot；`FIXED_POOL` 冻结显式 Pool 且不允许 fallback。
+16. Legacy 修订不伪造 Snapshot/Hash；DRAFT 可显式重新评估，非 DRAFT 保持只读。
 
 ### 金额公式
 

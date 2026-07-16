@@ -8,7 +8,7 @@ Requirements: **UC-QUO-004, FR-QUO-009–011**
 
 - 已签发报价生成 256-bit URL-safe capability token；数据库只保存 SHA-256 摘要。访问上下文绑定 tenant、Partner、报价、当前修订、允许动作、条款版本、报价截止时间、token 失效时间与撤销时间。
 - 客户页面只返回明确 allow-list：公开供应商/客户身份、SKU 快照、数量、单价、公开费用、总额、币种、付款条款、有效期、公开路线说明和条款摘要。成本、毛利、路线评分/拒绝、内部评论与库存批次不会序列化。
-- `SENT` 且 `now < expiresAt` 时可接受或拒绝；接受、拒绝和到期共享同一报价行锁、状态机与唯一客户决定约束，最终状态互斥。
+- `SENT`、`FROZEN` 且 `now < expiresAt` 时可接受或拒绝；Legacy SENT 仅可查看，直接接受/拒绝返回 `QUOTE_SUPPLY_DECISION_REQUIRED`。接受、拒绝和到期共享同一报价行锁、状态机与唯一客户决定约束。
 - 接受和拒绝要求 `Idempotency-Key`。相同 key 与相同规范请求返回原决定；相同 key 与不同请求返回 `IDEMPOTENCY_KEY_REUSED`；不同 key 的并发请求仍收敛到同一不可变决定。
 - 接受事务原子保存报价状态、`customer_decision`、HTTP 幂等结果、安全审计和完整 `QuotationAcceptedV1` 待发布 envelope。任务不创建订单。
 - 到期工作使用 `FOR UPDATE SKIP LOCKED` 批次领取、30 秒 lease 与可重复完成；接受命令仍在事务内即时检查截止时间，不依赖调度及时性。
@@ -19,6 +19,8 @@ Requirements: **UC-QUO-004, FR-QUO-009–011**
 演示 profile 沿用批准的无账号高熵 token 方案，不在本切片扩展 Buyer OIDC。下列请求统一为 404，避免报价枚举：格式错误、未知、撤销、token 已失效，或 tenant/Partner/报价/修订绑定不一致。有效 token 所绑定的报价已到期时，安全 GET 返回 `EXPIRED` 终态；写请求返回 `QUOTE_EXPIRED`。
 
 前端文档包含 `no-referrer` meta；后端返回 `Referrer-Policy: no-referrer` 与 `Cache-Control: no-store`；nginx 对 `/portal/quotes/*`、`/portal/quotations/*` 及 portal API 禁用 access/error token path logging，并设置 CSP、frame denial 与 `nosniff`。专用 Playwright 配置关闭 trace/screenshot，E2E 进程会流式脱敏 stdout/stderr 中的 capability path，失败清理路径仍先扫描服务日志。审计只保存 portal access UUID 和 `CUSTOMER_TOKEN` actor type，不保存原 token、原幂等键或请求体。
+
+客户条款明确：报价版本冻结价格和路线绑定供给参数；实际库存仍以客户接受后的库存预占结果为准。Public DTO 不返回 Mode、Type、Pool、Policy、Hash 或 Inventory evidence。
 
 公开入口采用两层限流：nginx 按真实边缘来源地址限流，应用按 capability 摘要分别限制读取与决定请求；两层 429 都是不含 token path 的 `application/problem+json`。Compose 暴露的 backend 端口只用于本地诊断，portal 客户流量必须经过 frontend/nginx 入口。
 

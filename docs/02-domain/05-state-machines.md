@@ -61,6 +61,8 @@ stateDiagram-v2
 - 报价到期由命令/调度显式落状态，接受命令同时执行即时过期判断；
 - `ACCEPTED` 到 `CONVERTED` 最终一致；转换失败不撤销客户接受，而进入可恢复状态/告警；
 - 已 ACCEPTED 不允许撤销，需订单取消流程处理。
+- 修订另有正交供给决策状态：`UNDECIDED → FROZEN`；V13 前已有路线的修订升级为 `LEGACY_REEVALUATION_REQUIRED`。DRAFT Legacy 可重新评估进入 `FROZEN`，非 DRAFT Legacy 不静默升级。
+- `submit`、`issue`、客户 `accept/reject` 只允许 `FROZEN`；冻结不触发库存 Reservation 或订单 `RESERVED`。
 
 ## 4. Trade Order
 

@@ -33,6 +33,7 @@ Status date: **2026-07-15**
 | Inventory unit readiness | Available | CASE/BOTTLE Lot 与 Catalog projection 分离；Warehouse priority/version 仅在授权 exact-lot 视图可见；fresh seed、V9 → V11 保留性、约束、权限、E2E 与双单位 benchmark 证据 |
 | Quotation and trade planning | Available | revisioned snapshots/pricing, ROUTE-2026-02 exact-unit supply coverage, independent approval, issue token, customer-safe preview, React workspace, Testcontainers and real OIDC E2E |
 | Route supply-decision Planning evidence | Partially available | ROUTE-2026-03 single-source eligibility/confidence, one microsecond evaluation time, canonical input schema 3, V12 selected-route evidence and historical reads; Quotation freeze/propagation remain blocked |
+| Quotation Supply Decision freeze | Implemented in review | V13 quotation-owned copy, exact line identity, AUTO/FIXED, original Evaluation issue verification, Legacy gates, OpenAPI 1.6 and React evidence; merge remains gated by Propagation readiness |
 | Customer quotation decision | Available | controlled portal context, strict customer DTO, accept/reject idempotency, immutable decision, leased expiry work, durable `QuotationAcceptedV1`, React receipt and refresh-safe E2E |
 | Quote-to-order conversion | Available | transactional Inbox consumer, immutable Trade Order snapshot, unique quotation conversion, reliable `TradeOrderCreatedV1`, eventual Quotation link, tenant/Buyer-scoped query UI and real OIDC E2E |
 | Inventory reservation | Designed | orders intentionally remain `PENDING_RESERVATION`; atomic allocation and reservation outcome handling remain Task 08 |
@@ -44,7 +45,7 @@ Status date: **2026-07-15**
 
 ## 3. 声明
 
-当前 Planning 内部证据已升级到 ROUTE-2026-03，并保存 selected-route Supply Decision；HTTP/OpenAPI 仍保持 1.5.0 且不暴露该内部字段。Quotation 尚未冻结或传播决定，客户接受后的订单仍没有该证据；库存预占保持 `Designed`，订单的 `PENDING_RESERVATION` 是明确的未完成状态。
+当前 Quotation 分支通过内部 OpenAPI 1.6 暴露报价自有冻结证据，客户 DTO 仍严格隐藏。事件与 Trade Order 尚未传播该证据；库存预占保持 `Designed`，订单的 `PENDING_RESERVATION` 是明确的未完成状态。
 
 ## 4. 追踪模板
 
