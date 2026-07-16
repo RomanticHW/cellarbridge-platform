@@ -4,6 +4,7 @@ import com.rom.cellarbridge.identityaccess.GlobalRegistryAccess;
 import com.rom.cellarbridge.identityaccess.TenantId;
 import com.rom.cellarbridge.quotation.QuotationSnapshotHashV1;
 import com.rom.cellarbridge.quotation.QuotationStatus;
+import com.rom.cellarbridge.quotation.QuotationSupplyDecisionStatus;
 import com.rom.cellarbridge.quotation.internal.application.QuotationProblem;
 import com.rom.cellarbridge.quotation.internal.application.QuotationRepository;
 import com.rom.cellarbridge.quotation.internal.application.QuotationRepository.AcceptedOrderSource;
@@ -28,6 +29,8 @@ import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.Pri
 import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.PricingResult;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.QuantityUnit;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.SkuSnapshot;
+import com.rom.cellarbridge.tradeplanning.SupplyAllocationMode;
+import com.rom.cellarbridge.tradeplanning.SupplyDecisionSnapshot;
 import com.rom.cellarbridge.tradeplanning.TradeRouteCode;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -38,6 +41,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -66,6 +70,9 @@ public class JdbcQuotationRepository implements QuotationRepository {
              r.delivery_district, r.delivery_line1, r.delivery_postal_code,
              r.route_evaluation_id, r.route_policy_version, r.recommended_route_code,
              r.selected_route_code, r.route_override_reason, r.price_policy_version,
+             r.supply_decision_status, r.supply_decision_schema_version,
+             r.supply_decision_policy_version, r.supply_decision_at,
+             r.supply_decision_hash, r.supply_decision_snapshot,
              r.approval_policy_version, r.subtotal, r.total, r.total_cost,
              r.estimated_margin_rate, r.route_charges, r.frozen_at,
              r.created_at AS revision_created_at
@@ -831,6 +838,8 @@ public class JdbcQuotationRepository implements QuotationRepository {
             route(resultSet.getString("recommended_route_code")),
             route(resultSet.getString("selected_route_code")),
             resultSet.getString("route_override_reason"),
+            QuotationSupplyDecisionStatus.valueOf(resultSet.getString("supply_decision_status")),
+            supplyDecision(resultSet),
             resultSet.getString("price_policy_version"),
             resultSet.getString("approval_policy_version"),
             requirements(tenantId, revisionId),
@@ -882,6 +891,7 @@ public class JdbcQuotationRepository implements QuotationRepository {
                 resultSet.getBigDecimal("quantity"),
                 QuantityUnit.valueOf(resultSet.getString("quantity_unit")),
                 resultSet.getObject("preferred_supply_pool_id", UUID.class),
+                allocationMode(resultSet.getString("allocation_mode")),
                 resultSet.getString("supply_type"),
                 resultSet.getBigDecimal("list_unit_price"),
                 resultSet.getBigDecimal("discount_rate"),
@@ -894,6 +904,52 @@ public class JdbcQuotationRepository implements QuotationRepository {
                 resultSet.getBoolean("manual_price"),
                 resultSet.getString("currency"),
                 resultSet.getString("price_source_version")));
+  }
+
+  private SupplyDecisionSnapshot supplyDecision(ResultSet resultSet) throws SQLException {
+    QuotationSupplyDecisionStatus status =
+        QuotationSupplyDecisionStatus.valueOf(resultSet.getString("supply_decision_status"));
+    Integer schemaVersion = resultSet.getObject("supply_decision_schema_version", Integer.class);
+    String policyVersion = resultSet.getString("supply_decision_policy_version");
+    Instant decidedAt = nullableInstant(resultSet, "supply_decision_at");
+    String decisionHash = resultSet.getString("supply_decision_hash");
+    String snapshotJson = resultSet.getString("supply_decision_snapshot");
+    if (status != QuotationSupplyDecisionStatus.FROZEN) {
+      if (schemaVersion != null
+          || policyVersion != null
+          || decidedAt != null
+          || decisionHash != null
+          || snapshotJson != null) {
+        throw new IllegalStateException("Non-frozen quotation contains supply decision evidence");
+      }
+      return null;
+    }
+    if (schemaVersion == null
+        || policyVersion == null
+        || decidedAt == null
+        || decisionHash == null
+        || snapshotJson == null) {
+      throw new IllegalStateException("Frozen quotation supply decision evidence is incomplete");
+    }
+    try {
+      SupplyDecisionSnapshot snapshot =
+          jsonMapper.readValue(snapshotJson, SupplyDecisionSnapshot.class);
+      if (snapshot.schemaVersion() != schemaVersion
+          || !snapshot.policyVersion().equals(policyVersion)
+          || !snapshot.decidedAt().equals(decidedAt)
+          || !snapshot.decisionHash().equals(decisionHash)
+          || !snapshot
+              .sourceRouteEvaluationId()
+              .equals(resultSet.getObject("route_evaluation_id", UUID.class))
+          || !Objects.equals(
+              snapshot.selectedRouteCode().name(), resultSet.getString("selected_route_code"))) {
+        throw new IllegalStateException(
+            "Quotation supply decision root fields conflict with its JSON snapshot");
+      }
+      return snapshot;
+    } catch (JacksonException | IllegalArgumentException exception) {
+      throw new IllegalStateException("Quotation supply decision snapshot is invalid", exception);
+    }
   }
 
   private List<Requirement> requirements(TenantId tenantId, UUID revisionId) {
@@ -962,6 +1018,9 @@ public class JdbcQuotationRepository implements QuotationRepository {
            delivery_country_code, delivery_province, delivery_city, delivery_district,
            delivery_line1, delivery_postal_code, route_evaluation_id, route_policy_version,
            recommended_route_code, selected_route_code, route_override_reason,
+           supply_decision_status, supply_decision_schema_version,
+           supply_decision_policy_version, supply_decision_at, supply_decision_hash,
+           supply_decision_snapshot,
            price_policy_version, approval_policy_version, subtotal, total, total_cost,
            estimated_margin_rate, route_charges, frozen_at, created_at, created_by,
            updated_at, updated_by, version)
@@ -971,7 +1030,10 @@ public class JdbcQuotationRepository implements QuotationRepository {
            :currency, :deliveryDate, :expiresAt, :paymentTermDays,
            :countryCode, :province, :city, :district, :line1, :postalCode,
            :routeEvaluationId, :routePolicyVersion, :recommendedRoute, :selectedRoute,
-           :overrideReason, :pricePolicyVersion, :approvalPolicyVersion, :subtotal,
+           :overrideReason, :supplyDecisionStatus, :supplyDecisionSchemaVersion,
+           :supplyDecisionPolicyVersion, :supplyDecidedAt, :supplyDecisionHash,
+           CAST(:supplyDecisionSnapshot AS jsonb), :pricePolicyVersion,
+           :approvalPolicyVersion, :subtotal,
            :total, :totalCost, :marginRate, :routeCharges, :frozenAt, :revisionCreatedAt,
            :actorId, :updatedAt, :actorId, 0)
         """,
@@ -1002,6 +1064,12 @@ public class JdbcQuotationRepository implements QuotationRepository {
                recommended_route_code = :recommendedRoute,
                selected_route_code = :selectedRoute,
                route_override_reason = :overrideReason,
+               supply_decision_status = :supplyDecisionStatus,
+               supply_decision_schema_version = :supplyDecisionSchemaVersion,
+               supply_decision_policy_version = :supplyDecisionPolicyVersion,
+               supply_decision_at = :supplyDecidedAt,
+               supply_decision_hash = :supplyDecisionHash,
+               supply_decision_snapshot = CAST(:supplyDecisionSnapshot AS jsonb),
                subtotal = :subtotal,
                total = :total,
                total_cost = :totalCost,
@@ -1024,7 +1092,8 @@ public class JdbcQuotationRepository implements QuotationRepository {
             (id, tenant_id, revision_id, sku_id, sku_code, display_name, producer_name,
              region_name, country_code, category, vintage, volume_ml, units_per_case,
              package_type, sku_source_version, sku_captured_at, quantity, quantity_unit,
-             preferred_supply_pool_id, supply_type, currency, list_unit_price, discount_rate,
+             preferred_supply_pool_id, allocation_mode, supply_type, currency,
+             list_unit_price, discount_rate,
              net_unit_price, allocated_charges, line_total, cost_unit_price, line_cost,
              estimated_margin_rate, manual_price, price_source_version, created_at, created_by,
              updated_at, updated_by, version)
@@ -1032,7 +1101,8 @@ public class JdbcQuotationRepository implements QuotationRepository {
             (:id, :tenantId, :revisionId, :skuId, :skuCode, :displayName, :producerName,
              :regionName, :countryCode, :category, :vintage, :volumeMl, :unitsPerCase,
              :packageType, :skuSourceVersion, :skuCapturedAt, :quantity, :quantityUnit,
-             :supplyPoolId, :supplyType, :currency, :listPrice, :discountRate, :netPrice,
+             :supplyPoolId, :allocationMode, :supplyType, :currency, :listPrice,
+             :discountRate, :netPrice,
              :charges, :lineTotal, :costPrice, :lineCost, :marginRate, :manualPrice,
              :priceVersion, :occurredAt, :actorId, :occurredAt, :actorId, 0)
           """,
@@ -1241,6 +1311,22 @@ public class JdbcQuotationRepository implements QuotationRepository {
         .addValue("recommendedRoute", name(revision.recommendedRouteCode()))
         .addValue("selectedRoute", name(revision.selectedRouteCode()))
         .addValue("overrideReason", revision.routeOverrideReason())
+        .addValue("supplyDecisionStatus", revision.supplyDecisionStatus().name())
+        .addValue(
+            "supplyDecisionSchemaVersion",
+            revision.supplyDecision() == null ? null : revision.supplyDecision().schemaVersion())
+        .addValue(
+            "supplyDecisionPolicyVersion",
+            revision.supplyDecision() == null ? null : revision.supplyDecision().policyVersion())
+        .addValue(
+            "supplyDecidedAt",
+            revision.supplyDecision() == null
+                ? null
+                : timestamp(revision.supplyDecision().decidedAt()))
+        .addValue(
+            "supplyDecisionHash",
+            revision.supplyDecision() == null ? null : revision.supplyDecision().decisionHash())
+        .addValue("supplyDecisionSnapshot", json(revision.supplyDecision()))
         .addValue("pricePolicyVersion", revision.pricePolicyVersion())
         .addValue("approvalPolicyVersion", revision.approvalPolicyVersion())
         .addValue("subtotal", pricing.subtotal())
@@ -1277,6 +1363,8 @@ public class JdbcQuotationRepository implements QuotationRepository {
         .addValue("quantity", line.quantity())
         .addValue("quantityUnit", line.unit().name())
         .addValue("supplyPoolId", line.preferredSupplyPoolId())
+        .addValue(
+            "allocationMode", line.allocationMode() == null ? null : line.allocationMode().name())
         .addValue("supplyType", line.supplyType())
         .addValue("currency", line.currency())
         .addValue("listPrice", line.listUnitPrice())
@@ -1349,6 +1437,21 @@ public class JdbcQuotationRepository implements QuotationRepository {
 
   private static TradeRouteCode route(String value) {
     return value == null ? null : TradeRouteCode.valueOf(value);
+  }
+
+  private static SupplyAllocationMode allocationMode(String value) {
+    return value == null ? null : SupplyAllocationMode.valueOf(value);
+  }
+
+  private String json(SupplyDecisionSnapshot decision) {
+    if (decision == null) {
+      return null;
+    }
+    try {
+      return jsonMapper.writeValueAsString(decision);
+    } catch (JacksonException exception) {
+      throw new IllegalStateException("Could not serialize quotation supply decision", exception);
+    }
   }
 
   private static String name(TradeRouteCode value) {
