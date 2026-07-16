@@ -21,7 +21,7 @@
 13. 本层不写 Inventory，不创建 Reservation、Allocation、Movement、Attempt 或 Shortage，不执行 release/consume，也不改变 Trade Order 的 `PENDING_RESERVATION` 状态。
 14. V14 只修改 `trade_order` Schema，不建立跨 Schema 外键；V2-V13 保持不可变。
 15. OpenAPI 升级至 1.7.0，AsyncAPI 设计版本升级至 1.1.0-design；只有两个目标 V1 事件发生 additive shape 变化。
-16. Quotation 与 Propagation PR 都保持未合并。最终顺序为先以 Merge Commit 合并 Quotation，再以 Merge Commit 合并 Propagation，并在此之前完成单独 Owner review。
+16. Quotation 与 Propagation 采用依序 Merge Commit 交付；只有 final-main 验证完成后 Task 07C 才关闭。
 
 ## 后果
 

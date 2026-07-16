@@ -10,8 +10,8 @@
 
 1. **Foundation（completed）：** 已定义带显式 `decisionAt` 的库存查询语义、无副作用的纯供给决策、规范化哈希及其确定性与边界测试。该层不集成 Route Evaluation，不冻结报价，不传播订单，也不写库存。
 2. **Planning（completed）：** 已将 Foundation 接入 `ROUTE-2026-03` Route Evaluation，以一个微秒对齐时间和 canonical input schema 3 形成并持久化 selected-route Supply Decision；Quotation 尚未冻结该决定，因此产品能力仍不得标记为 `Available`。
-3. **Quotation（implemented in review）：** 按 [ADR-017](ADR-017-quotation-owned-frozen-supply-decisions.md) 在报价边界冻结经确认的业务供给决策；冻结不等于库存预留。
-4. **Propagation（implemented in stacked review）：** 按 [ADR-018](ADR-018-pre-1-0-supply-decision-event-propagation.md) 保持 Order 决策身份、版本与哈希可追溯；传播不产生库存写入。
+3. **Quotation（completed）：** 按 [ADR-017](ADR-017-quotation-owned-frozen-supply-decisions.md) 在报价边界冻结经确认的业务供给决策；冻结不等于库存预留。
+4. **Propagation（completed）：** 按 [ADR-018](ADR-018-pre-1-0-supply-decision-event-propagation.md) 保持 Order 决策身份、版本与哈希可追溯；传播不产生库存写入。
 
 只有 Task 08 对库存执行写入并建立预留语义。在 Task 08 完成并通过对应验证前，reservation 不得标记为 `Available`；Foundation、Planning、Quotation 或 Propagation 的完成均不能替代该门禁。
 

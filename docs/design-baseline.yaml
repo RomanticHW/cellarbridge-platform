@@ -13,8 +13,8 @@ baseline:
   current_route_policy: ROUTE-2026-03
   route_input_summary_schema: 3
   planning_supply_decision_evidence: available
-  quotation_supply_decision_freeze: implemented-in-review
-  supply_decision_propagation: implemented-in-review
+  quotation_supply_decision_freeze: available
+  supply_decision_propagation: available
   inventory_unit_readiness: available
   inventory_reservation: designed-not-implemented
   architecture_style: domain-oriented-modular-monolith

@@ -1,7 +1,7 @@
 # 实现状态
 
 Baseline version: **Design Baseline v1.0**  
-Status date: **2026-07-15**
+Status date: **2026-07-16**
 
 ## 1. 状态定义
 
@@ -31,10 +31,10 @@ Status date: **2026-07-15**
 | Partner onboarding and eligibility | Available | tenant-scoped draft/review lifecycle, duplicate controls, immutable eligibility, React workspace and real OIDC Playwright flow |
 | Catalog and supply search | Available | Catalog/Inventory model, FTS + trigram search, field/warehouse permissions, React workspace, real OIDC E2E and reproducible benchmark |
 | Inventory unit readiness | Available | CASE/BOTTLE Lot 与 Catalog projection 分离；Warehouse priority/version 仅在授权 exact-lot 视图可见；fresh seed、V9 → V11 保留性、约束、权限、E2E 与双单位 benchmark 证据 |
-| Quotation and trade planning | Available | revisioned snapshots/pricing, ROUTE-2026-02 exact-unit supply coverage, independent approval, issue token, customer-safe preview, React workspace, Testcontainers and real OIDC E2E |
+| Quotation and trade planning | Available | revisioned snapshots/pricing, ROUTE-2026-03 route-bound supply evidence, independent approval, issue token, customer-safe preview, React workspace, Testcontainers and real OIDC E2E |
 | Route supply-decision Planning evidence | Available | ROUTE-2026-03 single-source eligibility/confidence, one microsecond evaluation time, canonical input schema 3, V12 selected-route evidence and historical reads |
-| Quotation Supply Decision freeze | Implemented in review | V13 quotation-owned copy, exact line identity, AUTO/FIXED, original Evaluation issue verification, Legacy gates, OpenAPI 1.6 and React evidence; merge remains gated by Propagation readiness |
-| Supply Decision propagation | Implemented in review | Current/Legacy V1、FROZEN/LEGACY_UNVERIFIED Order、V14、OpenAPI 1.7/AsyncAPI 1.1；堆叠分支未进入 main，Task 08 未实施 |
+| Quotation Supply Decision freeze | Available | V13 quotation-owned copy, exact line identity, AUTO/FIXED, original Evaluation issue verification, Legacy gates, OpenAPI 1.6 and React evidence |
+| Supply Decision propagation | Available | Current/Legacy V1、FROZEN/LEGACY_UNVERIFIED Order、V14、OpenAPI 1.7/AsyncAPI 1.1；Task 08 未实施 |
 | Customer quotation decision | Available | controlled portal context, strict customer DTO, accept/reject idempotency, immutable decision, leased expiry work, durable `QuotationAcceptedV1`, React receipt and refresh-safe E2E |
 | Quote-to-order conversion | Available | transactional Inbox consumer, immutable Trade Order snapshot, unique quotation conversion, reliable `TradeOrderCreatedV1`, eventual Quotation link, tenant/Buyer-scoped query UI and real OIDC E2E |
 | Inventory reservation | Designed | orders intentionally remain `PENDING_RESERVATION`; atomic allocation and reservation outcome handling remain Task 08 |
@@ -46,7 +46,7 @@ Status date: **2026-07-15**
 
 ## 3. 声明
 
-当前 Quotation 分支通过内部 OpenAPI 1.6 暴露报价自有冻结证据，客户 DTO 仍严格隐藏。事件与 Trade Order 尚未传播该证据；库存预占保持 `Designed`，订单的 `PENDING_RESERVATION` 是明确的未完成状态。
+当前基线已在 Quotation、Current/Legacy Event 和 Trade Order 中保存一致的决策证据，客户与 Buyer DTO 仍严格隐藏内部证据。库存预占尚未实现并保持 `Designed`；订单的 `PENDING_RESERVATION` 是明确的未完成状态。
 
 ## 4. 追踪模板
 
