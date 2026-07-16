@@ -43,8 +43,9 @@ const quotation: QuotationDetail = {
   },
   lines: [],
   subtotal: { amount: '8600.0000', currency: 'CNY' },
+  supplyDecisionStatus: 'UNDECIDED',
   approvalRequirements: [],
-  allowedActions: ['EDIT', 'EVALUATE_ROUTE', 'SUBMIT'],
+  allowedActions: ['EDIT', 'EVALUATE_ROUTE'],
   timeline: [],
 };
 

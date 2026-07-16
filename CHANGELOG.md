@@ -16,6 +16,7 @@ All notable changes to this project are documented in this file. The project fol
 - public documentation that distinguishes the executable core from designed capabilities and planned full-profile infrastructure.
 - pre-1.0 accepted-quotation contract correction with canonical Snapshot Hash V1 validation.
 - ROUTE-2026-03 Planning evidence with one evaluation time, canonical input schema 3, selected-route Supply Decision persistence in V12, and historical ROUTE-2026-01/02 compatibility; Quotation freeze and inventory reservation remain unavailable.
+- Quotation-owned route-bound Supply Decision freezing with AUTO/FIXED inputs, fail-closed Legacy handling, quotation-only V13, internal OpenAPI 1.6 evidence, and customer-safe availability language (implemented in review; merge gated by Propagation readiness).
 
 ### Planned
 

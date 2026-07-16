@@ -8,6 +8,7 @@ import { AuthSessionProvider } from '../identity-access/AuthSessionProvider';
 import type { AuthSession } from '../identity-access/authSession';
 
 const quotationId = '50000000-0000-4000-8000-000000000001';
+const supplyPoolId = '54000000-0000-4000-8000-000000000001';
 const currentUser = {
   userId: '11200000-0000-4000-8000-000000000003',
   displayName: 'North Manager',
@@ -81,10 +82,35 @@ const detail: QuotationDetail = {
       netUnitPrice: { amount: '4200.0000', currency: 'CNY' },
       allocatedCharges: { amount: '20.0000', currency: 'CNY' },
       lineTotal: { amount: '8420.0000', currency: 'CNY' },
+      allocationMode: 'ROUTE_ELIGIBLE_AUTO',
+      supplyType: 'DOMESTIC_ON_HAND',
+      supplyPoolId: null,
     },
   ],
   subtotal: { amount: '8420.0000', currency: 'CNY' },
   estimatedMarginRate: '0.2210',
+  supplyDecisionStatus: 'FROZEN',
+  supplyDecision: {
+    schemaVersion: 1,
+    policyVersion: 'SUPPLY-DECISION-2026-01',
+    decidedAt: '2026-07-14T00:00:00Z',
+    sourceRouteEvaluationId: '52000000-0000-4000-8000-000000000001',
+    sourceRouteInputHash: 'a'.repeat(64),
+    selectedRouteCode: 'SH_GENERAL_TRADE',
+    inventoryDataAsOf: '2026-07-14T00:00:00Z',
+    decisionHash: 'b'.repeat(64),
+    lineDecisions: [
+      {
+        quotationLineId: '51000000-0000-4000-8000-000000000001',
+        skuId: '34000000-0000-4000-8000-000000000001',
+        requestedQuantity: '2.000000',
+        quantityUnit: 'CASE',
+        allocationMode: 'ROUTE_ELIGIBLE_AUTO',
+        supplyPoolId: null,
+        supplyType: 'DOMESTIC_ON_HAND',
+      },
+    ],
+  },
   routeEvaluation: {
     evaluationId: '52000000-0000-4000-8000-000000000001',
     policyVersion: 'ROUTE-2026-01',
@@ -92,6 +118,7 @@ const detail: QuotationDetail = {
     inputHash: 'internal-input-hash',
     recommendedRouteCode: 'SH_GENERAL_TRADE',
     selectedRouteCode: 'SH_GENERAL_TRADE',
+    supplyDecision: undefined,
     candidates: [
       {
         routeCode: 'SH_GENERAL_TRADE',
@@ -184,10 +211,12 @@ const draftDetail: QuotationDetail = {
   status: 'DRAFT',
   version: 0,
   selectedRouteCode: null,
+  supplyDecisionStatus: 'UNDECIDED',
+  supplyDecision: undefined,
   routeEvaluation: null,
   approvalRequirements: [],
   approvals: [],
-  allowedActions: ['VIEW', 'EDIT', 'EVALUATE_ROUTE', 'SUBMIT'],
+  allowedActions: ['VIEW', 'EDIT', 'EVALUATE_ROUTE'],
 };
 const partnerPage = {
   items: [
@@ -209,7 +238,19 @@ const catalogPage = {
   items: [
     {
       sku: detail.lines[0].sku,
-      supplies: [],
+      supplies: [
+        {
+          supplyPoolId,
+          supplyType: 'DOMESTIC_ON_HAND',
+          quantityUnit: 'CASE',
+          locationLabel: 'Shanghai Warehouse',
+          availabilityLevel: 'AVAILABLE',
+          displayQuantityBand: 'HIGH',
+          automaticallyReservable: true,
+          exactLots: [],
+          updatedAt: '2026-07-14T00:00:00Z',
+        },
+      ],
     },
   ],
   pageInfo: { nextCursor: null, hasNext: false, pageSize: 100 },
@@ -270,6 +311,8 @@ describe('quotation workspace', () => {
     expect(screen.getByText('ROUTE-2026-01')).toBeVisible();
     expect(screen.getByText('Customer is not eligible for this route')).toBeVisible();
     expect(screen.getByText('Margin is below the approval threshold')).toBeVisible();
+    expect(screen.getByText('Route-bound supply decision frozen')).toBeVisible();
+    expect(screen.getByText('Automatic (route eligible)')).toBeVisible();
     await user.click(screen.getByRole('button', { name: 'Issue quotation' }));
     expect(
       await screen.findByRole('link', { name: 'Open the customer-safe quotation preview' }),
@@ -320,6 +363,10 @@ describe('quotation workspace', () => {
     await user.type(screen.getByLabelText('Address line'), '88 Harbor Avenue');
     await user.clear(screen.getByLabelText('Line 1 discount rate'));
     await user.type(screen.getByLabelText('Line 1 discount rate'), '0.0900');
+    await user.click(screen.getByLabelText('Line 1 supply strategy'));
+    await user.click(screen.getByText('Specific supply pool'));
+    await user.click(screen.getByLabelText('Line 1 specific supply pool'));
+    await user.click(screen.getByText('Shanghai Warehouse · DOMESTIC ON HAND · CASE · HIGH'));
     await user.click(screen.getByRole('button', { name: 'Save quotation draft' }));
 
     await vi.waitFor(() => expect(submittedBody).toBeDefined());
@@ -331,6 +378,7 @@ describe('quotation workspace', () => {
         {
           skuId: detail.lines[0].sku.skuId,
           quantity: { value: '1', unit: 'CASE' },
+          preferredSupplyPoolId: supplyPoolId,
           discountRate: '0.0900',
         },
       ],

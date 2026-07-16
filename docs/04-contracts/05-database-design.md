@@ -2,7 +2,7 @@
 
 ## 1. 设计原则
 
-状态边界：当前物理数据库由 V2～V12 migration 实现。V12 只扩展 `trade_planning.evaluation`，保存 selected-route Supply Decision 根证据与 JSON；历史 ROUTE-2026-01/02 行保持空决定。Quotation 冻结、`inventory_reservation`、`reservation_allocation`、确定性分配执行、release/consume 与订单 `RESERVED` 迁移仍不可用。
+状态边界：Task 07C Quotation 分支由 V2～V13 migration 实现。V12 保存 Planning selected-route Decision；quotation-only V13 保存修订状态、独立 Snapshot 副本与行 `allocation_mode`。事件传播、`inventory_reservation`、`reservation_allocation`、release/consume 与订单 `RESERVED` 仍不可用。
 
 - PostgreSQL 18；
 - module schema ownership；
@@ -72,7 +72,7 @@ erDiagram
 
 ### `quotation.quotation_revision`
 
-- id；quotation_id（同 schema FK）；revision_no；status；currency；expires_at；selected_route_code；route_evaluation_id；price_policy_version；approval_policy_version；subtotal/total；snapshot_hash；frozen_at。
+- id；quotation_id（同 schema FK）；revision_no；status；currency；expires_at；selected_route_code；route_evaluation_id；Supply Decision status/schema/policy/time/hash/JSON；price/approval policy；subtotal/total；frozen_at。
 - unique `(quotation_id, revision_no)`。
 
 ### `trade_order.trade_order`
@@ -153,4 +153,4 @@ CHECK (version >= 0)
 
 ## 9. 详细 DDL
 
-Design Baseline 提供逻辑设计；实际 migration 在对应纵向切片创建。当前 V2～V12 可由 Flyway/Testcontainers 从空库执行，并有真实 V11 → V12 历史评估保留证据。V10 只修改 `inventory`，V11 只修改 `catalog`，V12 只修改 `trade_planning`；不得用上述准备度能力暗示 Quotation freeze、reservation 表或分配执行已经 Available。
+Design Baseline 提供逻辑设计；实际 migration 在对应纵向切片创建。当前分支可由 Flyway/Testcontainers 从空库执行到 V13，并验证 V12 → V13 历史报价保留。V10 只改 `inventory`、V11 只改 `catalog`、V12 只改 `trade_planning`、V13 只改 `quotation`；V13 不创建跨 Schema FK，也不执行库存写入。

@@ -14,7 +14,7 @@
 | inventory | SupplyPool | WarehouseRef, SupplyType, ServiceRegion | 供给池配置 |
 | inventory | InventoryLot | StockQuantity, LotCode, ReceivedAt | 在手数量调整 |
 | inventory | InventoryReservation | ReservationLine, LotAllocation | 全量预占/释放/消费 |
-| quotation | Quotation | QuotationRevision, QuotationLine, PriceSnapshot, ApprovalDecision, Acceptance | 一个报价业务编号及修订生命周期 |
+| quotation | Quotation | QuotationRevision, QuotationLine, PriceSnapshot, SupplyDecisionSnapshot 副本, ApprovalDecision, Acceptance | 一个报价业务编号及修订生命周期 |
 | trade-planning | RoutePolicy | ConstraintDefinition, ScoreWeights | 发布策略版本 |
 | trade-planning | RouteEvaluation | CandidateResult, RejectionReason, ScoreBreakdown | 保存一次评估 |
 | trade-order | TradeOrder | OrderLine, CustomerSnapshot, RouteSnapshot, Cancellation | 订单状态和商业快照 |
@@ -35,6 +35,8 @@
 - 新修订必须从退回状态显式创建。
 
 P1 将其放在 `Quotation` 聚合内，控制修订行数上限（默认 50）和历史修订摘要加载。若历史版本很大，可将旧修订作为只读快照表延迟加载，不改变一致性语义。
+
+Task 07C Quotation 分支为当前修订增加 `UNDECIDED`、`FROZEN`、`LEGACY_REEVALUATION_REQUIRED`；`FROZEN` 是路线绑定分配约束，不是库存预占。
 
 ## 3. 为什么 InventoryLot 与 Reservation 分开
 

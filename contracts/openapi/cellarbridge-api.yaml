@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: CellarBridge API
-  version: 1.5.0
+  version: 1.6.0
   summary: Contract baseline for B2B wine quotation, order, inventory and fulfillment
   description: |
     This contract remains the design-first integration baseline for CellarBridge. All examples are synthetic.
@@ -1585,6 +1585,12 @@ components:
     QuotationStatus:
       type: string
       enum: [DRAFT, PENDING_APPROVAL, CHANGES_REQUESTED, APPROVED, SENT, ACCEPTED, REJECTED, REJECTED_BY_CUSTOMER, WITHDRAWN, EXPIRED, CONVERTED, CANCELLED]
+    QuotationSupplyDecisionStatus:
+      type: string
+      enum: [UNDECIDED, FROZEN, LEGACY_REEVALUATION_REQUIRED]
+    SupplyAllocationMode:
+      type: string
+      enum: [FIXED_POOL, ROUTE_ELIGIBLE_AUTO]
     QuotationLineInput:
       type: object
       required: [skuId, quantity]
@@ -1628,8 +1634,43 @@ components:
         netUnitPrice: { $ref: '#/components/schemas/Money' }
         allocatedCharges: { $ref: '#/components/schemas/Money' }
         lineTotal: { $ref: '#/components/schemas/Money' }
-        supplyType: { $ref: '#/components/schemas/SupplyType' }
+        allocationMode:
+          description: Null for UNDECIDED and Legacy revisions; complete and verified for FROZEN revisions.
+          oneOf: [{ $ref: '#/components/schemas/SupplyAllocationMode' }, { type: 'null' }]
+        supplyType:
+          description: Null for UNDECIDED and Legacy revisions; complete and verified for FROZEN revisions.
+          oneOf: [{ $ref: '#/components/schemas/SupplyType' }, { type: 'null' }]
+        supplyPoolId:
+          description: An UNDECIDED fixed-pool preference, verified FROZEN evidence, or null for Legacy revisions.
+          type: [string, 'null']
+          format: uuid
+    LineSupplyDecision:
+      type: object
+      required: [quotationLineId, skuId, requestedQuantity, quantityUnit, allocationMode, supplyPoolId, supplyType]
+      properties:
+        quotationLineId: { type: string, format: uuid }
+        skuId: { type: string, format: uuid }
+        requestedQuantity: { type: string, pattern: '^[0-9]+(\.[0-9]{1,6})?$' }
+        quantityUnit: { type: string, enum: [CASE, BOTTLE] }
+        allocationMode: { $ref: '#/components/schemas/SupplyAllocationMode' }
         supplyPoolId: { type: [string, 'null'], format: uuid }
+        supplyType: { $ref: '#/components/schemas/SupplyType' }
+    SupplyDecisionSummary:
+      type: object
+      required: [schemaVersion, policyVersion, decidedAt, sourceRouteEvaluationId, sourceRouteInputHash, selectedRouteCode, inventoryDataAsOf, decisionHash, lineDecisions]
+      properties:
+        schemaVersion: { type: integer, minimum: 1 }
+        policyVersion: { type: string, minLength: 1, maxLength: 80 }
+        decidedAt: { type: string, format: date-time }
+        sourceRouteEvaluationId: { type: string, format: uuid }
+        sourceRouteInputHash: { type: string, pattern: '^[0-9a-f]{64}$' }
+        selectedRouteCode: { $ref: '#/components/schemas/TradeRouteCode' }
+        inventoryDataAsOf: { type: string, format: date-time }
+        decisionHash: { type: string, pattern: '^[0-9a-f]{64}$' }
+        lineDecisions:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/LineSupplyDecision' }
     RouteRejection:
       type: object
       required: [ruleId, code, message]
@@ -1679,6 +1720,8 @@ components:
             actorId: { type: string, format: uuid }
             occurredAt: { type: string, format: date-time }
             originalRecommendation: { $ref: '#/components/schemas/TradeRouteCode' }
+        supplyDecision:
+          oneOf: [{ $ref: '#/components/schemas/SupplyDecisionSummary' }, { type: 'null' }]
     ApprovalRequirement:
       type: object
       required: [ruleId, code, actualValue, threshold, message]
@@ -1716,7 +1759,7 @@ components:
       allOf:
         - $ref: '#/components/schemas/QuotationSummary'
         - type: object
-          required: [partnerSnapshot, requestedDeliveryDate, paymentTermDays, deliveryAddress, lines, subtotal, total, approvalRequirements, allowedActions, timeline]
+          required: [partnerSnapshot, requestedDeliveryDate, paymentTermDays, deliveryAddress, lines, subtotal, total, supplyDecisionStatus, approvalRequirements, allowedActions, timeline]
           properties:
             partnerSnapshot:
               type: object
@@ -1739,6 +1782,9 @@ components:
             estimatedMarginRate:
               type: [string, 'null']
               description: Present only with quotation:read-commercial-sensitive
+            supplyDecisionStatus: { $ref: '#/components/schemas/QuotationSupplyDecisionStatus' }
+            supplyDecision:
+              oneOf: [{ $ref: '#/components/schemas/SupplyDecisionSummary' }, { type: 'null' }]
             routeEvaluation: { oneOf: [{ $ref: '#/components/schemas/RouteEvaluation' }, { type: 'null' }] }
             approvalRequirements:
               type: array

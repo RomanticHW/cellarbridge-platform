@@ -144,6 +144,31 @@ body {
   background: #fafcfc;
 }
 
+.quotation-line-editor > *,
+.quotation-line-editor .ant-select {
+  min-width: 0;
+}
+
+.quotation-line-editor .ant-select {
+  width: 100%;
+}
+
+.quotation-line-editor .ant-form-item-row {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.quotation-line-editor .ant-form-item-label {
+  overflow: visible;
+  padding: 0 0 8px;
+  text-align: start;
+  white-space: normal;
+}
+
+.quotation-line-editor .ant-form-item-control {
+  min-width: 0;
+}
+
 .route-candidate-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

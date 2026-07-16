@@ -268,6 +268,45 @@ class CustomerQuotationApiIntegrationTest extends PostgresIntegrationTestSupport
   }
 
   @Test
+  void keepsLegacyIssuedRevisionsViewOnlyAndRejectsBothCustomerDecisions() throws Exception {
+    IssuedQuotation quotation = issue(BASE.plusSeconds(20 * 86_400L));
+    jdbc.update(
+        """
+        UPDATE quotation.quotation_revision
+           SET supply_decision_status = 'LEGACY_REEVALUATION_REQUIRED',
+               supply_decision_schema_version = NULL,
+               supply_decision_policy_version = NULL,
+               supply_decision_at = NULL,
+               supply_decision_hash = NULL,
+               supply_decision_snapshot = NULL
+         WHERE quotation_id = ?::uuid
+        """,
+        quotation.id());
+
+    ApiResponse view = get(quotation.publicPath());
+    assertThat(view.status()).withFailMessage(view.raw()).isEqualTo(200);
+    assertThat(view.body().path("allowedActions")).isEmpty();
+    assertThat(allPropertyNames(view.body())).doesNotContainAnyElementsOf(INTERNAL_FIELDS);
+
+    ApiResponse acceptance =
+        decision(
+            quotation.publicPath() + "/acceptance",
+            "accept-legacy-view-only-0001",
+            acceptanceBody(view.body().path("termsVersion").asText(), "PO-LEGACY-001"));
+    assertThat(acceptance.status()).withFailMessage(acceptance.raw()).isEqualTo(409);
+    assertThat(acceptance.body().path("code").asText()).isEqualTo("QUOTE_SUPPLY_DECISION_REQUIRED");
+
+    ApiResponse rejection =
+        decision(
+            quotation.publicPath() + "/rejection",
+            "reject-legacy-view-only-0001",
+            "{\"reasonCategory\":\"OTHER\"}");
+    assertThat(rejection.status()).withFailMessage(rejection.raw()).isEqualTo(409);
+    assertThat(rejection.body().path("code").asText()).isEqualTo("QUOTE_SUPPLY_DECISION_REQUIRED");
+    assertDecisionAndAcceptedEventCounts(quotation.id(), 0, 0);
+  }
+
+  @Test
   void rollsBackTheDecisionWhenReliablePublicationFailsThenAllowsOneRetry() throws Exception {
     IssuedQuotation quotation = issue(BASE.plusSeconds(20 * 86_400L));
     String termsVersion = get(quotation.publicPath()).body().path("termsVersion").asText();

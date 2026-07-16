@@ -5,6 +5,7 @@ import com.rom.cellarbridge.platform.ReliableEventPublisher;
 import com.rom.cellarbridge.quotation.QuotationAcceptedV1;
 import com.rom.cellarbridge.quotation.QuotationSnapshotHashV1;
 import com.rom.cellarbridge.quotation.QuotationStatus;
+import com.rom.cellarbridge.quotation.QuotationSupplyDecisionStatus;
 import com.rom.cellarbridge.quotation.internal.application.QuotationRepository.CustomerDecision;
 import com.rom.cellarbridge.quotation.internal.application.QuotationRepository.CustomerDecisionType;
 import com.rom.cellarbridge.quotation.internal.application.QuotationRepository.CustomerOperation;
@@ -78,6 +79,8 @@ public class CustomerQuotationService {
     }
     List<String> allowedActions =
         status == QuotationStatus.SENT
+                && quotation.revision().supplyDecisionStatus()
+                    == QuotationSupplyDecisionStatus.FROZEN
             ? List.of("ACCEPT", "REJECT").stream()
                 .filter(context.allowedActions()::contains)
                 .toList()
@@ -540,8 +543,18 @@ public class CustomerQuotationService {
   }
 
   private static List<String> termsSummary(QuotationAggregate quotation, String termsVersion) {
+    if (quotation.revision().supplyDecisionStatus()
+        == QuotationSupplyDecisionStatus.LEGACY_REEVALUATION_REQUIRED) {
+      return List.of(
+          "This legacy quotation is view-only because its route-bound supply evidence cannot be verified.",
+          "Payment is due within "
+              + quotation.revision().terms().paymentTermDays()
+              + " days under the stated commercial terms.",
+          "This quotation uses terms version " + termsVersion + ".");
+    }
     return List.of(
-        "Prices and availability are fixed for this quotation revision until the stated expiry.",
+        "Prices and route-bound supply parameters are fixed for this quotation revision.",
+        "Physical availability remains subject to successful inventory reservation after acceptance.",
         "Payment is due within "
             + quotation.revision().terms().paymentTermDays()
             + " days under the stated commercial terms.",

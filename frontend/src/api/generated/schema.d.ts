@@ -904,6 +904,10 @@ export interface components {
         };
         /** @enum {string} */
         QuotationStatus: "DRAFT" | "PENDING_APPROVAL" | "CHANGES_REQUESTED" | "APPROVED" | "SENT" | "ACCEPTED" | "REJECTED" | "REJECTED_BY_CUSTOMER" | "WITHDRAWN" | "EXPIRED" | "CONVERTED" | "CANCELLED";
+        /** @enum {string} */
+        QuotationSupplyDecisionStatus: "UNDECIDED" | "FROZEN" | "LEGACY_REEVALUATION_REQUIRED";
+        /** @enum {string} */
+        SupplyAllocationMode: "FIXED_POOL" | "ROUTE_ELIGIBLE_AUTO";
         QuotationLineInput: {
             /** Format: uuid */
             skuId: string;
@@ -939,9 +943,42 @@ export interface components {
             netUnitPrice: components["schemas"]["Money"];
             allocatedCharges?: components["schemas"]["Money"];
             lineTotal: components["schemas"]["Money"];
-            supplyType?: components["schemas"]["SupplyType"];
-            /** Format: uuid */
+            /** @description Null for UNDECIDED and Legacy revisions; complete and verified for FROZEN revisions. */
+            allocationMode?: components["schemas"]["SupplyAllocationMode"] | null;
+            /** @description Null for UNDECIDED and Legacy revisions; complete and verified for FROZEN revisions. */
+            supplyType?: components["schemas"]["SupplyType"] | null;
+            /**
+             * Format: uuid
+             * @description An UNDECIDED fixed-pool preference, verified FROZEN evidence, or null for Legacy revisions.
+             */
             supplyPoolId?: string | null;
+        };
+        LineSupplyDecision: {
+            /** Format: uuid */
+            quotationLineId: string;
+            /** Format: uuid */
+            skuId: string;
+            requestedQuantity: string;
+            /** @enum {string} */
+            quantityUnit: "CASE" | "BOTTLE";
+            allocationMode: components["schemas"]["SupplyAllocationMode"];
+            /** Format: uuid */
+            supplyPoolId: string | null;
+            supplyType: components["schemas"]["SupplyType"];
+        };
+        SupplyDecisionSummary: {
+            schemaVersion: number;
+            policyVersion: string;
+            /** Format: date-time */
+            decidedAt: string;
+            /** Format: uuid */
+            sourceRouteEvaluationId: string;
+            sourceRouteInputHash: string;
+            selectedRouteCode: components["schemas"]["TradeRouteCode"];
+            /** Format: date-time */
+            inventoryDataAsOf: string;
+            decisionHash: string;
+            lineDecisions: components["schemas"]["LineSupplyDecision"][];
         };
         RouteRejection: {
             ruleId: string;
@@ -986,6 +1023,7 @@ export interface components {
                 occurredAt?: string;
                 originalRecommendation?: components["schemas"]["TradeRouteCode"];
             } | null;
+            supplyDecision?: components["schemas"]["SupplyDecisionSummary"] | null;
         };
         ApprovalRequirement: {
             ruleId: string;
@@ -1039,6 +1077,8 @@ export interface components {
             total: components["schemas"]["Money"];
             /** @description Present only with quotation:read-commercial-sensitive */
             estimatedMarginRate?: string | null;
+            supplyDecisionStatus: components["schemas"]["QuotationSupplyDecisionStatus"];
+            supplyDecision?: components["schemas"]["SupplyDecisionSummary"] | null;
             routeEvaluation?: components["schemas"]["RouteEvaluation"] | null;
             approvalRequirements: components["schemas"]["ApprovalRequirement"][];
             approvals?: {

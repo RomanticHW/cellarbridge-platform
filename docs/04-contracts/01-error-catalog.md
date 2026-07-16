@@ -57,6 +57,8 @@
 | `QUOTE_HAS_NO_ELIGIBLE_ROUTE` | 422 | 无可用路径 |
 | `QUOTE_ROUTE_NOT_ELIGIBLE` | 409 | 选择路径无效 |
 | `QUOTE_ROUTE_OVERRIDE_REASON_REQUIRED` | 422 | 覆盖原因缺失 |
+| `QUOTE_SUPPLY_DECISION_REQUIRED` | 422 internal / 409 public | 当前修订缺少可验证的冻结供给决策 |
+| `QUOTE_SUPPLY_DECISION_CONFLICT` | 409 | Quotation 副本与 Planning、Root/JSON 或行证据冲突 |
 | `QUOTE_APPROVAL_REQUIRED` | 409 | 未批准不能发送 |
 | `QUOTE_NOT_ISSUABLE` | 409 | 当前状态不可发送 |
 | `QUOTE_NOT_ACCEPTABLE` | 409 | 当前状态不可接受 |

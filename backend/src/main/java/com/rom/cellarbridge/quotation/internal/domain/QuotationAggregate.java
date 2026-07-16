@@ -2,14 +2,20 @@ package com.rom.cellarbridge.quotation.internal.domain;
 
 import com.rom.cellarbridge.identityaccess.TenantId;
 import com.rom.cellarbridge.quotation.QuotationStatus;
+import com.rom.cellarbridge.quotation.QuotationSupplyDecisionStatus;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationApprovalPolicy.Requirement;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationDomainException.FailureKind;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.PricingResult;
+import com.rom.cellarbridge.tradeplanning.SupplyDecisionSnapshot;
+import com.rom.cellarbridge.tradeplanning.SupplyDecisionSnapshot.LineDecision;
+import com.rom.cellarbridge.tradeplanning.TradePlanningQuantityUnit;
 import com.rom.cellarbridge.tradeplanning.TradePlanningService.RouteEvaluation;
 import com.rom.cellarbridge.tradeplanning.TradeRouteCode;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -100,7 +106,13 @@ public record QuotationAggregate(
   }
 
   public Submission submit(List<Requirement> requirements, UUID actorId, Instant now) {
-    requireEditable();
+    if (status != QuotationStatus.DRAFT && status != QuotationStatus.CHANGES_REQUESTED) {
+      throw problem(
+          FailureKind.STATE_CONFLICT,
+          "INVALID_STATE_TRANSITION",
+          "The current quotation revision is immutable");
+    }
+    requireFrozenSupplyDecision(FailureKind.BUSINESS_RULE);
     if (revision.routeEvaluationId() == null || revision.selectedRouteCode() == null) {
       throw problem(
           FailureKind.BUSINESS_RULE,
@@ -154,6 +166,7 @@ public record QuotationAggregate(
           "QUOTE_NOT_ISSUABLE",
           "Only an approved quotation can be issued");
     }
+    requireFrozenSupplyDecision(FailureKind.BUSINESS_RULE);
     if (!now.isBefore(revision.terms().expiresAt())) {
       throw problem(FailureKind.STATE_CONFLICT, "QUOTE_EXPIRED", "Quotation has expired");
     }
@@ -162,6 +175,7 @@ public record QuotationAggregate(
 
   public QuotationAggregate accept(UUID boundRevisionId, Instant now) {
     requireCurrentPortalRevision(boundRevisionId);
+    requireFrozenSupplyDecision(FailureKind.STATE_CONFLICT);
     requireOpenCustomerDecision(now);
     return with(QuotationStatus.ACCEPTED, submittedById, version + 1, now, revision, approvals);
   }
@@ -182,6 +196,7 @@ public record QuotationAggregate(
 
   public QuotationAggregate reject(UUID boundRevisionId, Instant now) {
     requireCurrentPortalRevision(boundRevisionId);
+    requireFrozenSupplyDecision(FailureKind.STATE_CONFLICT);
     requireOpenCustomerDecision(now);
     return with(
         QuotationStatus.REJECTED_BY_CUSTOMER, submittedById, version + 1, now, revision, approvals);
@@ -206,11 +221,23 @@ public record QuotationAggregate(
   }
 
   private void requireEditable() {
-    if (status != QuotationStatus.DRAFT && status != QuotationStatus.CHANGES_REQUESTED) {
+    if ((status != QuotationStatus.DRAFT && status != QuotationStatus.CHANGES_REQUESTED)
+        || revision.supplyDecisionStatus()
+            == QuotationSupplyDecisionStatus.LEGACY_REEVALUATION_REQUIRED) {
       throw problem(
           FailureKind.STATE_CONFLICT,
           "INVALID_STATE_TRANSITION",
           "The current quotation revision is immutable");
+    }
+  }
+
+  private void requireFrozenSupplyDecision(FailureKind failureKind) {
+    if (revision.supplyDecisionStatus() != QuotationSupplyDecisionStatus.FROZEN
+        || revision.supplyDecision() == null) {
+      throw problem(
+          failureKind,
+          "QUOTE_SUPPLY_DECISION_REQUIRED",
+          "A complete frozen supply decision is required for this quotation action");
     }
   }
 
@@ -312,6 +339,8 @@ public record QuotationAggregate(
       TradeRouteCode recommendedRouteCode,
       TradeRouteCode selectedRouteCode,
       String routeOverrideReason,
+      QuotationSupplyDecisionStatus supplyDecisionStatus,
+      SupplyDecisionSnapshot supplyDecision,
       String pricePolicyVersion,
       String approvalPolicyVersion,
       List<Requirement> approvalRequirements,
@@ -320,6 +349,22 @@ public record QuotationAggregate(
 
     public Revision {
       approvalRequirements = List.copyOf(approvalRequirements);
+      supplyDecisionStatus = Objects.requireNonNull(supplyDecisionStatus, "supplyDecisionStatus");
+      switch (supplyDecisionStatus) {
+        case UNDECIDED -> {
+          if (routeEvaluationId != null || supplyDecision != null) {
+            throw conflict("UNDECIDED revisions must not contain route decision evidence");
+          }
+        }
+        case LEGACY_REEVALUATION_REQUIRED -> {
+          if (routeEvaluationId == null || supplyDecision != null) {
+            throw conflict("Legacy revisions require route evidence without a supply decision");
+          }
+        }
+        case FROZEN ->
+            requireFrozenDecision(
+                routeEvaluationId, routePolicyVersion, selectedRouteCode, pricing, supplyDecision);
+      }
     }
 
     static Revision draft(
@@ -340,6 +385,8 @@ public record QuotationAggregate(
           null,
           null,
           null,
+          QuotationSupplyDecisionStatus.UNDECIDED,
+          null,
           QuotationPricingPolicy.VERSION,
           QuotationApprovalPolicy.VERSION,
           List.of(),
@@ -348,17 +395,24 @@ public record QuotationAggregate(
     }
 
     Revision withRoute(RouteEvaluation evaluation, PricingResult routedPricing) {
+      SupplyDecisionSnapshot decision = evaluation.supplyDecision();
+      if (decision == null) {
+        throw conflict("Planning Evaluation does not contain a supply decision");
+      }
+      PricingResult decidedPricing = applyDecisionsToLines(routedPricing, decision);
       return new Revision(
           id,
           number,
           partnerSnapshot,
           terms,
-          routedPricing,
+          decidedPricing,
           evaluation.evaluationId(),
           evaluation.policyVersion(),
           evaluation.recommendedRouteCode(),
           evaluation.selectedRouteCode(),
           evaluation.override() == null ? null : evaluation.override().reason(),
+          QuotationSupplyDecisionStatus.FROZEN,
+          decision,
           pricePolicyVersion,
           approvalPolicyVersion,
           List.of(),
@@ -378,11 +432,118 @@ public record QuotationAggregate(
           recommendedRouteCode,
           selectedRouteCode,
           routeOverrideReason,
+          supplyDecisionStatus,
+          supplyDecision,
           pricePolicyVersion,
           approvalPolicyVersion,
           requirements,
           now,
           createdAt);
+    }
+
+    private static PricingResult applyDecisionsToLines(
+        PricingResult pricing, SupplyDecisionSnapshot decision) {
+      Map<UUID, LineDecision> byLine = decisionsByLine(pricing, decision);
+      List<QuotationPricingPolicy.PricedLine> lines =
+          pricing.lines().stream()
+              .map(line -> applyDecisionToLine(line, byLine.get(line.lineId())))
+              .toList();
+      return new PricingResult(
+          lines,
+          pricing.subtotal(),
+          pricing.total(),
+          pricing.totalCost(),
+          pricing.marginRate(),
+          pricing.routeCharges());
+    }
+
+    private static QuotationPricingPolicy.PricedLine applyDecisionToLine(
+        QuotationPricingPolicy.PricedLine undecidedLine, LineDecision decision) {
+      verifyLineIdentity(undecidedLine, decision);
+      return new QuotationPricingPolicy.PricedLine(
+          undecidedLine.lineId(),
+          undecidedLine.sku(),
+          undecidedLine.quantity(),
+          undecidedLine.unit(),
+          decision.supplyPoolId(),
+          decision.allocationMode(),
+          decision.supplyType().name(),
+          undecidedLine.listUnitPrice(),
+          undecidedLine.discountRate(),
+          undecidedLine.netUnitPrice(),
+          undecidedLine.allocatedCharges(),
+          undecidedLine.lineTotal(),
+          undecidedLine.costUnitPrice(),
+          undecidedLine.lineCost(),
+          undecidedLine.marginRate(),
+          undecidedLine.manualPrice(),
+          undecidedLine.currency(),
+          undecidedLine.priceSourceVersion());
+    }
+
+    private static void verifyFrozenLines(PricingResult pricing, SupplyDecisionSnapshot decision) {
+      Map<UUID, LineDecision> byLine = decisionsByLine(pricing, decision);
+      pricing.lines().forEach(line -> verifyFrozenLine(line, byLine.get(line.lineId())));
+    }
+
+    private static void verifyFrozenLine(
+        QuotationPricingPolicy.PricedLine persistedLine, LineDecision decision) {
+      verifyLineIdentity(persistedLine, decision);
+      if (persistedLine.allocationMode() != decision.allocationMode()
+          || !Objects.equals(persistedLine.supplyType(), decision.supplyType().name())) {
+        throw conflict("Frozen quotation line supply evidence conflicts with its decision");
+      }
+    }
+
+    private static void verifyLineIdentity(
+        QuotationPricingPolicy.PricedLine line, LineDecision decision) {
+      if (decision == null
+          || !decision.skuId().equals(line.sku().skuId())
+          || !decision
+              .requestedQuantity()
+              .equals(line.quantity().setScale(6, RoundingMode.UNNECESSARY))
+          || decision.quantityUnit() != TradePlanningQuantityUnit.valueOf(line.unit().name())
+          || !Objects.equals(decision.supplyPoolId(), line.preferredSupplyPoolId())) {
+        throw conflict("Supply decision line evidence conflicts with quotation input");
+      }
+    }
+
+    private static Map<UUID, LineDecision> decisionsByLine(
+        PricingResult pricing, SupplyDecisionSnapshot decision) {
+      Map<UUID, LineDecision> byLine = new java.util.HashMap<>();
+      for (LineDecision line : decision.lineDecisions()) {
+        if (byLine.put(line.quotationLineId(), line) != null) {
+          throw conflict("Supply decision contains duplicate quotation line evidence");
+        }
+      }
+      if (byLine.size() != pricing.lines().size()) {
+        throw conflict("Supply decision line set does not match the quotation revision");
+      }
+      return Map.copyOf(byLine);
+    }
+
+    private static void requireFrozenDecision(
+        UUID routeEvaluationId,
+        String routePolicyVersion,
+        TradeRouteCode selectedRouteCode,
+        PricingResult pricing,
+        SupplyDecisionSnapshot decision) {
+      if (decision == null
+          || routeEvaluationId == null
+          || !routeEvaluationId.equals(decision.sourceRouteEvaluationId())
+          || routePolicyVersion == null
+          || selectedRouteCode == null
+          || selectedRouteCode != decision.selectedRouteCode()
+          || decision.schemaVersion() != SupplyDecisionSnapshot.SCHEMA_VERSION
+          || !SupplyDecisionSnapshot.POLICY_VERSION.equals(decision.policyVersion())) {
+        throw conflict("Frozen supply decision does not match the selected route evidence");
+      }
+      verifyFrozenLines(pricing, decision);
+    }
+
+    private static QuotationDomainException conflict(String message) {
+      return new QuotationDomainException(
+          FailureKind.STATE_CONFLICT, "QUOTE_SUPPLY_DECISION_CONFLICT", message);
     }
   }
 

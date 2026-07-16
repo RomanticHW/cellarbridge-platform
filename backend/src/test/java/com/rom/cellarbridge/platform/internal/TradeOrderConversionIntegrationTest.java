@@ -933,7 +933,7 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
             null,
             null),
         422,
-        "QUOTE_HAS_NO_ELIGIBLE_ROUTE");
+        "QUOTE_SUPPLY_DECISION_REQUIRED");
     assertProblem(
         request(
             "POST",
@@ -942,8 +942,8 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
             "\"0\"",
             null,
             null),
-        409,
-        "QUOTE_ROUTE_NOT_ELIGIBLE");
+        422,
+        "QUOTE_SUPPLY_DECISION_REQUIRED");
     assertProblem(get("/api/v1/quotations?pageSize=0", NORTH_SALES), 400, "VALIDATION_FAILED");
     ApiResponse evaluated =
         request(

@@ -12,14 +12,15 @@ Requirements: **UC-QUO-001–003, UC-TRD-001, FR-QUO-001–009, FR-TRD-001–006
 - 一次评估使用一个微秒对齐时间；canonical input schema 3 的确切序列化字符串产生 input hash，selected route 的 Supply Decision 与候选使用同一次 Policy 结果并由 V12 同事务持久化。
 - 非推荐路线只能由经理填写理由后覆盖；评估输入摘要、策略版本、原推荐、操作者和发生时间持久化。
 - 折扣、毛利、账期、人工/异常价格、非推荐路线和有效期规则产生审批要求。提交者不能审批自己的修订；并发重复审批由版本条件与唯一约束收敛为一条决策。
-- 只有仍在有效期且当前路线仍合格的已批准报价可以签发。签发生成高熵令牌，只保存 SHA-256 摘要；公开 API 使用明确 allow-list 和 `Cache-Control: no-store`。
+- 路线评估在同一事务复制 Planning selected-route Decision 到当前 Revision；按 `quotationLineId` 严格匹配 AUTO/FIXED 行。签发复核原 Evaluation，不重新推荐路线或重查库存。
+- 只有仍在有效期且拥有 `FROZEN` Decision 的已批准报价可以签发。签发生成高熵令牌，只保存 SHA-256 摘要；公开 API 使用明确 allow-list 和 `Cache-Control: no-store`。
 - Task 05 的交付边界停在只读预览；当前仓库已由 Task 06 增加客户接受/拒绝与终态回执，详见 `17-customer-quotation-acceptance-runbook.md`。转订单和库存预占仍属于后续任务。
 
 ## 2. 模块与数据归属
 
 `quotation` 和 `tradeplanning` 均为 `com.rom.cellarbridge` 的直接子模块。Quotation 只调用 Partner、Catalog 与 Trade Planning 的公开接口；不会直接依赖 Inventory。Trade Planning 通过 Partner、Catalog 与 Inventory 的 tenant-explicit 查询接口组合评估输入。
 
-`V6__trade_planning_evaluations.sql` 保存评估与候选；Trade Planning-only `V12__trade_planning_supply_decision_snapshot.sql` 增加 selected-route Decision 根列/JSON，并保持历史 ROUTE-2026-01/02 空决定可读。`V7` Quotation 表未在本层修改。
+`V6` 保存评估与候选；Planning-only V12 保存 selected-route Decision；quotation-only V13 保存独立 Revision 副本与行模式。FROZEN 是分配约束，不是 Reservation，AUTO 不冻结 Pool/Lot。
 
 策略版本固定为：
 
@@ -36,9 +37,9 @@ Requirements: **UC-QUO-001–003, UC-TRD-001, FR-QUO-001–009, FR-TRD-001–006
 |---|---|
 | 查看报价 | `quotation:read`；Sales 仅本人，经理可管理当前 tenant |
 | 创建/修改/评估 | `quotation:create`；仅草稿/变更请求状态，所有写入使用 `If-Match` |
-| 提交 | `quotation:submit`；需已选择合格路线且未过期 |
+| 提交 | `quotation:submit`；需已选择合格路线、`FROZEN` Decision 且未过期 |
 | 审批 | `quotation:approve`；不能是本修订提交者 |
-| 签发 | `quotation:issue`；需已批准、未过期、路线重新校验通过 |
+| 签发 | `quotation:issue`；需已批准、未过期且原 Planning Evaluation 与冻结副本一致 |
 | 毛利字段 | `quotation:read-commercial-sensitive` |
 | 公开 Portal | 随机令牌；Task 06 支持 SENT 与客户终态安全投影；不返回成本、毛利、路线评分、输入摘要、内部 actor 或策略证据 |
 
