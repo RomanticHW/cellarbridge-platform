@@ -30,8 +30,9 @@
 | FF-DATA-007 | Inventory quantity unit / allocation priority 与 Catalog 单位化投影 | V10/V11、升级测试与 PostgreSQL catalog test |
 | FF-DATA-008 | Planning Supply Decision 根列、JSON 与历史兼容 | Trade Planning-only V12、fresh/upgrade/round-trip/tamper tests |
 | FF-DATA-009 | Quotation 决策 Root/JSON/Line 一致、Legacy fail closed、事务回滚 | Quotation-only V13、Repository/domain/API/Testcontainers tests |
+| FF-DATA-010 | Current/Legacy V1、Order Root/JSON/Line、Buyer 隔离与 V14 ownership | Schema fixtures、重算 Hash、V13→V14 与端到端转换 tests |
 
-状态：FF-DATA-001～008 **Available**；FF-DATA-009 在 Quotation 分支 **Implemented in review**。该门禁不表示事件传播、订单证据或库存预占已完成。
+状态：Planning 证据 **Available**；FF-DATA-009～010 在 Quotation/Propagation 堆叠分支 **Implemented in review**，尚未进入 main，且不表示库存预占已完成。
 
 ## 4. 契约
 

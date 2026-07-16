@@ -5,13 +5,7 @@
 
 [English](#english) · [简体中文](#简体中文)
 
-> **Project status — Unit-aware inventory evidence available**
-> The approved design baseline now runs through secure customer acceptance, transactional Inbox
-> consumption, one immutable order per accepted quotation, reliable order-created publication,
-> eventual quotation linking, and tenant/Partner-scoped order views. Inventory lots and supply
-> projections now preserve CASE/BOTTLE units; ROUTE-2026-02 keeps MOQ case-equivalent separate from
-> exact-unit coverage, while authorized exact-stock views expose warehouse priority/version evidence. Availability remains informational until Task 08 reservation succeeds;
-> reservation and later workflows remain planned.
+> **Project status — Route-bound Supply Decision propagation available.** The executable baseline freezes one verified route-bound Supply Decision in a Quotation Revision and propagates it through Current V1 events to a FROZEN Trade Order. Legacy remains readable without fabricated evidence; inventory reservation remains designed, blocked, and not implemented.
 
 ---
 
@@ -58,6 +52,7 @@ flowchart LR
 | Secure customer quotation decision | Provides a strict public view, idempotent accept/reject, expiry processing, and a durable acceptance fact | Available |
 | Quote-to-order conversion | Uses an Inbox, immutable snapshots, and database uniqueness so an accepted quote produces at most one order | Available |
 | Unit-aware inventory readiness | Separates CASE/BOTTLE facts and exposes warehouse priority/version only to authorized exact-stock users | Available |
+| Route-bound Supply Decision freeze and propagation | Preserves AUTO/FIXED route constraints and one verified decision from quotation to order | Available |
 | Inventory reservation | Designed to use atomic conditional updates and deterministic allocation to prevent overselling | Designed |
 | Fulfillment plans and milestones | Models different delivery routes without embedding customs-law assumptions | Designed |
 | Exception center | Turns shortages, delays, and failed process steps into owned work | Designed |
@@ -194,7 +189,6 @@ Current versions and planned targets are recorded separately in [the technology 
 The executable application keeps every Spring Modulith business module as a direct child of
 `com.rom.cellarbridge`. Identity/access, partner onboarding, catalog/supply search, quotation/trade planning, customer quotation decisions, quote-to-order conversion, and unit-aware inventory visibility are available. Remaining business navigation is marked `Planned` until its complete vertical slice is delivered.
 
-> Quotation-owned route-bound Supply Decision freezing, V13, OpenAPI 1.6, and the AUTO/FIXED editor are implemented in review on the Task 07C Quotation branch. They are not a `main` capability until the later Propagation layer is review-ready and the sequential merge gate is approved.
 
 ### 8. Run the foundation
 
@@ -259,6 +253,7 @@ business paths remain design contracts.
 | Quotation and trade-planning slice | Available |
 | Customer quotation decision slice | Available |
 | Quote-to-order conversion slice | Available |
+| Route-bound Supply Decision freeze and propagation | Available |
 | Remaining end-to-end commercial slices | Planned |
 | Performance and security evidence | Planned |
 | Public demo release | Planned |
@@ -275,7 +270,7 @@ CellarBridge is an independent technical demonstration based on public business 
 
 ### 1. 项目定位
 
-CellarBridge（酒桥）模拟一家进口酒饮供应链服务商的目标企业流程。它不是面向消费者的酒类商城，也不是把若干 CRUD 页面拼在一起的后台模板。当前可运行范围从商业客户准入、单位化酒款与货源检索、报价和客户决定延伸到幂等转订单；批次已保留 CASE/BOTTLE，授权精确库存视图也提供仓库优先级/版本证据。可用性在 Task 08 预占成功前仍只是信息，库存预占及后续商业阶段仍为已设计或计划能力。
+CellarBridge（酒桥）模拟一家进口酒饮供应链服务商的目标企业流程。它不是面向消费者的酒类商城，也不是把若干 CRUD 页面拼在一起的后台模板。当前可运行范围从商业客户准入、单位化酒款与货源检索、报价和客户决定延伸到幂等转订单，并将经验证的路线绑定供给决策从报价冻结后通过 Current V1 事件传播到 FROZEN 订单；Legacy 保持可读但不补造证据。库存尚未预占；冻结与传播只是后续分配约束。
 
 本项目强调“设计可以被审阅”。技术评审者可以从一条业务需求出发，继续追踪到限界上下文、聚合不变量、接口或事件契约、数据库归属、验收场景和实现任务，而不需要依赖口头补充来理解系统。
 
@@ -314,6 +309,7 @@ flowchart LR
 | 客户安全报价决定 | 提供严格公开视图、幂等接受/拒绝、到期处理与可靠接受事实 | 可运行 |
 | 报价转订单 | 通过 Inbox、不可变快照与数据库唯一约束保证同一份已接受报价最多生成一个订单 | 可运行 |
 | 库存单位准备度 | 将 CASE/BOTTLE 事实分开，并只向授权精确库存用户展示仓库优先级/版本 | 可运行 |
+| 路线绑定供给决策冻结与传播 | 将 AUTO/FIXED、路线、单位、Pool/Type 和哈希证据从报价一致传播到订单 | 可运行 |
 | 库存预占 | 设计为使用原子条件更新和确定性分配防止超卖 | 已设计 |
 | 履约计划与节点 | 用可配置模板表达不同交付路径，而不是把法规细节写死在代码中 | 已设计 |
 | 异常中心 | 将缺货、延迟、节点失败转化为可分派、可追踪的工作项 | 已设计 |

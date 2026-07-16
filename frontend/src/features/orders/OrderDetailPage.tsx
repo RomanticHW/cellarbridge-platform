@@ -1,5 +1,15 @@
 import { useQuery } from '@tanstack/react-query';
-import { Card, Descriptions, List, Space, Table, Tag, Typography, type TableProps } from 'antd';
+import {
+  Alert,
+  Card,
+  Descriptions,
+  List,
+  Space,
+  Table,
+  Tag,
+  Typography,
+  type TableProps,
+} from 'antd';
 import { Link, useParams } from 'react-router-dom';
 import { useCurrentUser } from '../../api/currentUser';
 import {
@@ -18,6 +28,7 @@ type OrderLine =
   | OrderDetail['commercialSnapshot']['lines'][number]
   | BuyerOrderDetail['commercialSnapshot']['lines'][number];
 type TimelineEntry = OrderDetail['timeline'][number] | BuyerOrderDetail['timeline'][number];
+type SupplyDecisionLine = NonNullable<OrderDetail['supplyDecision']>['lineDecisions'][number];
 
 const lineColumns: TableProps<OrderLine>['columns'] = [
   {
@@ -40,6 +51,21 @@ const lineColumns: TableProps<OrderLine>['columns'] = [
   {
     title: 'Line total',
     render: (_, line) => `${line.lineTotal.currency} ${line.lineTotal.amount}`,
+  },
+];
+const supplyDecisionColumns: TableProps<SupplyDecisionLine>['columns'] = [
+  { title: 'Quotation line', dataIndex: 'quotationLineId' },
+  {
+    title: 'Allocation',
+    render: (_, line) => line.allocationMode.replaceAll('_', ' '),
+  },
+  {
+    title: 'Supply type',
+    render: (_, line) => line.supplyType.replaceAll('_', ' '),
+  },
+  {
+    title: 'Fixed pool',
+    render: (_, line) => line.supplyPoolId ?? 'Route-eligible pool at reservation time',
   },
 ];
 
@@ -151,6 +177,62 @@ export function OrderDetailPage() {
           </Descriptions>
         </Card>
 
+        {internal ? (
+          <Card
+            title="Supply decision"
+            extra={
+              <Tag color={detail.supplyDecisionStatus === 'FROZEN' ? 'success' : 'warning'}>
+                {detail.supplyDecisionStatus.replaceAll('_', ' ')}
+              </Tag>
+            }
+          >
+            {detail.supplyDecisionStatus === 'FROZEN' && detail.supplyDecision ? (
+              <Space orientation="vertical" size="middle" className="order-page-stack">
+                <Alert
+                  type="info"
+                  showIcon
+                  title="Frozen supply decision is an allocation constraint, not an inventory reservation."
+                />
+                <Descriptions column={responsiveColumns}>
+                  <Descriptions.Item label="Policy">
+                    {detail.supplyDecision.policyVersion}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Route">
+                    {detail.supplyDecision.selectedRouteCode.replaceAll('_', ' ')}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Decided">
+                    {new Date(detail.supplyDecision.decidedAt).toLocaleString()}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Inventory data as of">
+                    {new Date(detail.supplyDecision.inventoryDataAsOf).toLocaleString()}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Evaluation ID" span={2}>
+                    <Typography.Text code>
+                      {detail.supplyDecision.sourceRouteEvaluationId}
+                    </Typography.Text>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Decision hash" span={2}>
+                    <Typography.Text code>{detail.supplyDecision.decisionHash}</Typography.Text>
+                  </Descriptions.Item>
+                </Descriptions>
+                <Table
+                  rowKey="quotationLineId"
+                  columns={supplyDecisionColumns}
+                  dataSource={detail.supplyDecision.lineDecisions}
+                  pagination={false}
+                  scroll={orderLineTableScroll}
+                />
+              </Space>
+            ) : (
+              <Alert
+                type="warning"
+                showIcon
+                title="Legacy order requires controlled supply-decision remediation before inventory reservation."
+              />
+            )}
+          </Card>
+        ) : null}
+
         <Card title="Immutable commercial snapshot">
           <Table
             rowKey={orderLineKey}
@@ -199,7 +281,15 @@ export function OrderDetailPage() {
           <div className="order-process-grid">
             {processProjections.map(({ key, title, projection }) => (
               <Card key={key} title={title} size="small">
-                <Tag color={projection.status === 'PENDING' ? 'processing' : 'default'}>
+                <Tag
+                  color={
+                    projection.status === 'PENDING'
+                      ? 'processing'
+                      : projection.status === 'BLOCKED'
+                        ? 'warning'
+                        : 'default'
+                  }
+                >
                   {projection.status.replaceAll('_', ' ')}
                 </Tag>
                 <Typography.Paragraph className="order-process-message" type="secondary">

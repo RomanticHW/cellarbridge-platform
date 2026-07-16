@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: CellarBridge API
-  version: 1.6.0
+  version: 1.7.0
   summary: Contract baseline for B2B wine quotation, order, inventory and fulfillment
   description: |
     This contract remains the design-first integration baseline for CellarBridge. All examples are synthetic.
@@ -1588,6 +1588,9 @@ components:
     QuotationSupplyDecisionStatus:
       type: string
       enum: [UNDECIDED, FROZEN, LEGACY_REEVALUATION_REQUIRED]
+    TradeOrderSupplyDecisionStatus:
+      type: string
+      enum: [FROZEN, LEGACY_UNVERIFIED]
     SupplyAllocationMode:
       type: string
       enum: [FIXED_POOL, ROUTE_ELIGIBLE_AUTO]
@@ -2049,7 +2052,7 @@ components:
     OrderLineSnapshot:
       type: object
       additionalProperties: false
-      required: [orderLineId, sourceQuotationLineId, skuId, skuCode, description, quantity, netUnitPrice, lineTotal, supplyPoolId, supplyType]
+      required: [orderLineId, sourceQuotationLineId, skuId, skuCode, description, quantity, netUnitPrice, lineTotal, allocationMode, supplyPoolId, supplyType]
       properties:
         orderLineId: { type: string, format: uuid }
         sourceQuotationLineId: { type: string, format: uuid }
@@ -2059,10 +2062,12 @@ components:
         quantity: { $ref: '#/components/schemas/OrderQuantity' }
         netUnitPrice: { $ref: '#/components/schemas/OrderMoney' }
         lineTotal: { $ref: '#/components/schemas/OrderMoney' }
+        allocationMode:
+          description: Verified allocation constraint for FROZEN orders; null for Legacy orders.
+          oneOf: [{ $ref: '#/components/schemas/SupplyAllocationMode' }, { type: 'null' }]
         supplyPoolId: { type: [string, 'null'], format: uuid }
         supplyType:
-          type: string
-          enum: [DOMESTIC_ON_HAND, BONDED_ON_HAND, HONG_KONG_ON_HAND, IN_TRANSIT_PRESALE, OVERSEAS_SOURCING]
+          oneOf: [{ $ref: '#/components/schemas/SupplyType' }, { type: 'null' }]
     OrderCommercialSnapshot:
       type: object
       additionalProperties: false
@@ -2089,7 +2094,7 @@ components:
       additionalProperties: false
       required: [status, message]
       properties:
-        status: { type: string, enum: [PENDING, NOT_STARTED] }
+        status: { type: string, enum: [PENDING, BLOCKED, NOT_STARTED] }
         message: { type: string, minLength: 1, maxLength: 240 }
     OrderTimelineEntry:
       type: object
@@ -2106,7 +2111,7 @@ components:
     OrderDetail:
       type: object
       additionalProperties: false
-      required: [id, number, sourceQuotationNumber, partnerId, partnerName, status, total, routeCode, createdAt, version, sourceQuotation, commercialSnapshot, reservation, fulfillment, settlement, timeline, allowedActions]
+      required: [id, number, sourceQuotationNumber, partnerId, partnerName, status, total, routeCode, createdAt, version, supplyDecisionStatus, supplyDecision, sourceQuotation, commercialSnapshot, reservation, fulfillment, settlement, timeline, allowedActions]
       properties:
         id: { type: string, format: uuid }
         number: { type: string }
@@ -2118,6 +2123,10 @@ components:
         routeCode: { $ref: '#/components/schemas/TradeRouteCode' }
         createdAt: { type: string, format: date-time }
         version: { type: integer, format: int64 }
+        supplyDecisionStatus: { $ref: '#/components/schemas/TradeOrderSupplyDecisionStatus' }
+        supplyDecision:
+          description: Verified route-bound allocation evidence for FROZEN orders; null for Legacy orders.
+          oneOf: [{ $ref: '#/components/schemas/SupplyDecisionSummary' }, { type: 'null' }]
         sourceQuotation: { $ref: '#/components/schemas/OrderSourceQuotation' }
         commercialSnapshot: { $ref: '#/components/schemas/OrderCommercialSnapshot' }
         reservation: { $ref: '#/components/schemas/OrderProcessProjection' }
@@ -2208,7 +2217,7 @@ components:
       additionalProperties: false
       required: [status, message]
       properties:
-        status: { type: string, enum: [PENDING, NOT_STARTED] }
+        status: { type: string, enum: [PENDING, BLOCKED, NOT_STARTED] }
         message: { type: string, minLength: 1, maxLength: 240 }
     BuyerOrderTimelineEntry:
       type: object

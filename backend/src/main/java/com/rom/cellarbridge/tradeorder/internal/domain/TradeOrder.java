@@ -2,7 +2,13 @@ package com.rom.cellarbridge.tradeorder.internal.domain;
 
 import com.rom.cellarbridge.identityaccess.TenantId;
 import com.rom.cellarbridge.tradeorder.TradeOrderStatus;
+import com.rom.cellarbridge.tradeorder.TradeOrderSupplyDecisionStatus;
 import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrderDomainException.FailureKind;
+import com.rom.cellarbridge.tradeplanning.SupplyAllocationMode;
+import com.rom.cellarbridge.tradeplanning.SupplyDecisionSnapshot;
+import com.rom.cellarbridge.tradeplanning.SupplyDecisionSnapshot.LineDecision;
+import com.rom.cellarbridge.tradeplanning.TradePlanningQuantityUnit;
+import com.rom.cellarbridge.tradeplanning.TradePlanningSupplyType;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
@@ -26,6 +32,8 @@ public record TradeOrder(
     Instant acceptedAt,
     UUID sourceOwnerId,
     TradeOrderStatus status,
+    TradeOrderSupplyDecisionStatus supplyDecisionStatus,
+    SupplyDecisionSnapshot supplyDecision,
     CommercialSnapshot commercialSnapshot,
     String snapshotHash,
     UUID correlationId,
@@ -49,7 +57,9 @@ public record TradeOrder(
     Objects.requireNonNull(acceptanceId, "acceptanceId");
     Objects.requireNonNull(acceptedAt, "acceptedAt");
     Objects.requireNonNull(status, "status");
+    Objects.requireNonNull(supplyDecisionStatus, "supplyDecisionStatus");
     Objects.requireNonNull(commercialSnapshot, "commercialSnapshot");
+    validateSupplyDecision(supplyDecisionStatus, supplyDecision, commercialSnapshot);
     requireText(snapshotHash, "snapshotHash");
     Objects.requireNonNull(correlationId, "correlationId");
     Objects.requireNonNull(causationId, "causationId");
@@ -61,7 +71,51 @@ public record TradeOrder(
     }
   }
 
-  public static TradeOrder create(
+  public static TradeOrder createCurrent(
+      UUID id,
+      TenantId tenantId,
+      String number,
+      UUID sourceQuotationId,
+      UUID sourceRevisionId,
+      String sourceQuotationNumber,
+      int sourceRevision,
+      UUID sourceEventId,
+      UUID acceptanceId,
+      Instant acceptedAt,
+      UUID sourceOwnerId,
+      SupplyDecisionSnapshot supplyDecision,
+      CommercialSnapshot commercialSnapshot,
+      String snapshotHash,
+      UUID correlationId,
+      UUID causationId,
+      UUID createdEventId,
+      Instant now) {
+    return new TradeOrder(
+        id,
+        tenantId,
+        number,
+        sourceQuotationId,
+        sourceRevisionId,
+        sourceQuotationNumber,
+        sourceRevision,
+        sourceEventId,
+        acceptanceId,
+        acceptedAt,
+        sourceOwnerId,
+        TradeOrderStatus.PENDING_RESERVATION,
+        TradeOrderSupplyDecisionStatus.FROZEN,
+        supplyDecision,
+        commercialSnapshot,
+        snapshotHash,
+        correlationId,
+        causationId,
+        createdEventId,
+        now,
+        now,
+        0);
+  }
+
+  public static TradeOrder createLegacy(
       UUID id,
       TenantId tenantId,
       String number,
@@ -92,6 +146,8 @@ public record TradeOrder(
         acceptedAt,
         sourceOwnerId,
         TradeOrderStatus.PENDING_RESERVATION,
+        TradeOrderSupplyDecisionStatus.LEGACY_UNVERIFIED,
+        null,
         commercialSnapshot,
         snapshotHash,
         correlationId,
@@ -174,6 +230,8 @@ public record TradeOrder(
         acceptedAt,
         sourceOwnerId,
         target,
+        supplyDecisionStatus,
+        supplyDecision,
         commercialSnapshot,
         snapshotHash,
         correlationId,
@@ -212,8 +270,8 @@ public record TradeOrder(
       List<Line> lines) {
 
     public CommercialSnapshot {
-      if (schemaVersion != 1) {
-        throw new IllegalArgumentException("commercial snapshot schemaVersion must be 1");
+      if (schemaVersion != 1 && schemaVersion != 2) {
+        throw new IllegalArgumentException("commercial snapshot schemaVersion must be 1 or 2");
       }
       Objects.requireNonNull(customer, "customer");
       if (currency == null || !currency.matches("^[A-Z]{3}$")) {
@@ -291,6 +349,7 @@ public record TradeOrder(
       BigDecimal netUnitPrice,
       BigDecimal lineTotal,
       UUID supplyPoolId,
+      SupplyAllocationMode allocationMode,
       String supplyType) {
     public Line {
       Objects.requireNonNull(id, "line.id");
@@ -307,7 +366,49 @@ public record TradeOrder(
       }
       netUnitPrice = netUnitPrice.setScale(4, RoundingMode.HALF_UP);
       lineTotal = lineTotal.setScale(4, RoundingMode.HALF_UP);
-      requireText(supplyType, "supplyType");
+      if (supplyType != null) {
+        requireText(supplyType, "supplyType");
+      }
+    }
+  }
+
+  private static void validateSupplyDecision(
+      TradeOrderSupplyDecisionStatus status,
+      SupplyDecisionSnapshot decision,
+      CommercialSnapshot snapshot) {
+    if (status == TradeOrderSupplyDecisionStatus.LEGACY_UNVERIFIED) {
+      if (decision != null || snapshot.schemaVersion() != 1) {
+        throw new IllegalArgumentException("Legacy order must use schema 1 without a decision");
+      }
+      if (snapshot.lines().stream().anyMatch(line -> line.allocationMode() != null)) {
+        throw new IllegalArgumentException("Legacy order lines must not define allocationMode");
+      }
+      return;
+    }
+    Objects.requireNonNull(decision, "supplyDecision");
+    if (snapshot.schemaVersion() != 2
+        || !snapshot.route().code().equals(decision.selectedRouteCode().name())) {
+      throw new IllegalArgumentException("Frozen order route must match its schema 2 decision");
+    }
+    Map<UUID, LineDecision> decisions =
+        decision.lineDecisions().stream()
+            .collect(
+                java.util.stream.Collectors.toUnmodifiableMap(
+                    LineDecision::quotationLineId, line -> line));
+    if (decisions.size() != snapshot.lines().size()) {
+      throw new IllegalArgumentException("Frozen order line set must match its decision");
+    }
+    for (Line line : snapshot.lines()) {
+      LineDecision expected = decisions.get(line.sourceQuotationLineId());
+      if (expected == null
+          || !expected.skuId().equals(line.skuId())
+          || expected.requestedQuantity().compareTo(line.quantity().setScale(6)) != 0
+          || expected.quantityUnit() != TradePlanningQuantityUnit.valueOf(line.unit())
+          || expected.allocationMode() != line.allocationMode()
+          || !Objects.equals(expected.supplyPoolId(), line.supplyPoolId())
+          || expected.supplyType() != TradePlanningSupplyType.valueOf(line.supplyType())) {
+        throw new IllegalArgumentException("Frozen order line conflicts with its decision");
+      }
     }
   }
 }

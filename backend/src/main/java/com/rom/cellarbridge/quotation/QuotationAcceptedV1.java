@@ -1,5 +1,6 @@
 package com.rom.cellarbridge.quotation;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
@@ -35,6 +36,7 @@ public record QuotationAcceptedV1(
 
   public record Subject(String type, UUID id, String number) {}
 
+  @JsonInclude(JsonInclude.Include.NON_NULL)
   public record Payload(
       UUID quotationId,
       UUID revisionId,
@@ -52,6 +54,7 @@ public record QuotationAcceptedV1(
       LocalDate requestedDeliveryDate,
       DeliveryAddress deliveryAddress,
       String snapshotHash,
+      SupplyDecision supplyDecision,
       List<Line> lines) {
 
     public Payload {
@@ -72,6 +75,16 @@ public record QuotationAcceptedV1(
       String line1,
       String postalCode) {}
 
+  public record SupplyDecision(
+      int schemaVersion,
+      String policyVersion,
+      Instant decidedAt,
+      UUID sourceRouteEvaluationId,
+      String sourceRouteInputHash,
+      String selectedRouteCode,
+      Instant inventoryDataAsOf,
+      String decisionHash) {}
+
   public record Line(
       UUID quotationLineId,
       UUID skuId,
@@ -82,5 +95,6 @@ public record QuotationAcceptedV1(
       String netUnitPrice,
       String lineTotal,
       UUID supplyPoolId,
+      @JsonInclude(JsonInclude.Include.NON_NULL) String allocationMode,
       String supplyType) {}
 }

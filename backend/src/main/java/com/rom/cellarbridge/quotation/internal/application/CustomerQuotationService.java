@@ -18,7 +18,11 @@ import com.rom.cellarbridge.quotation.internal.domain.QuotationAggregate.Address
 import com.rom.cellarbridge.quotation.internal.domain.QuotationAggregate.PartnerSnapshot;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.PricedLine;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.QuantityUnit;
+import com.rom.cellarbridge.tradeplanning.SupplyDecisionSnapshot;
+import com.rom.cellarbridge.tradeplanning.SupplyDecisionSnapshot.LineDecision;
+import com.rom.cellarbridge.tradeplanning.TradePlanningQuantityUnit;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -26,6 +30,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
@@ -180,6 +185,7 @@ public class CustomerQuotationService {
       return acceptance(context.quotation().number(), existing, true);
     }
     QuotationAggregate before = context.quotation();
+    requireFrozenPropagation(before);
     QuotationAggregate after = before.accept(context.revisionId(), now);
     CommercialSnapshot snapshot = snapshot(before, context.termsVersion());
     String snapshotJson = json(snapshot);
@@ -357,6 +363,14 @@ public class CustomerQuotationService {
 
   private static void requireAction(PortalContext context, String action) {
     if (!context.allowedActions().contains(action)) {
+      if (context.quotation().revision().supplyDecisionStatus()
+              != QuotationSupplyDecisionStatus.FROZEN
+          || context.quotation().revision().supplyDecision() == null) {
+        throw problem(
+            HttpStatus.CONFLICT,
+            "QUOTE_SUPPLY_DECISION_REQUIRED",
+            "A complete frozen supply decision is required for this quotation action");
+      }
       throw problem(
           HttpStatus.CONFLICT,
           "QUOTE_NOT_ACCEPTABLE",
@@ -422,9 +436,9 @@ public class CustomerQuotationService {
       QuotationAggregate quotation, String acceptedTermsVersion) {
     PartnerSnapshot partner = quotation.revision().partnerSnapshot();
     Address address = quotation.revision().terms().deliveryAddress();
-    List<QuotationAcceptedV1.Line> lines =
+    List<CommercialLine> lines =
         quotation.revision().pricing().lines().stream()
-            .map(CustomerQuotationService::eventLine)
+            .map(CustomerQuotationService::commercialLine)
             .toList();
     return new CommercialSnapshot(
         1,
@@ -477,7 +491,10 @@ public class CustomerQuotationService {
             snapshot.requestedDeliveryDate(),
             snapshot.deliveryAddress(),
             decision.snapshotHash(),
-            snapshot.lines());
+            supplyDecision(quotation.revision().supplyDecision()),
+            quotation.revision().pricing().lines().stream()
+                .map(CustomerQuotationService::eventLine)
+                .toList());
     return new QuotationAcceptedV1(
         eventId,
         QuotationAcceptedV1.TYPE,
@@ -514,8 +531,28 @@ public class CustomerQuotationService {
         line.currency());
   }
 
-  private static QuotationAcceptedV1.Line eventLine(PricedLine line) {
+  private static CommercialLine commercialLine(PricedLine line) {
     if (line.supplyType() == null) {
+      throw problem(
+          HttpStatus.CONFLICT,
+          "QUOTE_NOT_ACCEPTABLE",
+          "Quotation line does not have a frozen supply decision");
+    }
+    return new CommercialLine(
+        line.lineId(),
+        line.sku().skuId(),
+        line.sku().skuCode(),
+        line.sku().displayName(),
+        quantity(line.quantity()),
+        line.unit().name(),
+        amount(line.netUnitPrice()),
+        amount(line.lineTotal()),
+        line.preferredSupplyPoolId(),
+        line.supplyType());
+  }
+
+  private static QuotationAcceptedV1.Line eventLine(PricedLine line) {
+    if (line.supplyType() == null || line.allocationMode() == null) {
       throw problem(
           HttpStatus.CONFLICT,
           "QUOTE_NOT_ACCEPTABLE",
@@ -531,7 +568,66 @@ public class CustomerQuotationService {
         amount(line.netUnitPrice()),
         amount(line.lineTotal()),
         line.preferredSupplyPoolId(),
+        line.allocationMode().name(),
         line.supplyType());
+  }
+
+  private static QuotationAcceptedV1.SupplyDecision supplyDecision(
+      SupplyDecisionSnapshot decision) {
+    return new QuotationAcceptedV1.SupplyDecision(
+        decision.schemaVersion(),
+        decision.policyVersion(),
+        decision.decidedAt(),
+        decision.sourceRouteEvaluationId(),
+        decision.sourceRouteInputHash(),
+        decision.selectedRouteCode().name(),
+        decision.inventoryDataAsOf(),
+        decision.decisionHash());
+  }
+
+  private static void requireFrozenPropagation(QuotationAggregate quotation) {
+    SupplyDecisionSnapshot decision = quotation.revision().supplyDecision();
+    if (quotation.revision().supplyDecisionStatus() != QuotationSupplyDecisionStatus.FROZEN
+        || decision == null) {
+      throw problem(
+          HttpStatus.CONFLICT,
+          "QUOTE_SUPPLY_DECISION_REQUIRED",
+          "A complete frozen supply decision is required for this quotation action");
+    }
+    if (quotation.revision().selectedRouteCode() != decision.selectedRouteCode()) {
+      throw frozenEvidenceConflict();
+    }
+    Map<UUID, LineDecision> decisions = new HashMap<>();
+    for (LineDecision line : decision.lineDecisions()) {
+      if (decisions.put(line.quotationLineId(), line) != null) {
+        throw frozenEvidenceConflict();
+      }
+    }
+    if (decisions.size() != quotation.revision().pricing().lines().size()) {
+      throw frozenEvidenceConflict();
+    }
+    for (PricedLine line : quotation.revision().pricing().lines()) {
+      LineDecision expected = decisions.get(line.lineId());
+      if (expected == null
+          || !expected.skuId().equals(line.sku().skuId())
+          || expected
+                  .requestedQuantity()
+                  .compareTo(line.quantity().setScale(6, RoundingMode.UNNECESSARY))
+              != 0
+          || expected.quantityUnit() != TradePlanningQuantityUnit.valueOf(line.unit().name())
+          || expected.allocationMode() != line.allocationMode()
+          || !java.util.Objects.equals(expected.supplyPoolId(), line.preferredSupplyPoolId())
+          || !expected.supplyType().name().equals(line.supplyType())) {
+        throw frozenEvidenceConflict();
+      }
+    }
+  }
+
+  private static QuotationProblem frozenEvidenceConflict() {
+    return problem(
+        HttpStatus.CONFLICT,
+        "QUOTE_NOT_ACCEPTABLE",
+        "Quotation line evidence conflicts with its frozen supply decision");
   }
 
   private static QuotationStatus effectiveStatus(QuotationAggregate quotation, Instant now) {
@@ -593,7 +689,22 @@ public class CustomerQuotationService {
         snapshot.acceptedTermsVersion(),
         snapshot.requestedDeliveryDate(),
         snapshot.deliveryAddress(),
-        snapshot.lines());
+        snapshot.lines().stream().map(CustomerQuotationService::hashLine).toList());
+  }
+
+  private static QuotationAcceptedV1.Line hashLine(CommercialLine line) {
+    return new QuotationAcceptedV1.Line(
+        line.quotationLineId(),
+        line.skuId(),
+        line.skuCode(),
+        line.description(),
+        line.quantity(),
+        line.unit(),
+        line.netUnitPrice(),
+        line.lineTotal(),
+        line.supplyPoolId(),
+        null,
+        line.supplyType());
   }
 
   static String sha256(String value) {
@@ -640,12 +751,24 @@ public class CustomerQuotationService {
       String acceptedTermsVersion,
       LocalDate requestedDeliveryDate,
       QuotationAcceptedV1.DeliveryAddress deliveryAddress,
-      List<QuotationAcceptedV1.Line> lines) {
+      List<CommercialLine> lines) {
 
     private CommercialSnapshot {
       lines = List.copyOf(lines);
     }
   }
+
+  private record CommercialLine(
+      UUID quotationLineId,
+      UUID skuId,
+      String skuCode,
+      String description,
+      String quantity,
+      String unit,
+      String netUnitPrice,
+      String lineTotal,
+      UUID supplyPoolId,
+      String supplyType) {}
 
   public enum RejectionReasonCategory {
     PRICE,

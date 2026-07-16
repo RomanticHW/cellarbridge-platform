@@ -117,4 +117,4 @@ The documentation is organized from evidence to delivery. Each layer narrows the
 
 `docs/design-baseline.yaml` identifies the approved baseline. A behavior change must update its requirement, domain, contract, test, and implementation status together. Architecture changes require an ADR before code changes.
 
-Current Task 07C evidence is layered by [ADR-016](03-architecture/adr/ADR-016-route-supply-decision-readiness-layers.md): Foundation and Planning are completed; Quotation is active under [ADR-017](03-architecture/adr/ADR-017-quotation-owned-frozen-supply-decisions.md), while Propagation and Task 08 remain blocked.
+Task 07C follows [ADR-016](03-architecture/adr/ADR-016-route-supply-decision-readiness-layers.md): Planning, Quotation freeze, and [Propagation](03-architecture/adr/ADR-018-pre-1-0-supply-decision-event-propagation.md) are available in the current baseline. Task 08 is designed-not-implemented and remains blocked.

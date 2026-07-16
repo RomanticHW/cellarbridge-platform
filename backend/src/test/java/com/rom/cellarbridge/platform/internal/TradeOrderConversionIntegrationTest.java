@@ -13,6 +13,11 @@ import com.rom.cellarbridge.quotation.QuotationSnapshotHashV1;
 import com.rom.cellarbridge.quotation.internal.application.TradeOrderCreatedEventHandler;
 import com.rom.cellarbridge.test.PostgresIntegrationTestSupport;
 import com.rom.cellarbridge.tradeorder.internal.application.QuotationAcceptedEventHandler;
+import com.rom.cellarbridge.tradeplanning.SupplyAllocationMode;
+import com.rom.cellarbridge.tradeplanning.SupplyDecisionSnapshot;
+import com.rom.cellarbridge.tradeplanning.TradePlanningQuantityUnit;
+import com.rom.cellarbridge.tradeplanning.TradePlanningSupplyType;
+import com.rom.cellarbridge.tradeplanning.TradeRouteCode;
 import java.math.BigDecimal;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -72,6 +77,12 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
           "sourceQuotationLineId",
           "supplyPoolId",
           "supplyType",
+          "allocationMode",
+          "supplyDecisionStatus",
+          "supplyDecision",
+          "decisionHash",
+          "sourceRouteInputHash",
+          "policyVersion",
           "snapshotHash",
           "sourceEventId",
           "acceptanceId",
@@ -226,6 +237,20 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
                 assertThat(failure)
                     .returns("ORDER_SOURCE_QUOTATION_CONFLICT", EventHandlingException::failureCode)
                     .returns(false, EventHandlingException::retryable));
+  }
+
+  @Test
+  void rejectsSilentSupplyDecisionStatusUpgradesForTheSameQuotation() throws Exception {
+    UUID quotationId = UUID.randomUUID();
+    deliveryService.deliver(handler, delivery(UUID.randomUUID(), quotationId, 'q', PARTNER_ID));
+    EventDelivery current = currentDelivery(UUID.randomUUID(), quotationId, 'q');
+
+    RuntimeException failure = catchFailure(() -> deliveryService.deliver(handler, current));
+    assertThat(failureRecorder.record(handler, current, failure))
+        .isEqualTo(JdbcEventFailureRecorder.FailureOutcome.FAILED_FINAL);
+    assertThat(inboxValue(current.eventId(), "last_error_code"))
+        .isEqualTo("ORDER_SUPPLY_DECISION_CONFLICT");
+    assertOrderGraph(quotationId, 1, 1, 1);
   }
 
   @Test
@@ -445,7 +470,7 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
     assertThat(buyerDetail.body().path("commercialSnapshot").path("lines").path(0).propertyNames())
         .containsExactlyInAnyOrder(
             "skuCode", "description", "quantity", "netUnitPrice", "lineTotal");
-    assertThat(buyerDetail.body().path("reservation").path("status").asText()).isEqualTo("PENDING");
+    assertThat(buyerDetail.body().path("reservation").path("status").asText()).isEqualTo("BLOCKED");
 
     ApiResponse internalDetail = get("/api/v1/orders/" + buyerOrderId, NORTH_SALES);
     assertThat(internalDetail.status()).withFailMessage(internalDetail.raw()).isEqualTo(200);
@@ -453,6 +478,13 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
         .doesNotContain("sourceEventId", "acceptanceId", "correlationId", "causationId");
     assertThat(internalDetail.body().path("commercialSnapshot").path("snapshotHash").asText())
         .isEqualTo(parsedPayload(buyerOrder.payloadJson()).snapshotHash());
+    assertThat(internalDetail.body().path("supplyDecisionStatus").asText())
+        .isEqualTo("LEGACY_UNVERIFIED");
+    assertThat(internalDetail.body().path("supplyDecision").isNull()).isTrue();
+    JsonNode legacyLine = internalDetail.body().path("commercialSnapshot").path("lines").path(0);
+    assertThat(legacyLine.path("allocationMode").isNull()).isTrue();
+    assertThat(legacyLine.path("supplyPoolId").isNull()).isTrue();
+    assertThat(legacyLine.path("supplyType").isNull()).isTrue();
 
     ApiResponse buyerPage = get("/api/v1/buyer/orders?pageSize=100", NORTH_BUYER);
     assertThat(buyerPage.status()).withFailMessage(buyerPage.raw()).isEqualTo(200);
@@ -498,11 +530,24 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
     assertThat(acceptedPayload.acceptedTermsVersion()).isNotBlank();
     assertThat(acceptedPayload.requestedDeliveryDate()).isNotNull();
     assertThat(acceptedPayload.deliveryAddress()).isNotNull();
+    assertThat(acceptedPayload.supplyDecision()).isNotNull();
     assertThat(QuotationSnapshotHashV1.hash(QuotationSnapshotHashV1.Snapshot.from(acceptedPayload)))
         .isEqualTo(acceptedPayload.snapshotHash());
     assertThat(deliveryService.deliver(handler, acceptedDelivery))
         .isEqualTo(LocalEventDeliveryService.DeliveryOutcome.PROCESSED);
     UUID orderId = orderId(issued.quotationId());
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT supply_decision_status FROM trade_order.trade_order WHERE id = ?",
+                String.class,
+                orderId))
+        .isEqualTo("FROZEN");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT snapshot_schema_version FROM trade_order.trade_order WHERE id = ?",
+                String.class,
+                orderId))
+        .isEqualTo("2");
     EventDelivery createdDelivery =
         publicationSource.findReady(quotationHandler, 500).stream()
             .filter(event -> event.subject().id().equals(orderId))
@@ -510,9 +555,15 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
             .orElseThrow();
     assertThat(jsonMapper.readTree(createdDelivery.payloadJson()).path("snapshotHash").asText())
         .isEqualTo(acceptedPayload.snapshotHash());
+    JsonNode createdCurrent = jsonMapper.readTree(createdDelivery.payloadJson());
+    assertThat(createdCurrent.path("supplyDecision").path("decisionHash").asText())
+        .isEqualTo(acceptedPayload.supplyDecision().decisionHash());
+    assertThat(createdCurrent.path("lines").path(0).path("allocationMode").asText())
+        .isIn("FIXED_POOL", "ROUTE_ELIGIBLE_AUTO");
 
     EventDelivery legacyCreatedDelivery =
-        legacySnapshotHash(withoutPayloadField(createdDelivery, "acceptanceId"));
+        legacySnapshotHash(
+            legacyCreatedEvent(withoutPayloadField(createdDelivery, "acceptanceId")));
     assertThat(deliveryService.deliver(quotationHandler, legacyCreatedDelivery))
         .isEqualTo(LocalEventDeliveryService.DeliveryOutcome.PROCESSED);
     assertThat(snapshotHash("quotation.order_link", createdDelivery.eventId()))
@@ -558,18 +609,77 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
 
   @Test
   void snapshotHashV1MatchesThePublishedGoldenVector() throws Exception {
-    JsonNode example =
+    JsonNode accepted =
         jsonMapper.readTree(
             Files.readString(
                 contractPath("examples", "events", "quotation-accepted-v1.example.json")));
-    QuotationAcceptedV1.Payload payload = parsedPayload(example.path("payload").toString());
-    String expected = "a61b70c8847bbc58e64fa9d3dacdcf1277868166ea2c6af5762e89a010a96fad";
+    JsonNode order =
+        jsonMapper.readTree(
+            Files.readString(
+                contractPath("examples", "events", "trade-order-created-v1.example.json")));
+    JsonNode acceptedPayload = accepted.path("payload");
+    JsonNode orderPayload = order.path("payload");
+    QuotationAcceptedV1.Payload payload = parsedPayload(acceptedPayload.toString());
+    String expected = "c2d9de573e494036e90e77b836956600a9054e0f890c602572fd1e278a1badde";
+    String decisionHash = "02254fa78a2ff6eefd019f100a894d7ba76c2ce07d3f3283a75e214781ffe56c";
 
-    assertThat(example.path("payload").path("snapshotHash").asText()).isEqualTo(expected);
+    assertThat(acceptedPayload.path("route").path("policyVersion").asText())
+        .isEqualTo("ROUTE-2026-03")
+        .isEqualTo(orderPayload.path("route").path("policyVersion").asText());
+    assertThat(acceptedPayload.path("snapshotHash").asText())
+        .isEqualTo(expected)
+        .isEqualTo(orderPayload.path("snapshotHash").asText());
     assertThat(QuotationSnapshotHashV1.hash(QuotationSnapshotHashV1.Snapshot.from(payload)))
         .isEqualTo(expected);
+    assertThat(acceptedPayload.path("supplyDecision").path("decisionHash").asText())
+        .isEqualTo(decisionHash)
+        .isEqualTo(orderPayload.path("supplyDecision").path("decisionHash").asText());
+    assertThat(acceptedPayload.path("supplyDecision").path("selectedRouteCode").asText())
+        .isEqualTo(acceptedPayload.path("route").path("code").asText())
+        .isEqualTo(orderPayload.path("supplyDecision").path("selectedRouteCode").asText())
+        .isEqualTo(orderPayload.path("route").path("code").asText());
+    JsonNode decision = acceptedPayload.path("supplyDecision");
+    JsonNode line = acceptedPayload.path("lines").path(0);
+    assertThat(
+            SupplyDecisionSnapshot.create(
+                    decision.path("policyVersion").asText(),
+                    Instant.parse(decision.path("decidedAt").asText()),
+                    UUID.fromString(decision.path("sourceRouteEvaluationId").asText()),
+                    decision.path("sourceRouteInputHash").asText(),
+                    TradeRouteCode.valueOf(decision.path("selectedRouteCode").asText()),
+                    Instant.parse(decision.path("inventoryDataAsOf").asText()),
+                    List.of(
+                        new SupplyDecisionSnapshot.LineDecision(
+                            UUID.fromString(line.path("quotationLineId").asText()),
+                            UUID.fromString(line.path("skuId").asText()),
+                            new BigDecimal(line.path("quantity").asText()),
+                            TradePlanningQuantityUnit.valueOf(line.path("unit").asText()),
+                            SupplyAllocationMode.valueOf(line.path("allocationMode").asText()),
+                            UUID.fromString(line.path("supplyPoolId").asText()),
+                            TradePlanningSupplyType.valueOf(line.path("supplyType").asText()))))
+                .decisionHash())
+        .isEqualTo(decisionHash);
+    for (String legacyName :
+        List.of(
+            "quotation-accepted-v1.legacy.example.json",
+            "trade-order-created-v1.legacy.example.json")) {
+      JsonNode legacy =
+          jsonMapper.readTree(Files.readString(contractPath("examples", "events", legacyName)));
+      assertThat(legacy.path("payload").has("supplyDecision")).isFalse();
+      assertThat(legacy.path("payload").path("lines").path(0).has("allocationMode")).isFalse();
+    }
+    String asyncApi = Files.readString(contractPath("asyncapi", "cellarbridge-events.yaml"));
+    assertThat(asyncApi.lines().filter(value -> value.contains("ROUTE-2026-03")).count())
+        .isEqualTo(2);
+    assertThat(asyncApi.lines().filter(value -> value.contains(expected)).count()).isEqualTo(2);
+    assertThat(asyncApi.lines().filter(value -> value.contains(decisionHash)).count()).isEqualTo(2);
 
-    ObjectNode varied = (ObjectNode) example.path("payload");
+    ObjectNode varied = (ObjectNode) acceptedPayload.deepCopy();
+    ((ObjectNode) varied.path("route")).put("policyVersion", "TRP-2026-01");
+    assertThat(
+            QuotationSnapshotHashV1.hash(
+                QuotationSnapshotHashV1.Snapshot.from(parsedPayload(varied.toString()))))
+        .isEqualTo("a61b70c8847bbc58e64fa9d3dacdcf1277868166ea2c6af5762e89a010a96fad");
     varied.put("totalAmount", "256800.00");
     ((ObjectNode) varied.path("deliveryAddress")).putNull("district").putNull("postalCode");
     ArrayNode lines = (ArrayNode) varied.path("lines");
@@ -672,6 +782,29 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
     assertInvalid(
         'y', payload -> ((ObjectNode) payload.path("lines").path(0)).putNull("supplyType"));
     assertInvalid('h', payload -> payload.put("snapshotHash", "sha256:not-a-v1-hash"));
+
+    UUID nullDecisionQuotation = UUID.randomUUID();
+    assertFinalFailure(
+        mutate(
+            currentDelivery(UUID.randomUUID(), nullDecisionQuotation, 'v'),
+            payload -> payload.putNull("supplyDecision")),
+        nullDecisionQuotation,
+        "QUOTATION_ACCEPTED_SUPPLY_DECISION_INVALID");
+    UUID partialDecisionQuotation = UUID.randomUUID();
+    assertFinalFailure(
+        mutate(
+            currentDelivery(UUID.randomUUID(), partialDecisionQuotation, 'w'),
+            payload -> ((ObjectNode) payload.path("lines").path(0)).remove("allocationMode")),
+        partialDecisionQuotation,
+        "QUOTATION_ACCEPTED_SUPPLY_DECISION_INVALID");
+    UUID hashDecisionQuotation = UUID.randomUUID();
+    assertFinalFailure(
+        mutate(
+            currentDelivery(UUID.randomUUID(), hashDecisionQuotation, 'x'),
+            payload ->
+                ((ObjectNode) payload.path("supplyDecision")).put("decisionHash", "f".repeat(64))),
+        hashDecisionQuotation,
+        "QUOTATION_ACCEPTED_SUPPLY_DECISION_HASH_MISMATCH");
 
     UUID tamperedQuotation = UUID.randomUUID();
     EventDelivery tampered =
@@ -793,6 +926,52 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
 
   private EventDelivery withoutPayloadField(EventDelivery delivery, String field) throws Exception {
     return mutate(delivery, payload -> payload.remove(field));
+  }
+
+  private EventDelivery legacyCreatedEvent(EventDelivery delivery) throws Exception {
+    return mutate(
+        delivery,
+        payload -> {
+          payload.remove("supplyDecision");
+          payload.path("lines").forEach(line -> ((ObjectNode) line).remove("allocationMode"));
+        });
+  }
+
+  private EventDelivery currentDelivery(UUID eventId, UUID quotationId, char variant)
+      throws Exception {
+    EventDelivery legacy = delivery(eventId, quotationId, variant, PARTNER_ID);
+    SupplyDecisionSnapshot decision =
+        SupplyDecisionSnapshot.create(
+            SupplyDecisionSnapshot.POLICY_VERSION,
+            Instant.parse("2026-07-14T08:59:59Z"),
+            UUID.nameUUIDFromBytes(("evaluation:" + quotationId).getBytes()),
+            "c".repeat(64),
+            TradeRouteCode.SH_GENERAL_TRADE,
+            Instant.parse("2026-07-14T08:59:58Z"),
+            List.of(
+                new SupplyDecisionSnapshot.LineDecision(
+                    UUID.fromString("61100000-0000-4000-8000-000000000001"),
+                    UUID.fromString("34000000-0000-4000-8000-000000000001"),
+                    new BigDecimal("1.000000"),
+                    TradePlanningQuantityUnit.CASE,
+                    SupplyAllocationMode.ROUTE_ELIGIBLE_AUTO,
+                    null,
+                    TradePlanningSupplyType.DOMESTIC_ON_HAND)));
+    return mutate(
+        legacy,
+        payload -> {
+          ObjectNode root = payload.putObject("supplyDecision");
+          root.put("schemaVersion", decision.schemaVersion());
+          root.put("policyVersion", decision.policyVersion());
+          root.put("decidedAt", decision.decidedAt().toString());
+          root.put("sourceRouteEvaluationId", decision.sourceRouteEvaluationId().toString());
+          root.put("sourceRouteInputHash", decision.sourceRouteInputHash());
+          root.put("selectedRouteCode", decision.selectedRouteCode().name());
+          root.put("inventoryDataAsOf", decision.inventoryDataAsOf().toString());
+          root.put("decisionHash", decision.decisionHash());
+          ((ObjectNode) payload.path("lines").path(0))
+              .put("allocationMode", SupplyAllocationMode.ROUTE_ELIGIBLE_AUTO.name());
+        });
   }
 
   private EventDelivery legacySnapshotHash(EventDelivery delivery) throws Exception {

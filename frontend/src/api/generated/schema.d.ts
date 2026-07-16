@@ -907,6 +907,8 @@ export interface components {
         /** @enum {string} */
         QuotationSupplyDecisionStatus: "UNDECIDED" | "FROZEN" | "LEGACY_REEVALUATION_REQUIRED";
         /** @enum {string} */
+        TradeOrderSupplyDecisionStatus: "FROZEN" | "LEGACY_UNVERIFIED";
+        /** @enum {string} */
         SupplyAllocationMode: "FIXED_POOL" | "ROUTE_ELIGIBLE_AUTO";
         QuotationLineInput: {
             /** Format: uuid */
@@ -1289,10 +1291,11 @@ export interface components {
             quantity: components["schemas"]["OrderQuantity"];
             netUnitPrice: components["schemas"]["OrderMoney"];
             lineTotal: components["schemas"]["OrderMoney"];
+            /** @description Verified allocation constraint for FROZEN orders; null for Legacy orders. */
+            allocationMode: components["schemas"]["SupplyAllocationMode"] | null;
             /** Format: uuid */
             supplyPoolId: string | null;
-            /** @enum {string} */
-            supplyType: "DOMESTIC_ON_HAND" | "BONDED_ON_HAND" | "HONG_KONG_ON_HAND" | "IN_TRANSIT_PRESALE" | "OVERSEAS_SOURCING";
+            supplyType: components["schemas"]["SupplyType"] | null;
         };
         OrderCommercialSnapshot: {
             customer: components["schemas"]["OrderCustomerSnapshot"];
@@ -1309,7 +1312,7 @@ export interface components {
         };
         OrderProcessProjection: {
             /** @enum {string} */
-            status: "PENDING" | "NOT_STARTED";
+            status: "PENDING" | "BLOCKED" | "NOT_STARTED";
             message: string;
         };
         OrderTimelineEntry: {
@@ -1339,6 +1342,9 @@ export interface components {
             createdAt: string;
             /** Format: int64 */
             version: number;
+            supplyDecisionStatus: components["schemas"]["TradeOrderSupplyDecisionStatus"];
+            /** @description Verified route-bound allocation evidence for FROZEN orders; null for Legacy orders. */
+            supplyDecision: components["schemas"]["SupplyDecisionSummary"] | null;
             sourceQuotation: components["schemas"]["OrderSourceQuotation"];
             commercialSnapshot: components["schemas"]["OrderCommercialSnapshot"];
             reservation: components["schemas"]["OrderProcessProjection"];
@@ -1397,7 +1403,7 @@ export interface components {
         };
         BuyerOrderProcessProjection: {
             /** @enum {string} */
-            status: "PENDING" | "NOT_STARTED";
+            status: "PENDING" | "BLOCKED" | "NOT_STARTED";
             message: string;
         };
         BuyerOrderTimelineEntry: {

@@ -10,12 +10,18 @@ import com.rom.cellarbridge.platform.ReliableEventPublisher;
 import com.rom.cellarbridge.quotation.QuotationAcceptedV1;
 import com.rom.cellarbridge.quotation.QuotationSnapshotHashV1;
 import com.rom.cellarbridge.tradeorder.TradeOrderCreatedV1;
+import com.rom.cellarbridge.tradeorder.TradeOrderSupplyDecisionStatus;
 import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrder;
 import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrder.CommercialSnapshot;
 import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrder.Customer;
 import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrder.DeliveryAddress;
 import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrder.Line;
 import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrder.Route;
+import com.rom.cellarbridge.tradeplanning.SupplyAllocationMode;
+import com.rom.cellarbridge.tradeplanning.SupplyDecisionSnapshot;
+import com.rom.cellarbridge.tradeplanning.TradePlanningQuantityUnit;
+import com.rom.cellarbridge.tradeplanning.TradePlanningSupplyType;
+import com.rom.cellarbridge.tradeplanning.TradeRouteCode;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
@@ -97,19 +103,19 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
       TradeOrder existing =
           repository.findBySourceQuotation(tenantId, payload.quotationId()).orElse(null);
       if (existing != null) {
-        String existingHash = requireSameSource(existing, payload, accepted.snapshotHash());
+        String existingHash = requireSameSource(existing, accepted);
         return result(existing, existingHash);
       }
 
       Instant now = max(clock.instant(), payload.acceptedAt());
-      TradeOrder order = createOrder(tenantId, delivery, payload, accepted.snapshotHash(), now);
+      TradeOrder order = createOrder(tenantId, delivery, accepted, now);
       if (!repository.insertIfAbsent(tenantId, order, SYSTEM_ACTOR_ID)) {
         TradeOrder winner =
             repository
                 .findBySourceQuotation(tenantId, payload.quotationId())
                 .orElseThrow(
                     () -> EventHandlingException.finalFailure("ORDER_SOURCE_EVENT_REUSED"));
-        String winnerHash = requireSameSource(winner, payload, accepted.snapshotHash());
+        String winnerHash = requireSameSource(winner, accepted);
         return result(winner, winnerHash);
       }
 
@@ -143,6 +149,7 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
       throw invalid();
     }
     JsonNode body = jsonMapper.readTree(delivery.payloadJson());
+    EventKind eventKind = classifyPresence(body);
     requiredInteger(body, "revision");
     requiredInteger(body, "paymentTermDays");
     requiredInteger(body.path("customer"), "sourceVersion");
@@ -159,7 +166,83 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
         QuotationSnapshotHashV1.hash(QuotationSnapshotHashV1.Snapshot.from(payload)))) {
       throw EventHandlingException.finalFailure("QUOTATION_ACCEPTED_SNAPSHOT_HASH_MISMATCH");
     }
-    return new AcceptedEvent(payload, normalizedHash);
+    SupplyDecisionSnapshot supplyDecision =
+        eventKind == EventKind.CURRENT ? reconstructSupplyDecision(payload) : null;
+    return new AcceptedEvent(payload, normalizedHash, eventKind, supplyDecision);
+  }
+
+  private static EventKind classifyPresence(JsonNode body) {
+    required(body != null && body.isObject());
+    JsonNode lines = body.path("lines");
+    required(lines.isArray() && !lines.isEmpty());
+    if (!body.has("supplyDecision")) {
+      for (JsonNode line : lines) {
+        if (!line.isObject() || line.has("allocationMode")) {
+          throw supplyDecisionInvalid();
+        }
+      }
+      return EventKind.LEGACY;
+    }
+    JsonNode decision = body.get("supplyDecision");
+    if (decision == null || !decision.isObject()) {
+      throw supplyDecisionInvalid();
+    }
+    for (JsonNode line : lines) {
+      if (!line.isObject()
+          || !line.hasNonNull("allocationMode")
+          || !line.path("allocationMode").isTextual()
+          || !line.has("supplyPoolId")
+          || !(line.path("supplyPoolId").isNull() || line.path("supplyPoolId").isTextual())) {
+        throw supplyDecisionInvalid();
+      }
+    }
+    return EventKind.CURRENT;
+  }
+
+  private static SupplyDecisionSnapshot reconstructSupplyDecision(
+      QuotationAcceptedV1.Payload payload) {
+    QuotationAcceptedV1.SupplyDecision root = payload.supplyDecision();
+    try {
+      if (root == null
+          || root.decisionHash() == null
+          || !root.decisionHash().matches("^[0-9a-f]{64}$")
+          || !root.selectedRouteCode().equals(payload.route().code())) {
+        throw supplyDecisionInvalid();
+      }
+      SupplyDecisionSnapshot rebuilt =
+          SupplyDecisionSnapshot.create(
+              root.policyVersion(),
+              root.decidedAt(),
+              root.sourceRouteEvaluationId(),
+              root.sourceRouteInputHash(),
+              TradeRouteCode.valueOf(root.selectedRouteCode()),
+              root.inventoryDataAsOf(),
+              payload.lines().stream()
+                  .map(
+                      line ->
+                          new SupplyDecisionSnapshot.LineDecision(
+                              line.quotationLineId(),
+                              line.skuId(),
+                              new BigDecimal(line.quantity()),
+                              TradePlanningQuantityUnit.valueOf(line.unit()),
+                              SupplyAllocationMode.valueOf(line.allocationMode()),
+                              line.supplyPoolId(),
+                              TradePlanningSupplyType.valueOf(line.supplyType())))
+                  .toList());
+      if (root.schemaVersion() != SupplyDecisionSnapshot.SCHEMA_VERSION
+          || !SupplyDecisionSnapshot.POLICY_VERSION.equals(root.policyVersion())) {
+        throw supplyDecisionInvalid();
+      }
+      if (!rebuilt.decisionHash().equals(root.decisionHash())) {
+        throw EventHandlingException.finalFailure(
+            "QUOTATION_ACCEPTED_SUPPLY_DECISION_HASH_MISMATCH");
+      }
+      return rebuilt;
+    } catch (EventHandlingException exception) {
+      throw exception;
+    } catch (IllegalArgumentException | NullPointerException exception) {
+      throw supplyDecisionInvalid();
+    }
   }
 
   static void validate(EventDelivery delivery, QuotationAcceptedV1.Payload payload) {
@@ -275,12 +358,13 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
     return new ContractViolation();
   }
 
+  private static EventHandlingException supplyDecisionInvalid() {
+    return EventHandlingException.finalFailure("QUOTATION_ACCEPTED_SUPPLY_DECISION_INVALID");
+  }
+
   private TradeOrder createOrder(
-      TenantId tenantId,
-      EventDelivery delivery,
-      QuotationAcceptedV1.Payload payload,
-      String snapshotHash,
-      Instant now) {
+      TenantId tenantId, EventDelivery delivery, AcceptedEvent accepted, Instant now) {
+    QuotationAcceptedV1.Payload payload = accepted.payload();
     List<Line> lines =
         payload.lines().stream()
             .map(
@@ -296,11 +380,14 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
                         new BigDecimal(line.netUnitPrice()),
                         new BigDecimal(line.lineTotal()),
                         line.supplyPoolId(),
+                        accepted.eventKind() == EventKind.CURRENT
+                            ? SupplyAllocationMode.valueOf(line.allocationMode())
+                            : null,
                         line.supplyType()))
             .toList();
     CommercialSnapshot snapshot =
         new CommercialSnapshot(
-            1,
+            accepted.eventKind() == EventKind.CURRENT ? 2 : 1,
             new Customer(
                 payload.customer().partnerId(),
                 payload.customer().partnerNumber(),
@@ -323,10 +410,34 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
                 payload.deliveryAddress().line1(),
                 payload.deliveryAddress().postalCode()),
             lines);
-    return TradeOrder.create(
-        UUID.randomUUID(),
+    UUID orderId = UUID.randomUUID();
+    String number = repository.nextNumber(tenantId, now);
+    UUID createdEventId = UUID.randomUUID();
+    if (accepted.eventKind() == EventKind.CURRENT) {
+      return TradeOrder.createCurrent(
+          orderId,
+          tenantId,
+          number,
+          payload.quotationId(),
+          payload.revisionId(),
+          payload.quotationNumber(),
+          payload.revision(),
+          delivery.eventId(),
+          payload.acceptanceId(),
+          payload.acceptedAt(),
+          payload.sourceOwnerId(),
+          accepted.supplyDecision(),
+          snapshot,
+          accepted.snapshotHash(),
+          delivery.correlationId(),
+          delivery.eventId(),
+          createdEventId,
+          now);
+    }
+    return TradeOrder.createLegacy(
+        orderId,
         tenantId,
-        repository.nextNumber(tenantId, now),
+        number,
         payload.quotationId(),
         payload.revisionId(),
         payload.quotationNumber(),
@@ -336,30 +447,50 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
         payload.acceptedAt(),
         payload.sourceOwnerId(),
         snapshot,
-        snapshotHash,
+        accepted.snapshotHash(),
         delivery.correlationId(),
         delivery.eventId(),
-        UUID.randomUUID(),
+        createdEventId,
         now);
   }
 
-  private static String requireSameSource(
-      TradeOrder existing, QuotationAcceptedV1.Payload payload, String snapshotHash) {
+  private static String requireSameSource(TradeOrder existing, AcceptedEvent accepted) {
+    QuotationAcceptedV1.Payload payload = accepted.payload();
     String existingHash =
         normalizeStoredHash(existing.snapshotHash(), "ORDER_SOURCE_QUOTATION_CONFLICT");
     if (!existing.sourceRevisionId().equals(payload.revisionId())
         || existing.sourceRevision() != payload.revision()
         || !existing.sourceQuotationNumber().equals(payload.quotationNumber())
         || !existing.acceptanceId().equals(payload.acceptanceId())
-        || !existingHash.equals(snapshotHash)) {
+        || !existingHash.equals(accepted.snapshotHash())) {
       throw EventHandlingException.finalFailure("ORDER_SOURCE_QUOTATION_CONFLICT");
+    }
+    TradeOrderSupplyDecisionStatus incomingStatus =
+        accepted.eventKind() == EventKind.CURRENT
+            ? TradeOrderSupplyDecisionStatus.FROZEN
+            : TradeOrderSupplyDecisionStatus.LEGACY_UNVERIFIED;
+    if (existing.supplyDecisionStatus() != incomingStatus
+        || (incomingStatus == TradeOrderSupplyDecisionStatus.FROZEN
+            && !existing
+                .supplyDecision()
+                .decisionHash()
+                .equals(accepted.supplyDecision().decisionHash()))) {
+      throw EventHandlingException.finalFailure("ORDER_SUPPLY_DECISION_CONFLICT");
     }
     return existingHash;
   }
 
   private static EventHandlingResult result(TradeOrder order, String snapshotHash) {
     return EventHandlingResult.processed(
-        order.id().toString(), sha256(order.id() + "|" + snapshotHash));
+        order.id().toString(),
+        sha256(
+            order.id()
+                + "|"
+                + snapshotHash
+                + "|"
+                + order.supplyDecisionStatus()
+                + "|"
+                + (order.supplyDecision() == null ? "" : order.supplyDecision().decisionHash())));
   }
 
   private static String normalizeStoredHash(String snapshotHash, String failureCode) {
@@ -406,6 +537,17 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
                 snapshot.deliveryAddress().line1(),
                 snapshot.deliveryAddress().postalCode()),
             order.snapshotHash(),
+            order.supplyDecision() == null
+                ? null
+                : new TradeOrderCreatedV1.SupplyDecision(
+                    order.supplyDecision().schemaVersion(),
+                    order.supplyDecision().policyVersion(),
+                    order.supplyDecision().decidedAt(),
+                    order.supplyDecision().sourceRouteEvaluationId(),
+                    order.supplyDecision().sourceRouteInputHash(),
+                    order.supplyDecision().selectedRouteCode().name(),
+                    order.supplyDecision().inventoryDataAsOf(),
+                    order.supplyDecision().decisionHash()),
             snapshot.lines().stream()
                 .map(
                     line ->
@@ -420,6 +562,7 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
                             amount(line.netUnitPrice()),
                             amount(line.lineTotal()),
                             line.supplyPoolId(),
+                            line.allocationMode() == null ? null : line.allocationMode().name(),
                             line.supplyType()))
                 .toList(),
             order.createdAt());
@@ -455,7 +598,16 @@ public class QuotationAcceptedEventHandler implements LocalEventHandler {
     }
   }
 
-  private record AcceptedEvent(QuotationAcceptedV1.Payload payload, String snapshotHash) {}
+  private enum EventKind {
+    CURRENT,
+    LEGACY
+  }
+
+  private record AcceptedEvent(
+      QuotationAcceptedV1.Payload payload,
+      String snapshotHash,
+      EventKind eventKind,
+      SupplyDecisionSnapshot supplyDecision) {}
 
   private static final class ContractViolation extends RuntimeException {}
 }

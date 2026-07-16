@@ -33,7 +33,7 @@ Requirements: **UC-QUO-004, FR-QUO-009–011**
 - 新增技术支持 schema `platform_event.event_publication`，以 `PENDING` 保存完整版本化 envelope，无业务模块外键；
 - 为接受事实和事件设置唯一约束，数据库层防止重复副作用。
 
-`QuotationAcceptedV1` 包含客户、报价行、金额、账期、路径、条款版本、交付日期/地址与 snapshot hash。幂等摘要位于受控 metadata。Task 07 只从该事实创建订单并实现 consumer Inbox，不回查 Quotation 私有表。
+`QuotationAcceptedV1` Current 还包含冻结 Supply Decision 与行模式；Legacy 同时省略二者。Trade Order 从事件重建并重算 Hash，不回查 Quotation/Planning/Inventory 私有表，也不执行 Reservation。
 
 ## 4. 本地验证
 

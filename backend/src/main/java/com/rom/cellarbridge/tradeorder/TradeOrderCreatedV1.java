@@ -50,6 +50,7 @@ public record TradeOrderCreatedV1(
       LocalDate requestedDeliveryDate,
       DeliveryAddress deliveryAddress,
       String snapshotHash,
+      SupplyDecision supplyDecision,
       List<Line> lines,
       Instant createdAt) {
 
@@ -71,6 +72,16 @@ public record TradeOrderCreatedV1(
       String line1,
       String postalCode) {}
 
+  public record SupplyDecision(
+      int schemaVersion,
+      String policyVersion,
+      Instant decidedAt,
+      UUID sourceRouteEvaluationId,
+      String sourceRouteInputHash,
+      String selectedRouteCode,
+      Instant inventoryDataAsOf,
+      String decisionHash) {}
+
   public record Line(
       UUID orderLineId,
       UUID sourceQuotationLineId,
@@ -82,5 +93,6 @@ public record TradeOrderCreatedV1(
       String netUnitPrice,
       String lineTotal,
       UUID supplyPoolId,
+      @JsonInclude(JsonInclude.Include.NON_NULL) String allocationMode,
       String supplyType) {}
 }

@@ -7,6 +7,7 @@ import com.rom.cellarbridge.test.PostgresIntegrationTestSupport;
 import java.util.UUID;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -103,6 +104,76 @@ class QuotationSupplyDecisionV13MigrationIntegrationTest extends PostgresIntegra
                     "UPDATE quotation.quotation_revision SET supply_decision_status = 'FROZEN' WHERE id = ?",
                     LEGACY_REVISION))
         .isInstanceOf(DataIntegrityViolationException.class);
+
+    insertHistoricalOrder(jdbc);
+    migrate(database, "14");
+
+    assertThat(
+            jdbc.queryForMap(
+                "SELECT supply_decision_status, supply_decision_schema_version, supply_decision_hash, supply_decision_snapshot FROM trade_order.trade_order WHERE id = '71000000-0000-4000-8000-000000000095'"))
+        .containsEntry("supply_decision_status", "LEGACY_UNVERIFIED")
+        .containsEntry("supply_decision_schema_version", null)
+        .containsEntry("supply_decision_hash", null)
+        .containsEntry("supply_decision_snapshot", null);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT allocation_mode FROM trade_order.order_line WHERE id = '72000000-0000-4000-8000-000000000095'",
+                String.class))
+        .isNull();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT supply_decision_status FROM quotation.quotation_revision WHERE id = ?",
+                String.class,
+                LEGACY_REVISION))
+        .isEqualTo("LEGACY_REEVALUATION_REQUIRED");
+    assertThatThrownBy(
+            () ->
+                jdbc.update(
+                    "UPDATE trade_order.trade_order SET supply_decision_status = 'FROZEN', snapshot_schema_version = '2' WHERE id = '71000000-0000-4000-8000-000000000095'"))
+        .isInstanceOf(DataAccessException.class);
+  }
+
+  private static void insertHistoricalOrder(JdbcTemplate jdbc) {
+    jdbc.execute(
+        """
+        DO $$
+        BEGIN
+          INSERT INTO trade_order.trade_order
+            (id, tenant_id, number, source_quotation_id, source_quotation_number,
+             source_revision_id, source_revision_number, source_event_id, source_owner_id,
+             acceptance_id, accepted_at, partner_id, partner_number, partner_display_name,
+             partner_source_version, status, currency, total_amount, payment_term_days,
+             route_code, route_policy_version, route_estimated_delivery_date,
+             accepted_terms_version, requested_delivery_date, delivery_address,
+             commercial_snapshot, snapshot_schema_version, snapshot_hash, created_event_id,
+             correlation_id, causation_id, created_at, created_by, updated_at, updated_by, version)
+          VALUES
+            ('71000000-0000-4000-8000-000000000095', '10000000-0000-4000-8000-000000000093',
+             'ORD-V14-000095', '21000000-0000-4000-8000-000000000094', 'QUO-V13-000094',
+             '22000000-0000-4000-8000-000000000094', 1,
+             '73000000-0000-4000-8000-000000000095', '11200000-0000-4000-8000-000000000093',
+             '74000000-0000-4000-8000-000000000095', now(),
+             '53000000-0000-4000-8000-000000000093', 'PAR-V13', 'Historical Customer', 1,
+             'PENDING_RESERVATION', 'CNY', 100, 30, 'SH_GENERAL_TRADE', 'ROUTE-2026-02',
+             current_date + 20, 'TERMS-V1', current_date + 20, '{"countryCode":"CN"}',
+             '{"lines":[{"sourceQuotationLineId":"51000000-0000-4000-8000-000000000094"}]}',
+             '1', repeat('a', 64), '75000000-0000-4000-8000-000000000095',
+             '76000000-0000-4000-8000-000000000095', '73000000-0000-4000-8000-000000000095',
+             now(), '11200000-0000-4000-8000-000000000093',
+             now(), '11200000-0000-4000-8000-000000000093', 0);
+          INSERT INTO trade_order.order_line
+            (id, tenant_id, order_id, source_quotation_line_id, line_number, sku_id, sku_code,
+             description, quantity, quantity_unit, currency, net_unit_price, line_total,
+             supply_pool_id, supply_type, created_at, created_by, updated_at, updated_by, version)
+          VALUES
+            ('72000000-0000-4000-8000-000000000095', '10000000-0000-4000-8000-000000000093',
+             '71000000-0000-4000-8000-000000000095', '51000000-0000-4000-8000-000000000094', 1,
+             '34000000-0000-4000-8000-000000000094', 'SKU-V13', 'Historical Wine', 1, 'CASE',
+             'CNY', 100, 100, '54000000-0000-4000-8000-000000000094', 'DOMESTIC_ON_HAND',
+             now(), '11200000-0000-4000-8000-000000000093',
+             now(), '11200000-0000-4000-8000-000000000093', 0);
+        END $$;
+        """);
   }
 
   private static void insertQuotation(
