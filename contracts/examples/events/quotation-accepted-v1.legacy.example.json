@@ -1,5 +1,5 @@
 {
-  "id": "11000000-0000-4000-8000-000000000001",
+  "id": "11000000-0000-4000-8000-000000000011",
   "specVersion": "1.0",
   "occurredAt": "2026-07-20T10:15:30Z",
   "tenantId": "10000000-0000-4000-8000-000000000001",
@@ -9,8 +9,8 @@
     "id": "21000000-0000-4000-8000-000000000001",
     "number": "QUO-202607-000001"
   },
-  "correlationId": "31000000-0000-4000-8000-000000000001",
-  "causationId": "41000000-0000-4000-8000-000000000001",
+  "correlationId": "31000000-0000-4000-8000-000000000011",
+  "causationId": "41000000-0000-4000-8000-000000000011",
   "type": "cellarbridge.quotation.accepted.v1",
   "payload": {
     "quotationId": "21000000-0000-4000-8000-000000000001",
@@ -45,16 +45,6 @@
       "postalCode": "200120"
     },
     "snapshotHash": "a61b70c8847bbc58e64fa9d3dacdcf1277868166ea2c6af5762e89a010a96fad",
-    "supplyDecision": {
-      "schemaVersion": 1,
-      "policyVersion": "SUPPLY-DECISION-2026-01",
-      "decidedAt": "2026-07-20T10:14:00Z",
-      "sourceRouteEvaluationId": "28000000-0000-4000-8000-000000000001",
-      "sourceRouteInputHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-      "selectedRouteCode": "NB_BONDED_B2B",
-      "inventoryDataAsOf": "2026-07-20T10:13:00Z",
-      "decisionHash": "02254fa78a2ff6eefd019f100a894d7ba76c2ce07d3f3283a75e214781ffe56c"
-    },
     "lines": [
       {
         "quotationLineId": "25000000-0000-4000-8000-000000000001",
@@ -66,7 +56,6 @@
         "netUnitPrice": "6420.00",
         "lineTotal": "128400.00",
         "supplyPoolId": "27000000-0000-4000-8000-000000000001",
-        "allocationMode": "FIXED_POOL",
         "supplyType": "BONDED_ON_HAND"
       }
     ]

@@ -1,7 +1,7 @@
 asyncapi: 3.0.0
 info:
   title: CellarBridge Integration Events
-  version: 1.0.0-design
+  version: 1.1.0-design
   description: |
     Versioned integration-event contract for the CellarBridge full profile.
     Delivery semantics are at-least-once; every consumer must deduplicate by event id.
@@ -25,13 +25,13 @@ servers:
 channels:
   quotationAccepted:
     address: cellarbridge.quotation.accepted.v1
-    description: A customer has accepted a frozen quotation revision.
+    description: A customer has accepted a quotation revision. Current events carry complete frozen Supply Decision evidence; pre-1.0 Legacy events omit the root and every line allocationMode.
     messages:
       quotationAccepted:
         $ref: '#/components/messages/QuotationAcceptedV1'
   tradeOrderCreated:
     address: cellarbridge.order.created.v1
-    description: A unique trade order has been created from an accepted quotation.
+    description: A unique trade order has been created from an accepted quotation. FROZEN orders carry complete Supply Decision evidence; LEGACY_UNVERIFIED orders omit the root and every line allocationMode.
     messages:
       tradeOrderCreated:
         $ref: '#/components/messages/TradeOrderCreatedV1'
@@ -182,7 +182,7 @@ components:
     QuotationAcceptedV1:
       name: QuotationAcceptedV1
       title: Quotation accepted
-      summary: Frozen commercial terms accepted by the customer.
+      summary: Frozen commercial terms and route-bound Supply Decision accepted by the customer; Legacy V1 input omits the decision fields.
       correlationId:
         location: $message.payload#/correlationId
       headers:
@@ -234,6 +234,15 @@ components:
                 line1: 88 Harbor Avenue
                 postalCode: '200120'
               snapshotHash: a61b70c8847bbc58e64fa9d3dacdcf1277868166ea2c6af5762e89a010a96fad
+              supplyDecision:
+                schemaVersion: 1
+                policyVersion: SUPPLY-DECISION-2026-01
+                decidedAt: '2026-07-20T10:14:00Z'
+                sourceRouteEvaluationId: 28000000-0000-4000-8000-000000000001
+                sourceRouteInputHash: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+                selectedRouteCode: NB_BONDED_B2B
+                inventoryDataAsOf: '2026-07-20T10:13:00Z'
+                decisionHash: 02254fa78a2ff6eefd019f100a894d7ba76c2ce07d3f3283a75e214781ffe56c
               lines:
                 - quotationLineId: 25000000-0000-4000-8000-000000000001
                   skuId: 26000000-0000-4000-8000-000000000001
@@ -244,16 +253,88 @@ components:
                   netUnitPrice: '6420.00'
                   lineTotal: '128400.00'
                   supplyPoolId: 27000000-0000-4000-8000-000000000001
+                  allocationMode: FIXED_POOL
                   supplyType: BONDED_ON_HAND
     TradeOrderCreatedV1:
       name: TradeOrderCreatedV1
       title: Trade order created
+      summary: Self-contained commercial and Supply Decision evidence for FROZEN orders; Legacy V1 omits decision fields.
       correlationId:
         location: $message.payload#/correlationId
       headers:
         $ref: '#/components/schemas/EventHeaders'
       payload:
         $ref: '../schemas/events/trade-order-created-v1.schema.json'
+      examples:
+        - name: frozenTradeOrder
+          payload:
+            id: 11000000-0000-4000-8000-000000000002
+            type: cellarbridge.order.created.v1
+            specVersion: "1.0"
+            occurredAt: "2026-07-20T10:16:00Z"
+            tenantId: 10000000-0000-4000-8000-000000000001
+            producer: trade-order
+            subject:
+              type: TRADE_ORDER
+              id: 51000000-0000-4000-8000-000000000001
+              number: ORD-202607-000001
+            correlationId: 31000000-0000-4000-8000-000000000001
+            causationId: 11000000-0000-4000-8000-000000000001
+            payload:
+              orderId: 51000000-0000-4000-8000-000000000001
+              orderNumber: ORD-202607-000001
+              sourceQuotationId: 21000000-0000-4000-8000-000000000001
+              sourceRevisionId: 22000000-0000-4000-8000-000000000001
+              sourceQuotationNumber: QUO-202607-000001
+              sourceRevision: 1
+              sourceEventId: 11000000-0000-4000-8000-000000000001
+              acceptanceId: 23000000-0000-4000-8000-000000000001
+              acceptedAt: "2026-07-20T10:15:30Z"
+              customer:
+                partnerId: 24000000-0000-4000-8000-000000000001
+                partnerNumber: PAR-202607-000001
+                displayName: Jincheng Hospitality Group (synthetic)
+                sourceVersion: 3
+              currency: CNY
+              totalAmount: "128400.00"
+              paymentTermDays: 30
+              route:
+                code: NB_BONDED_B2B
+                policyVersion: TRP-2026-01
+                estimatedDeliveryDate: "2026-08-15"
+              acceptedTermsVersion: TERMS-2026-01
+              requestedDeliveryDate: "2026-08-15"
+              deliveryAddress:
+                countryCode: CN
+                province: Shanghai
+                city: Shanghai
+                district: Pudong
+                line1: 88 Harbor Avenue
+                postalCode: "200120"
+              snapshotHash: a61b70c8847bbc58e64fa9d3dacdcf1277868166ea2c6af5762e89a010a96fad
+              supplyDecision:
+                schemaVersion: 1
+                policyVersion: SUPPLY-DECISION-2026-01
+                decidedAt: "2026-07-20T10:14:00Z"
+                sourceRouteEvaluationId: 28000000-0000-4000-8000-000000000001
+                sourceRouteInputHash: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+                selectedRouteCode: NB_BONDED_B2B
+                inventoryDataAsOf: "2026-07-20T10:13:00Z"
+                decisionHash: 02254fa78a2ff6eefd019f100a894d7ba76c2ce07d3f3283a75e214781ffe56c
+              lines:
+                - orderLineId: 52000000-0000-4000-8000-000000000001
+                  sourceQuotationLineId: 25000000-0000-4000-8000-000000000001
+                  skuId: 26000000-0000-4000-8000-000000000001
+                  skuCode: CB-BDX-2019-750X6
+                  description: Bordeaux Blend 2019 750ml x 6 (synthetic)
+                  quantity: "20"
+                  unit: CASE
+                  netUnitPrice: "6420.00"
+                  lineTotal: "128400.00"
+                  supplyPoolId: 27000000-0000-4000-8000-000000000001
+                  allocationMode: FIXED_POOL
+                  supplyType: BONDED_ON_HAND
+              createdAt: "2026-07-20T10:16:00Z"
     InventoryReservationConfirmedV1:
       name: InventoryReservationConfirmedV1
       title: Inventory reservation confirmed

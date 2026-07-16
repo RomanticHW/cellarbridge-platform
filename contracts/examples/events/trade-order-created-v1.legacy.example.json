@@ -1,5 +1,5 @@
 {
-  "id": "11000000-0000-4000-8000-000000000002",
+  "id": "11000000-0000-4000-8000-000000000012",
   "type": "cellarbridge.order.created.v1",
   "specVersion": "1.0",
   "occurredAt": "2026-07-20T10:16:00Z",
@@ -7,20 +7,20 @@
   "producer": "trade-order",
   "subject": {
     "type": "TRADE_ORDER",
-    "id": "51000000-0000-4000-8000-000000000001",
-    "number": "ORD-202607-000001"
+    "id": "51000000-0000-4000-8000-000000000011",
+    "number": "ORD-202607-000011"
   },
-  "correlationId": "31000000-0000-4000-8000-000000000001",
-  "causationId": "11000000-0000-4000-8000-000000000001",
+  "correlationId": "31000000-0000-4000-8000-000000000011",
+  "causationId": "11000000-0000-4000-8000-000000000011",
   "payload": {
-    "orderId": "51000000-0000-4000-8000-000000000001",
-    "orderNumber": "ORD-202607-000001",
+    "orderId": "51000000-0000-4000-8000-000000000011",
+    "orderNumber": "ORD-202607-000011",
     "sourceQuotationId": "21000000-0000-4000-8000-000000000001",
     "sourceRevisionId": "22000000-0000-4000-8000-000000000001",
     "sourceQuotationNumber": "QUO-202607-000001",
     "sourceRevision": 1,
     "sourceOwnerId": "11200000-0000-4000-8000-000000000003",
-    "sourceEventId": "11000000-0000-4000-8000-000000000001",
+    "sourceEventId": "11000000-0000-4000-8000-000000000011",
     "acceptanceId": "23000000-0000-4000-8000-000000000001",
     "acceptedAt": "2026-07-20T10:15:30Z",
     "customer": {
@@ -48,19 +48,9 @@
       "estimatedDeliveryDate": "2026-08-15"
     },
     "snapshotHash": "a61b70c8847bbc58e64fa9d3dacdcf1277868166ea2c6af5762e89a010a96fad",
-    "supplyDecision": {
-      "schemaVersion": 1,
-      "policyVersion": "SUPPLY-DECISION-2026-01",
-      "decidedAt": "2026-07-20T10:14:00Z",
-      "sourceRouteEvaluationId": "28000000-0000-4000-8000-000000000001",
-      "sourceRouteInputHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-      "selectedRouteCode": "NB_BONDED_B2B",
-      "inventoryDataAsOf": "2026-07-20T10:13:00Z",
-      "decisionHash": "02254fa78a2ff6eefd019f100a894d7ba76c2ce07d3f3283a75e214781ffe56c"
-    },
     "lines": [
       {
-        "orderLineId": "52000000-0000-4000-8000-000000000001",
+        "orderLineId": "52000000-0000-4000-8000-000000000011",
         "sourceQuotationLineId": "25000000-0000-4000-8000-000000000001",
         "skuId": "26000000-0000-4000-8000-000000000001",
         "skuCode": "CB-BDX-2019-750X6",
@@ -70,7 +60,6 @@
         "netUnitPrice": "6420.00",
         "lineTotal": "128400.00",
         "supplyPoolId": "27000000-0000-4000-8000-000000000001",
-        "allocationMode": "FIXED_POOL",
         "supplyType": "BONDED_ON_HAND"
       }
     ],

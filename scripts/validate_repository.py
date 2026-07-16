@@ -229,7 +229,9 @@ def validate_contracts(files: Iterable[Path]) -> list[str]:
     registry = Registry().with_resources(resources)
 
     for example_path in sorted(example_dir.glob("*.example.json")):
-        schema_name = example_path.name.replace(".example.json", ".schema.json")
+        schema_name = example_path.name.replace(".legacy.example.json", ".schema.json")
+        if schema_name == example_path.name:
+            schema_name = example_path.name.replace(".example.json", ".schema.json")
         schema_path = schema_dir / schema_name
         if not schema_path.exists():
             errors.append(f"event example has no matching schema: {relative(example_path)}")
