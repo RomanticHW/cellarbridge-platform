@@ -1,6 +1,7 @@
 package com.rom.cellarbridge.quotation.internal.web;
 
 import com.rom.cellarbridge.quotation.QuotationStatus;
+import com.rom.cellarbridge.quotation.QuotationSupplyDecisionStatus;
 import com.rom.cellarbridge.quotation.internal.application.QuotationApplicationService;
 import com.rom.cellarbridge.quotation.internal.application.QuotationApplicationService.AddressCommand;
 import com.rom.cellarbridge.quotation.internal.application.QuotationApplicationService.CommandView;
@@ -17,6 +18,8 @@ import com.rom.cellarbridge.quotation.internal.domain.QuotationAggregate.Approva
 import com.rom.cellarbridge.quotation.internal.domain.QuotationApprovalPolicy.Requirement;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.PricedLine;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.QuantityUnit;
+import com.rom.cellarbridge.tradeplanning.SupplyAllocationMode;
+import com.rom.cellarbridge.tradeplanning.SupplyDecisionSnapshot;
 import com.rom.cellarbridge.tradeplanning.TradePlanningService.RouteCandidate;
 import com.rom.cellarbridge.tradeplanning.TradePlanningService.RouteEvaluation;
 import com.rom.cellarbridge.tradeplanning.TradePlanningService.RouteRejection;
@@ -324,9 +327,10 @@ final class QuotationController {
       MoneyResponse netUnitPrice,
       MoneyResponse allocatedCharges,
       MoneyResponse lineTotal,
+      SupplyAllocationMode allocationMode,
       String supplyType,
       UUID supplyPoolId) {
-    static PriceLineResponse from(PricedLine line) {
+    static PriceLineResponse from(PricedLine line, boolean exposeSupplyEvidence) {
       return new PriceLineResponse(
           line.lineId(),
           new SkuSnapshotResponse(
@@ -349,8 +353,9 @@ final class QuotationController {
           MoneyResponse.of(line.netUnitPrice(), line.currency()),
           MoneyResponse.of(line.allocatedCharges(), line.currency()),
           MoneyResponse.of(line.lineTotal(), line.currency()),
-          line.supplyType(),
-          line.preferredSupplyPoolId());
+          exposeSupplyEvidence ? line.allocationMode() : null,
+          exposeSupplyEvidence ? line.supplyType() : null,
+          exposeSupplyEvidence ? line.preferredSupplyPoolId() : null);
     }
   }
 
@@ -402,6 +407,8 @@ final class QuotationController {
       List<PriceLineResponse> lines,
       MoneyResponse subtotal,
       String estimatedMarginRate,
+      QuotationSupplyDecisionStatus supplyDecisionStatus,
+      SupplyDecisionSummaryResponse supplyDecision,
       RouteEvaluationResponse routeEvaluation,
       List<RequirementResponse> approvalRequirements,
       List<ApprovalResponse> approvals,
@@ -433,9 +440,18 @@ final class QuotationController {
           revision.terms().requestedDeliveryDate(),
           revision.terms().paymentTermDays(),
           AddressResponse.from(revision.terms().deliveryAddress()),
-          revision.pricing().lines().stream().map(PriceLineResponse::from).toList(),
+          revision.pricing().lines().stream()
+              .map(
+                  line ->
+                      PriceLineResponse.from(
+                          line,
+                          revision.supplyDecisionStatus()
+                              != QuotationSupplyDecisionStatus.LEGACY_REEVALUATION_REQUIRED))
+              .toList(),
           MoneyResponse.of(revision.pricing().subtotal(), revision.terms().currency()),
           view.estimatedMarginRate() == null ? null : view.estimatedMarginRate().toPlainString(),
+          revision.supplyDecisionStatus(),
+          SupplyDecisionSummaryResponse.from(revision.supplyDecision()),
           view.routeEvaluation() == null
               ? null
               : RouteEvaluationResponse.from(view.routeEvaluation()),
@@ -521,6 +537,53 @@ final class QuotationController {
   record OverrideResponse(
       String reason, UUID actorId, Instant occurredAt, TradeRouteCode originalRecommendation) {}
 
+  record LineSupplyDecisionResponse(
+      UUID quotationLineId,
+      UUID skuId,
+      String requestedQuantity,
+      String quantityUnit,
+      SupplyAllocationMode allocationMode,
+      UUID supplyPoolId,
+      String supplyType) {
+    static LineSupplyDecisionResponse from(SupplyDecisionSnapshot.LineDecision line) {
+      return new LineSupplyDecisionResponse(
+          line.quotationLineId(),
+          line.skuId(),
+          line.requestedQuantity().toPlainString(),
+          line.quantityUnit().name(),
+          line.allocationMode(),
+          line.supplyPoolId(),
+          line.supplyType().name());
+    }
+  }
+
+  record SupplyDecisionSummaryResponse(
+      int schemaVersion,
+      String policyVersion,
+      Instant decidedAt,
+      UUID sourceRouteEvaluationId,
+      String sourceRouteInputHash,
+      TradeRouteCode selectedRouteCode,
+      Instant inventoryDataAsOf,
+      String decisionHash,
+      List<LineSupplyDecisionResponse> lineDecisions) {
+    static SupplyDecisionSummaryResponse from(SupplyDecisionSnapshot decision) {
+      if (decision == null) {
+        return null;
+      }
+      return new SupplyDecisionSummaryResponse(
+          decision.schemaVersion(),
+          decision.policyVersion(),
+          decision.decidedAt(),
+          decision.sourceRouteEvaluationId(),
+          decision.sourceRouteInputHash(),
+          decision.selectedRouteCode(),
+          decision.inventoryDataAsOf(),
+          decision.decisionHash(),
+          decision.lineDecisions().stream().map(LineSupplyDecisionResponse::from).toList());
+    }
+  }
+
   record RouteEvaluationResponse(
       UUID evaluationId,
       String policyVersion,
@@ -529,7 +592,8 @@ final class QuotationController {
       List<RouteCandidateResponse> candidates,
       TradeRouteCode recommendedRouteCode,
       TradeRouteCode selectedRouteCode,
-      OverrideResponse override) {
+      OverrideResponse override,
+      SupplyDecisionSummaryResponse supplyDecision) {
     static RouteEvaluationResponse from(RouteEvaluation evaluation) {
       return new RouteEvaluationResponse(
           evaluation.evaluationId(),
@@ -545,7 +609,8 @@ final class QuotationController {
                   evaluation.override().reason(),
                   evaluation.override().actorId(),
                   evaluation.override().occurredAt(),
-                  evaluation.override().originalRecommendation()));
+                  evaluation.override().originalRecommendation()),
+          SupplyDecisionSummaryResponse.from(evaluation.supplyDecision()));
     }
   }
 
