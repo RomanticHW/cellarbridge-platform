@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.rom.cellarbridge.identityaccess.TenantId;
+import com.rom.cellarbridge.quotation.internal.application.QuotationRepository;
 import com.rom.cellarbridge.test.PostgresIntegrationTestSupport;
 import com.rom.cellarbridge.tradeplanning.TradePlanningException;
 import com.rom.cellarbridge.tradeplanning.TradePlanningService;
@@ -56,6 +57,8 @@ class QuotationApiIntegrationTest extends PostgresIntegrationTestSupport {
 
   @Autowired private TradePlanningService tradePlanningService;
 
+  @Autowired private QuotationRepository quotationRepository;
+
   @Test
   void createsEvaluatesApprovesIssuesAndReturnsCustomerSafeSnapshot() throws Exception {
     Instant now = Instant.now();
@@ -92,9 +95,24 @@ class QuotationApiIntegrationTest extends PostgresIntegrationTestSupport {
     assertThat(created.status()).withFailMessage(created.raw()).isEqualTo(201);
     assertThat(created.body().path("status").asText()).isEqualTo("DRAFT");
     assertThat(created.body().path("estimatedMarginRate").isNull()).isTrue();
+    assertThat(created.body().path("supplyDecisionStatus").asText()).isEqualTo("UNDECIDED");
+    assertThat(created.body().path("supplyDecision").isNull()).isTrue();
+    assertThat(created.body().path("lines").path(0).path("allocationMode").isNull()).isTrue();
+    assertThat(created.body().path("lines").path(0).path("supplyType").isNull()).isTrue();
     assertThat(created.body().path("lines").path(0).path("sku").path("skuCode").asText())
         .isEqualTo("CB-MTV-2019-750X6");
     String quotationId = created.body().path("id").asText();
+    assertThat(created.body().path("allowedActions").toString()).doesNotContain("SUBMIT");
+    ApiResponse undecidedSubmit =
+        request(
+            "POST",
+            "/api/v1/quotations/" + quotationId + "/submission",
+            NORTH_SALES,
+            "\"0\"",
+            null);
+    assertThat(undecidedSubmit.status()).isEqualTo(422);
+    assertThat(undecidedSubmit.body().path("code").asText())
+        .isEqualTo("QUOTE_SUPPLY_DECISION_REQUIRED");
 
     Integer evaluationsBeforeOverride =
         jdbc.queryForObject("SELECT count(*) FROM trade_planning.evaluation", Integer.class);
@@ -129,8 +147,10 @@ class QuotationApiIntegrationTest extends PostgresIntegrationTestSupport {
     assertThat(evaluated.body().path("override").path("originalRecommendation").asText())
         .isEqualTo("SH_GENERAL_TRADE");
     assertThat(evaluated.body().path("candidates").size()).isEqualTo(3);
-    assertThat(evaluated.raw())
-        .doesNotContain("supplyDecision", "decisionHash", "inventoryDataAsOf");
+    assertThat(evaluated.body().path("supplyDecision").path("policyVersion").asText())
+        .isEqualTo("SUPPLY-DECISION-2026-01");
+    assertThat(evaluated.body().path("supplyDecision").path("selectedRouteCode").asText())
+        .isEqualTo("NB_BONDED_B2B");
     String evaluationId = evaluated.body().path("evaluationId").asText();
     assertThat(
             jdbc.queryForObject(
@@ -167,7 +187,12 @@ class QuotationApiIntegrationTest extends PostgresIntegrationTestSupport {
         .isEqualTo(internalEvaluation.supplyDecision().decisionHash());
 
     ApiResponse routed = get("/api/v1/quotations/" + quotationId, NORTH_SALES);
-    assertThat(routed.raw()).doesNotContain("supplyDecision", "decisionHash", "inventoryDataAsOf");
+    assertThat(routed.body().path("supplyDecisionStatus").asText()).isEqualTo("FROZEN");
+    assertThat(routed.body().path("supplyDecision").path("sourceRouteEvaluationId").asText())
+        .isEqualTo(evaluationId);
+    assertThat(routed.body().path("lines").path(0).path("allocationMode").asText())
+        .isEqualTo("ROUTE_ELIGIBLE_AUTO");
+    assertThat(routed.body().path("lines").path(0).path("supplyPoolId").isNull()).isTrue();
     assertThat(routed.body().path("version").asLong()).isEqualTo(1);
     ApiResponse submitted =
         request(
@@ -221,10 +246,14 @@ class QuotationApiIntegrationTest extends PostgresIntegrationTestSupport {
             quotationId);
     assertThat(decisionCount).isEqualTo(1);
 
+    Integer evaluationsBeforeIssue =
+        jdbc.queryForObject("SELECT count(*) FROM trade_planning.evaluation", Integer.class);
     ApiResponse issued =
         request("POST", "/api/v1/quotations/" + quotationId + "/issue", NORTH_SALES, "\"3\"", null);
     assertThat(issued.status()).withFailMessage(issued.raw()).isEqualTo(200);
     assertThat(issued.body().path("status").asText()).isEqualTo("SENT");
+    assertThat(jdbc.queryForObject("SELECT count(*) FROM trade_planning.evaluation", Integer.class))
+        .isEqualTo(evaluationsBeforeIssue);
     String portalUrl = issued.body().path("portalUrl").asText();
 
     ApiResponse publicView = get("/api/v1" + portalUrl, null);
@@ -232,7 +261,16 @@ class QuotationApiIntegrationTest extends PostgresIntegrationTestSupport {
     assertThat(publicView.body().path("customerDisplayName").asText())
         .isEqualTo("Aurora Market Services");
     assertThat(publicView.raw())
-        .doesNotContain("cost", "margin", "score", "inputHash", "policyVersion");
+        .doesNotContain(
+            "cost",
+            "margin",
+            "score",
+            "inputHash",
+            "policyVersion",
+            "supplyDecision",
+            "allocationMode",
+            "supplyPoolId",
+            "supplyType");
     assertThat(publicView.headers().firstValue("cache-control").orElse("")).contains("no-store");
 
     ApiResponse crossTenant = get("/api/v1/quotations/" + quotationId, HARBOR_MANAGER);
@@ -276,11 +314,109 @@ class QuotationApiIntegrationTest extends PostgresIntegrationTestSupport {
   }
 
   @Test
+  void freezesTheRequestedFixedPoolWithoutAutomaticFallback() throws Exception {
+    String poolId = "36000000-0000-4000-8000-000000000001";
+    ApiResponse created = createQuotation("6", "CASE", poolId);
+    ApiResponse evaluated =
+        request(
+            "POST",
+            "/api/v1/quotations/" + created.body().path("id").asText() + "/route-evaluations",
+            NORTH_MANAGER,
+            "\"0\"",
+            "{}");
+    assertThat(evaluated.status()).withFailMessage(evaluated.raw()).isEqualTo(200);
+    JsonNode line = evaluated.body().path("supplyDecision").path("lineDecisions").path(0);
+    assertThat(line.path("allocationMode").asText()).isEqualTo("FIXED_POOL");
+    assertThat(line.path("supplyPoolId").asText()).isEqualTo(poolId);
+    assertThat(line.path("supplyType").asText()).isEqualTo("DOMESTIC_ON_HAND");
+  }
+
+  @Test
+  void reevaluatesDraftLegacyEvidenceWithoutExposingUnverifiedLineSupply() throws Exception {
+    ApiResponse created = createQuotation("6", "CASE");
+    String quotationId = created.body().path("id").asText();
+    ApiResponse frozen =
+        request(
+            "POST",
+            "/api/v1/quotations/" + quotationId + "/route-evaluations",
+            NORTH_MANAGER,
+            "\"0\"",
+            "{}");
+    assertThat(frozen.status()).withFailMessage(frozen.raw()).isEqualTo(200);
+    jdbc.update(
+        """
+        UPDATE quotation.quotation_revision
+           SET supply_decision_status = 'LEGACY_REEVALUATION_REQUIRED',
+               supply_decision_schema_version = NULL,
+               supply_decision_policy_version = NULL,
+               supply_decision_at = NULL,
+               supply_decision_hash = NULL,
+               supply_decision_snapshot = NULL
+         WHERE quotation_id = ?::uuid
+        """,
+        quotationId);
+
+    ApiResponse legacy = get("/api/v1/quotations/" + quotationId, NORTH_MANAGER);
+    assertThat(legacy.status()).withFailMessage(legacy.raw()).isEqualTo(200);
+    assertThat(legacy.body().path("supplyDecisionStatus").asText())
+        .isEqualTo("LEGACY_REEVALUATION_REQUIRED");
+    assertThat(legacy.body().path("supplyDecision").isNull()).isTrue();
+    assertThat(legacy.body().path("lines").path(0).path("allocationMode").isNull()).isTrue();
+    assertThat(legacy.body().path("lines").path(0).path("supplyType").isNull()).isTrue();
+    assertThat(legacy.body().path("allowedActions"))
+        .extracting(JsonNode::asText)
+        .contains("EVALUATE_ROUTE");
+
+    ApiResponse reevaluated =
+        request(
+            "POST",
+            "/api/v1/quotations/" + quotationId + "/route-evaluations",
+            NORTH_MANAGER,
+            "\"1\"",
+            "{}");
+    assertThat(reevaluated.status()).withFailMessage(reevaluated.raw()).isEqualTo(200);
+    assertThat(reevaluated.body().path("supplyDecision").path("decisionHash").asText()).hasSize(64);
+  }
+
+  @Test
+  void rollsBackPlanningEvaluationWhenQuotationFreezePersistenceFails() throws Exception {
+    ApiResponse created = createQuotation("6", "CASE");
+    String quotationId = created.body().path("id").asText();
+    Integer evaluationsBefore =
+        jdbc.queryForObject("SELECT count(*) FROM trade_planning.evaluation", Integer.class);
+    jdbc.execute(
+        "ALTER TABLE quotation.quotation_revision ADD CONSTRAINT ck_test_reject_route_freeze CHECK (route_evaluation_id IS NULL) NOT VALID");
+    try {
+      ApiResponse failed =
+          request(
+              "POST",
+              "/api/v1/quotations/" + quotationId + "/route-evaluations",
+              NORTH_MANAGER,
+              "\"0\"",
+              "{}");
+      assertThat(failed.status()).isEqualTo(500);
+    } finally {
+      jdbc.execute(
+          "ALTER TABLE quotation.quotation_revision DROP CONSTRAINT ck_test_reject_route_freeze");
+    }
+    assertThat(jdbc.queryForObject("SELECT count(*) FROM trade_planning.evaluation", Integer.class))
+        .isEqualTo(evaluationsBefore);
+    ApiResponse unchanged = get("/api/v1/quotations/" + quotationId, NORTH_SALES);
+    assertThat(unchanged.body().path("version").asLong()).isZero();
+    assertThat(unchanged.body().path("supplyDecisionStatus").asText()).isEqualTo("UNDECIDED");
+  }
+
+  @Test
   void rejectsInvalidDecisionColumnsAndDetectsJsonTamperingAcrossTenantBoundaries()
       throws Exception {
     ApiResponse evaluated = createAndEvaluate("6", "CASE");
     assertThat(evaluated.status()).withFailMessage(evaluated.raw()).isEqualTo(200);
     UUID evaluationId = UUID.fromString(evaluated.body().path("evaluationId").asText());
+    UUID quotationId =
+        jdbc.queryForObject(
+            "SELECT quotation_id FROM quotation.quotation_revision WHERE route_evaluation_id = ?",
+            UUID.class,
+            evaluationId);
     assertThatThrownBy(
             () ->
                 tradePlanningService.get(
@@ -295,6 +431,47 @@ class QuotationApiIntegrationTest extends PostgresIntegrationTestSupport {
                     "UPDATE trade_planning.evaluation SET supply_decision_hash = NULL WHERE id = ?",
                     evaluationId))
         .isInstanceOf(DataIntegrityViolationException.class);
+
+    assertThatThrownBy(
+            () ->
+                jdbc.update(
+                    "UPDATE quotation.quotation_revision SET supply_decision_snapshot = '{\"schemaVersion\":1}'::jsonb WHERE id = (SELECT current_revision_id FROM quotation.quotation WHERE id = ?)",
+                    quotationId))
+        .isInstanceOf(DataIntegrityViolationException.class);
+    assertThatThrownBy(
+            () ->
+                jdbc.update(
+                    "UPDATE quotation.quotation_revision SET supply_decision_snapshot = jsonb_set(supply_decision_snapshot, '{decisionHash}', 'null'::jsonb) WHERE quotation_id = ?",
+                    quotationId))
+        .isInstanceOf(DataIntegrityViolationException.class);
+    assertThatThrownBy(
+            () ->
+                jdbc.update(
+                    "UPDATE quotation.quotation_revision SET supply_decision_snapshot = jsonb_set(supply_decision_snapshot, '{schemaVersion}', to_jsonb('1'::text)) WHERE quotation_id = ?",
+                    quotationId))
+        .isInstanceOf(DataIntegrityViolationException.class);
+    assertThatThrownBy(
+            () ->
+                jdbc.update(
+                    "UPDATE quotation.quotation_revision SET supply_decision_snapshot = jsonb_set(supply_decision_snapshot, '{lineDecisions}', '[]'::jsonb) WHERE quotation_id = ?",
+                    quotationId))
+        .isInstanceOf(DataIntegrityViolationException.class);
+    assertThatThrownBy(
+            () ->
+                jdbc.update(
+                    "UPDATE quotation.quotation_revision SET supply_decision_policy_version = '   ', supply_decision_snapshot = jsonb_set(supply_decision_snapshot, '{policyVersion}', to_jsonb('   '::text)) WHERE quotation_id = ?",
+                    quotationId))
+        .isInstanceOf(DataIntegrityViolationException.class);
+    jdbc.update(
+        "UPDATE quotation.quotation_revision SET supply_decision_snapshot = jsonb_set(supply_decision_snapshot, '{inventoryDataAsOf}', to_jsonb('2000-01-01T00:00:00Z'::text)) WHERE quotation_id = ?",
+        quotationId);
+    assertThatThrownBy(
+            () ->
+                quotationRepository.find(
+                    TenantId.of(UUID.fromString("10000000-0000-4000-8000-000000000001")),
+                    quotationId))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage("Quotation supply decision snapshot is invalid");
     assertThatThrownBy(
             () ->
                 jdbc.update(
@@ -369,6 +546,21 @@ class QuotationApiIntegrationTest extends PostgresIntegrationTestSupport {
   }
 
   private ApiResponse createAndEvaluate(String quantity, String quantityUnit) throws Exception {
+    ApiResponse created = createQuotation(quantity, quantityUnit);
+    return request(
+        "POST",
+        "/api/v1/quotations/" + created.body().path("id").asText() + "/route-evaluations",
+        NORTH_MANAGER,
+        "\"0\"",
+        "{}");
+  }
+
+  private ApiResponse createQuotation(String quantity, String quantityUnit) throws Exception {
+    return createQuotation(quantity, quantityUnit, null);
+  }
+
+  private ApiResponse createQuotation(
+      String quantity, String quantityUnit, String preferredSupplyPoolId) throws Exception {
     Instant now = Instant.now();
     String createRequest =
         """
@@ -388,7 +580,7 @@ class QuotationApiIntegrationTest extends PostgresIntegrationTestSupport {
           },
           "lines": [{
             "skuId": "%s",
-            "quantity": {"value": "%s", "unit": "%s"},
+            "quantity": {"value": "%s", "unit": "%s"}%s,
             "discountRate": "0.0000"
           }]
         }
@@ -399,15 +591,13 @@ class QuotationApiIntegrationTest extends PostgresIntegrationTestSupport {
                 now.plusSeconds(10 * 86_400L),
                 SKU,
                 quantity,
-                quantityUnit);
+                quantityUnit,
+                preferredSupplyPoolId == null
+                    ? ""
+                    : ", \"preferredSupplyPoolId\": \"" + preferredSupplyPoolId + "\"");
     ApiResponse created = request("POST", "/api/v1/quotations", NORTH_SALES, null, createRequest);
     assertThat(created.status()).withFailMessage(created.raw()).isEqualTo(201);
-    return request(
-        "POST",
-        "/api/v1/quotations/" + created.body().path("id").asText() + "/route-evaluations",
-        NORTH_MANAGER,
-        "\"0\"",
-        "{}");
+    return created;
   }
 
   private ApiResponse request(String method, String path, String token, String ifMatch, String body)

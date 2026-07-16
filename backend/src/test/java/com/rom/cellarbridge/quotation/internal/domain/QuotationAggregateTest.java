@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.rom.cellarbridge.identityaccess.TenantId;
 import com.rom.cellarbridge.quotation.QuotationStatus;
+import com.rom.cellarbridge.quotation.QuotationSupplyDecisionStatus;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationAggregate.Address;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationAggregate.Decision;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationAggregate.DraftTerms;
@@ -13,10 +14,14 @@ import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.Lin
 import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.PriceReference;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.QuantityUnit;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationPricingPolicy.SkuSnapshot;
+import com.rom.cellarbridge.tradeplanning.SupplyAllocationMode;
+import com.rom.cellarbridge.tradeplanning.SupplyDecisionSnapshot;
+import com.rom.cellarbridge.tradeplanning.TradePlanningQuantityUnit;
 import com.rom.cellarbridge.tradeplanning.TradePlanningService.Eligibility;
 import com.rom.cellarbridge.tradeplanning.TradePlanningService.RouteCandidate;
 import com.rom.cellarbridge.tradeplanning.TradePlanningService.RouteEvaluation;
 import com.rom.cellarbridge.tradeplanning.TradePlanningService.RouteScore;
+import com.rom.cellarbridge.tradeplanning.TradePlanningSupplyType;
 import com.rom.cellarbridge.tradeplanning.TradeRouteCode;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -30,6 +35,9 @@ class QuotationAggregateTest {
   private static final Instant NOW = Instant.parse("2026-07-14T00:00:00Z");
   private static final UUID OWNER = UUID.fromString("11200000-0000-4000-8000-000000000001");
   private static final UUID MANAGER = UUID.fromString("11200000-0000-4000-8000-000000000003");
+  private static final UUID LINE_ID = UUID.fromString("61000000-0000-4000-8000-000000000001");
+  private static final UUID SKU_ID = UUID.fromString("34000000-0000-4000-8000-000000000001");
+  private static final UUID EVALUATION_ID = UUID.fromString("62000000-0000-4000-8000-000000000001");
 
   @Test
   void freezesSubmittedRevisionAndRequiresNewRevisionAfterRequestedChanges() {
@@ -64,6 +72,52 @@ class QuotationAggregateTest {
     assertThat(revised.currentRevision()).isEqualTo(2);
     assertThat(revised.revision().id()).isNotEqualTo(submitted.revision().id());
     assertThat(submitted.revision().frozenAt()).isNotNull();
+  }
+
+  @Test
+  void resetsDraftEvidenceAndRequiresACompleteDecisionBeforeSubmission() {
+    QuotationAggregate draft = draft();
+    assertThat(draft.revision().supplyDecisionStatus())
+        .isEqualTo(QuotationSupplyDecisionStatus.UNDECIDED);
+    assertProblem(
+        () -> draft.submit(List.of(), OWNER, NOW.plusSeconds(1)), "QUOTE_SUPPLY_DECISION_REQUIRED");
+
+    QuotationAggregate routed = draft.applyRoute(evaluation(), pricing(), NOW.plusSeconds(1));
+    assertThat(routed.revision().supplyDecisionStatus())
+        .isEqualTo(QuotationSupplyDecisionStatus.FROZEN);
+    assertThat(routed.revision().pricing().lines().getFirst().allocationMode())
+        .isEqualTo(SupplyAllocationMode.ROUTE_ELIGIBLE_AUTO);
+
+    QuotationAggregate replaced =
+        routed.replaceDraft(partner(), terms(), pricing(), NOW.plusSeconds(2));
+    assertThat(replaced.revision().supplyDecisionStatus())
+        .isEqualTo(QuotationSupplyDecisionStatus.UNDECIDED);
+    assertThat(replaced.revision().supplyDecision()).isNull();
+  }
+
+  @Test
+  void rejectsPlanningDecisionLinesThatDoNotExactlyMatchTheRevision() {
+    SupplyDecisionSnapshot mismatched =
+        SupplyDecisionSnapshot.create(
+            SupplyDecisionSnapshot.POLICY_VERSION,
+            NOW,
+            EVALUATION_ID,
+            "a".repeat(64),
+            TradeRouteCode.SH_GENERAL_TRADE,
+            NOW,
+            List.of(
+                new SupplyDecisionSnapshot.LineDecision(
+                    UUID.randomUUID(),
+                    SKU_ID,
+                    new BigDecimal("6.000000"),
+                    TradePlanningQuantityUnit.CASE,
+                    SupplyAllocationMode.ROUTE_ELIGIBLE_AUTO,
+                    null,
+                    TradePlanningSupplyType.DOMESTIC_ON_HAND)));
+    RouteEvaluation evaluation = evaluation(mismatched);
+    assertProblem(
+        () -> draft().applyRoute(evaluation, pricing(), NOW.plusSeconds(1)),
+        "QUOTE_SUPPLY_DECISION_CONFLICT");
   }
 
   @Test
@@ -194,7 +248,7 @@ class QuotationAggregateTest {
   private static QuotationPricingPolicy.PricingResult pricing() {
     SkuSnapshot sku =
         new SkuSnapshot(
-            UUID.fromString("34000000-0000-4000-8000-000000000001"),
+            SKU_ID,
             "CB-MTV-2019-750X6",
             "Moonlit Terrace",
             "Silver Vale Estate",
@@ -211,12 +265,13 @@ class QuotationAggregateTest {
         "CNY",
         List.of(
             new LineDraft(
-                UUID.randomUUID(),
+                LINE_ID,
                 sku,
                 new BigDecimal("6"),
                 QuantityUnit.CASE,
                 null,
-                "DOMESTIC_ON_HAND",
+                null,
+                null,
                 new BigDecimal("0.0900"),
                 null,
                 new PriceReference(
@@ -229,9 +284,30 @@ class QuotationAggregateTest {
   }
 
   private static RouteEvaluation evaluation() {
+    SupplyDecisionSnapshot decision =
+        SupplyDecisionSnapshot.create(
+            SupplyDecisionSnapshot.POLICY_VERSION,
+            NOW,
+            EVALUATION_ID,
+            "a".repeat(64),
+            TradeRouteCode.SH_GENERAL_TRADE,
+            NOW,
+            List.of(
+                new SupplyDecisionSnapshot.LineDecision(
+                    LINE_ID,
+                    SKU_ID,
+                    new BigDecimal("6.000000"),
+                    TradePlanningQuantityUnit.CASE,
+                    SupplyAllocationMode.ROUTE_ELIGIBLE_AUTO,
+                    null,
+                    TradePlanningSupplyType.DOMESTIC_ON_HAND)));
+    return evaluation(decision);
+  }
+
+  private static RouteEvaluation evaluation(SupplyDecisionSnapshot decision) {
     return new RouteEvaluation(
-        UUID.randomUUID(),
-        "ROUTE-2026-01",
+        EVALUATION_ID,
+        "ROUTE-2026-03",
         NOW,
         "a".repeat(64),
         List.of(
@@ -250,6 +326,7 @@ class QuotationAggregateTest {
                 List.of())),
         TradeRouteCode.SH_GENERAL_TRADE,
         TradeRouteCode.SH_GENERAL_TRADE,
-        null);
+        null,
+        decision);
   }
 }

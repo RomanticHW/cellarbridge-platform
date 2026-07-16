@@ -18,6 +18,8 @@ const values = {
       skuId: '34000000-0000-4000-8000-000000000001',
       quantity: '2.5',
       unit: 'CASE' as const,
+      supplyStrategy: 'AUTO' as const,
+      preferredSupplyPoolId: undefined,
       discountRate: '0.0750',
       manualUnitPrice: '4200.0000',
     },
@@ -34,11 +36,33 @@ describe('quotation form', () => {
       lines: [
         {
           quantity: { value: '2.5', unit: 'CASE' },
+          preferredSupplyPoolId: undefined,
           discountRate: '0.0750',
           manualUnitPrice: { amount: '4200.0000', currency: 'CNY' },
         },
       ],
     });
+  });
+
+  it('requires a pool only for the fixed supply strategy', () => {
+    expect(
+      quotationFormSchema.safeParse({
+        ...values,
+        lines: [{ ...values.lines[0], supplyStrategy: 'FIXED' }],
+      }).success,
+    ).toBe(false);
+    const poolId = '54000000-0000-4000-8000-000000000001';
+    const parsed = quotationFormSchema.parse({
+      ...values,
+      lines: [
+        {
+          ...values.lines[0],
+          supplyStrategy: 'FIXED',
+          preferredSupplyPoolId: poolId,
+        },
+      ],
+    });
+    expect(toQuotationRequest(parsed).lines[0]?.preferredSupplyPoolId).toBe(poolId);
   });
 
   it('rejects duplicate SKUs and a one-hundred-percent discount', () => {
