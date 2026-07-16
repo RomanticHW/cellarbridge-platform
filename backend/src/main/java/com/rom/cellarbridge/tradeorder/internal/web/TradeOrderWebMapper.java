@@ -1,6 +1,7 @@
 package com.rom.cellarbridge.tradeorder.internal.web;
 
 import com.rom.cellarbridge.tradeorder.TradeOrderStatus;
+import com.rom.cellarbridge.tradeorder.TradeOrderSupplyDecisionStatus;
 import com.rom.cellarbridge.tradeorder.internal.application.TradeOrderApplicationService.DetailView;
 import com.rom.cellarbridge.tradeorder.internal.application.TradeOrderApplicationService.PageView;
 import com.rom.cellarbridge.tradeorder.internal.application.TradeOrderApplicationService.TimelineView;
@@ -8,6 +9,11 @@ import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrder;
 import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrder.CommercialSnapshot;
 import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrder.DeliveryAddress;
 import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrder.Line;
+import com.rom.cellarbridge.tradeplanning.SupplyAllocationMode;
+import com.rom.cellarbridge.tradeplanning.SupplyDecisionSnapshot;
+import com.rom.cellarbridge.tradeplanning.TradePlanningQuantityUnit;
+import com.rom.cellarbridge.tradeplanning.TradePlanningSupplyType;
+import com.rom.cellarbridge.tradeplanning.TradeRouteCode;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -44,6 +50,8 @@ final class TradeOrderWebMapper {
         snapshot.route().code(),
         order.createdAt(),
         order.version(),
+        order.supplyDecisionStatus(),
+        supplyDecision(order.supplyDecision()),
         new SourceQuotationResponse(
             order.sourceQuotationId(),
             order.sourceQuotationNumber(),
@@ -66,7 +74,7 @@ final class TradeOrderWebMapper {
                 snapshot.route().estimatedDeliveryDate()),
             order.acceptedAt(),
             order.snapshotHash()),
-        reservationProjection(),
+        internalReservation(order),
         notStarted("Fulfillment begins after reservation succeeds"),
         notStarted("Settlement begins after fulfillment"),
         view.timeline().stream().map(TradeOrderWebMapper::internalTimeline).toList(),
@@ -97,7 +105,7 @@ final class TradeOrderWebMapper {
             new BuyerRouteSnapshotResponse(
                 snapshot.route().code(), snapshot.route().estimatedDeliveryDate()),
             order.acceptedAt()),
-        reservationProjection(),
+        buyerReservation(order),
         notStarted("Fulfillment begins after reservation succeeds"),
         notStarted("Settlement begins after fulfillment"),
         view.timeline().stream().map(TradeOrderWebMapper::buyerTimeline).toList(),
@@ -142,8 +150,9 @@ final class TradeOrderWebMapper {
         quantity(line.quantity(), line.unit()),
         money(line.netUnitPrice(), currency),
         money(line.lineTotal(), currency),
-        line.supplyPoolId(),
-        line.supplyType());
+        orderEvidence(line, line.supplyPoolId()),
+        orderEvidence(line, line.allocationMode()),
+        orderEvidence(line, line.supplyType()));
   }
 
   private static BuyerOrderLineResponse buyerLine(Line line, String currency) {
@@ -170,8 +179,50 @@ final class TradeOrderWebMapper {
     return new BuyerTimelineResponse(entry.occurredAt(), entry.action(), entry.newState());
   }
 
-  private static ProcessResponse reservationProjection() {
+  private static ProcessResponse internalReservation(TradeOrder order) {
+    if (order.supplyDecisionStatus() == TradeOrderSupplyDecisionStatus.LEGACY_UNVERIFIED) {
+      return new ProcessResponse(
+          "BLOCKED", "Verified supply decision is missing; inventory reservation cannot start.");
+    }
     return new ProcessResponse("PENDING", "Inventory reservation is pending");
+  }
+
+  private static ProcessResponse buyerReservation(TradeOrder order) {
+    if (order.supplyDecisionStatus() == TradeOrderSupplyDecisionStatus.LEGACY_UNVERIFIED) {
+      return new ProcessResponse("BLOCKED", "Inventory reservation requires manual review.");
+    }
+    return new ProcessResponse("PENDING", "Inventory reservation is pending");
+  }
+
+  private static <T> T orderEvidence(Line line, T value) {
+    return line.allocationMode() == null ? null : value;
+  }
+
+  private static SupplyDecisionResponse supplyDecision(SupplyDecisionSnapshot decision) {
+    if (decision == null) {
+      return null;
+    }
+    return new SupplyDecisionResponse(
+        decision.schemaVersion(),
+        decision.policyVersion(),
+        decision.decidedAt(),
+        decision.sourceRouteEvaluationId(),
+        decision.sourceRouteInputHash(),
+        decision.selectedRouteCode(),
+        decision.inventoryDataAsOf(),
+        decision.decisionHash(),
+        decision.lineDecisions().stream()
+            .map(
+                line ->
+                    new LineSupplyDecisionResponse(
+                        line.quotationLineId(),
+                        line.skuId(),
+                        line.requestedQuantity().stripTrailingZeros().toPlainString(),
+                        line.quantityUnit(),
+                        line.allocationMode(),
+                        line.supplyPoolId(),
+                        line.supplyType()))
+            .toList());
   }
 
   private static ProcessResponse notStarted(String message) {
@@ -260,7 +311,28 @@ final class TradeOrderWebMapper {
       MoneyResponse netUnitPrice,
       MoneyResponse lineTotal,
       UUID supplyPoolId,
+      SupplyAllocationMode allocationMode,
       String supplyType) {}
+
+  record LineSupplyDecisionResponse(
+      UUID quotationLineId,
+      UUID skuId,
+      String requestedQuantity,
+      TradePlanningQuantityUnit quantityUnit,
+      SupplyAllocationMode allocationMode,
+      UUID supplyPoolId,
+      TradePlanningSupplyType supplyType) {}
+
+  record SupplyDecisionResponse(
+      int schemaVersion,
+      String policyVersion,
+      Instant decidedAt,
+      UUID sourceRouteEvaluationId,
+      String sourceRouteInputHash,
+      TradeRouteCode selectedRouteCode,
+      Instant inventoryDataAsOf,
+      String decisionHash,
+      List<LineSupplyDecisionResponse> lineDecisions) {}
 
   record BuyerOrderLineResponse(
       String skuCode,
@@ -314,6 +386,8 @@ final class TradeOrderWebMapper {
       String routeCode,
       Instant createdAt,
       long version,
+      TradeOrderSupplyDecisionStatus supplyDecisionStatus,
+      SupplyDecisionResponse supplyDecision,
       SourceQuotationResponse sourceQuotation,
       CommercialSnapshotResponse commercialSnapshot,
       ProcessResponse reservation,

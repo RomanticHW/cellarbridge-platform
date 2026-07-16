@@ -3,6 +3,7 @@ package com.rom.cellarbridge.tradeorder.internal.infrastructure;
 import com.rom.cellarbridge.identityaccess.TenantId;
 import com.rom.cellarbridge.quotation.QuotationSnapshotHashV1;
 import com.rom.cellarbridge.tradeorder.TradeOrderStatus;
+import com.rom.cellarbridge.tradeorder.TradeOrderSupplyDecisionStatus;
 import com.rom.cellarbridge.tradeorder.internal.application.TradeOrderRepository;
 import com.rom.cellarbridge.tradeorder.internal.application.TradeOrderRepository.CursorPosition;
 import com.rom.cellarbridge.tradeorder.internal.application.TradeOrderRepository.OrderPage;
@@ -13,6 +14,8 @@ import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrder.Customer;
 import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrder.DeliveryAddress;
 import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrder.Line;
 import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrder.Route;
+import com.rom.cellarbridge.tradeplanning.SupplyAllocationMode;
+import com.rom.cellarbridge.tradeplanning.SupplyDecisionSnapshot;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -43,7 +46,10 @@ public class JdbcTradeOrderRepository implements TradeOrderRepository {
              total_amount, payment_term_days, route_code, route_policy_version,
              route_estimated_delivery_date, accepted_terms_version,
              requested_delivery_date, delivery_address::text,
-             snapshot_schema_version, snapshot_hash, created_event_id,
+             snapshot_schema_version, snapshot_hash,
+             supply_decision_status, supply_decision_schema_version,
+             supply_decision_policy_version, supply_decision_at,
+             supply_decision_hash, supply_decision_snapshot::text, created_event_id,
              correlation_id, causation_id, created_at, updated_at, version
         FROM trade_order.trade_order
       """;
@@ -84,7 +90,10 @@ public class JdbcTradeOrderRepository implements TradeOrderRepository {
                total_amount, payment_term_days, route_code, route_policy_version,
                route_estimated_delivery_date, accepted_terms_version,
                requested_delivery_date, delivery_address, commercial_snapshot,
-               snapshot_schema_version, snapshot_hash, created_event_id,
+               snapshot_schema_version, snapshot_hash, supply_decision_status,
+               supply_decision_schema_version, supply_decision_policy_version,
+               supply_decision_at, supply_decision_hash, supply_decision_snapshot,
+               created_event_id,
                correlation_id, causation_id, created_at, created_by, updated_at,
                updated_by, version)
             VALUES
@@ -95,7 +104,10 @@ public class JdbcTradeOrderRepository implements TradeOrderRepository {
                :routeCode, :routePolicyVersion, :estimatedDeliveryDate,
                :acceptedTermsVersion, :requestedDeliveryDate,
                CAST(:deliveryAddress AS jsonb), CAST(:commercialSnapshot AS jsonb),
-               :snapshotSchemaVersion, :snapshotHash, :createdEventId,
+               :snapshotSchemaVersion, :snapshotHash, :supplyDecisionStatus,
+               :supplyDecisionSchemaVersion, :supplyDecisionPolicyVersion,
+               :supplyDecisionAt, :supplyDecisionHash,
+               CAST(:supplyDecisionSnapshot AS jsonb), :createdEventId,
                :correlationId, :causationId, :createdAt, :actorId, :createdAt,
                :actorId, 0)
             ON CONFLICT DO NOTHING
@@ -240,6 +252,10 @@ public class JdbcTradeOrderRepository implements TradeOrderRepository {
             resultSet.getObject("requested_delivery_date", java.time.LocalDate.class),
             address,
             lines);
+    TradeOrderSupplyDecisionStatus decisionStatus =
+        TradeOrderSupplyDecisionStatus.valueOf(resultSet.getString("supply_decision_status"));
+    SupplyDecisionSnapshot supplyDecision =
+        readSupplyDecision(resultSet, decisionStatus, snapshot.route().code(), lines);
     return new TradeOrder(
         orderId,
         tenantId,
@@ -253,6 +269,8 @@ public class JdbcTradeOrderRepository implements TradeOrderRepository {
         instant(resultSet, "accepted_at"),
         resultSet.getObject("source_owner_id", UUID.class),
         TradeOrderStatus.valueOf(resultSet.getString("status")),
+        decisionStatus,
+        supplyDecision,
         snapshot,
         resultSet.getString("snapshot_hash"),
         resultSet.getObject("correlation_id", UUID.class),
@@ -268,7 +286,7 @@ public class JdbcTradeOrderRepository implements TradeOrderRepository {
         """
         SELECT id, source_quotation_line_id, sku_id, sku_code, description,
                quantity, quantity_unit, net_unit_price, line_total,
-               supply_pool_id, supply_type
+               supply_pool_id, allocation_mode, supply_type
           FROM trade_order.order_line
          WHERE tenant_id = :tenantId AND order_id = :orderId
          ORDER BY line_number, id
@@ -288,6 +306,7 @@ public class JdbcTradeOrderRepository implements TradeOrderRepository {
                 resultSet.getBigDecimal("net_unit_price"),
                 resultSet.getBigDecimal("line_total"),
                 resultSet.getObject("supply_pool_id", UUID.class),
+                allocationMode(resultSet.getString("allocation_mode")),
                 resultSet.getString("supply_type")));
   }
 
@@ -298,11 +317,13 @@ public class JdbcTradeOrderRepository implements TradeOrderRepository {
           (id, tenant_id, order_id, source_quotation_line_id, line_number,
            sku_id, sku_code, description, quantity, quantity_unit, currency,
            net_unit_price, line_total, supply_pool_id, supply_type,
+           allocation_mode,
            created_at, created_by, updated_at, updated_by, version)
         VALUES
           (:id, :tenantId, :orderId, :sourceLineId, :lineNumber,
            :skuId, :skuCode, :description, :quantity, :unit, :currency,
            :unitPrice, :lineTotal, :supplyPoolId, :supplyType,
+           :allocationMode,
            :createdAt, :actorId, :createdAt, :actorId, 0)
         """,
         new MapSqlParameterSource()
@@ -321,6 +342,9 @@ public class JdbcTradeOrderRepository implements TradeOrderRepository {
             .addValue("lineTotal", line.lineTotal())
             .addValue("supplyPoolId", line.supplyPoolId())
             .addValue("supplyType", line.supplyType())
+            .addValue(
+                "allocationMode",
+                line.allocationMode() == null ? null : line.allocationMode().name())
             .addValue("createdAt", timestamp(order.createdAt()))
             .addValue("actorId", actorId));
   }
@@ -381,6 +405,22 @@ public class JdbcTradeOrderRepository implements TradeOrderRepository {
         .addValue("commercialSnapshot", json(snapshot))
         .addValue("snapshotSchemaVersion", Integer.toString(snapshot.schemaVersion()))
         .addValue("snapshotHash", order.snapshotHash())
+        .addValue("supplyDecisionStatus", order.supplyDecisionStatus().name())
+        .addValue(
+            "supplyDecisionSchemaVersion",
+            order.supplyDecision() == null ? null : order.supplyDecision().schemaVersion())
+        .addValue(
+            "supplyDecisionPolicyVersion",
+            order.supplyDecision() == null ? null : order.supplyDecision().policyVersion())
+        .addValue(
+            "supplyDecisionAt",
+            order.supplyDecision() == null ? null : timestamp(order.supplyDecision().decidedAt()))
+        .addValue(
+            "supplyDecisionHash",
+            order.supplyDecision() == null ? null : order.supplyDecision().decisionHash())
+        .addValue(
+            "supplyDecisionSnapshot",
+            order.supplyDecision() == null ? null : json(order.supplyDecision()))
         .addValue("createdEventId", order.createdEventId())
         .addValue("correlationId", order.correlationId())
         .addValue("causationId", order.causationId())
@@ -403,6 +443,55 @@ public class JdbcTradeOrderRepository implements TradeOrderRepository {
       throw new IllegalStateException(
           "Could not read the Trade Order delivery snapshot", exception);
     }
+  }
+
+  private SupplyDecisionSnapshot readSupplyDecision(
+      ResultSet resultSet,
+      TradeOrderSupplyDecisionStatus status,
+      String routeCode,
+      List<Line> lines)
+      throws SQLException {
+    Integer schemaVersion = (Integer) resultSet.getObject("supply_decision_schema_version");
+    String policyVersion = resultSet.getString("supply_decision_policy_version");
+    Timestamp decidedAt = resultSet.getTimestamp("supply_decision_at");
+    String decisionHash = resultSet.getString("supply_decision_hash");
+    String snapshotJson = resultSet.getString("supply_decision_snapshot");
+    if (status == TradeOrderSupplyDecisionStatus.LEGACY_UNVERIFIED) {
+      if (schemaVersion != null
+          || policyVersion != null
+          || decidedAt != null
+          || decisionHash != null
+          || snapshotJson != null
+          || lines.stream().anyMatch(line -> line.allocationMode() != null)) {
+        throw new IllegalStateException("Legacy order contains frozen decision evidence");
+      }
+      return null;
+    }
+    if (schemaVersion == null
+        || policyVersion == null
+        || decidedAt == null
+        || decisionHash == null
+        || snapshotJson == null) {
+      throw new IllegalStateException("Frozen order decision evidence is incomplete");
+    }
+    try {
+      SupplyDecisionSnapshot snapshot =
+          jsonMapper.readValue(snapshotJson, SupplyDecisionSnapshot.class);
+      if (snapshot.schemaVersion() != schemaVersion
+          || !snapshot.policyVersion().equals(policyVersion)
+          || !snapshot.decidedAt().equals(decidedAt.toInstant())
+          || !snapshot.decisionHash().equals(decisionHash)
+          || !snapshot.selectedRouteCode().name().equals(routeCode)) {
+        throw new IllegalStateException("Frozen order root and JSON evidence conflict");
+      }
+      return snapshot;
+    } catch (JacksonException | IllegalArgumentException exception) {
+      throw new IllegalStateException("Could not verify the frozen order decision", exception);
+    }
+  }
+
+  private static SupplyAllocationMode allocationMode(String value) {
+    return value == null ? null : SupplyAllocationMode.valueOf(value);
   }
 
   private static Instant instant(ResultSet resultSet, String column) throws SQLException {
