@@ -58,6 +58,28 @@ const internalDetail: OrderDetail = {
   ...common,
   partnerId,
   version: 0,
+  supplyDecisionStatus: 'FROZEN',
+  supplyDecision: {
+    schemaVersion: 1,
+    policyVersion: 'SUPPLY-DECISION-2026-01',
+    decidedAt: '2026-07-20T10:14:00Z',
+    sourceRouteEvaluationId: '28000000-0000-4000-8000-000000000001',
+    sourceRouteInputHash: 'a'.repeat(64),
+    selectedRouteCode: 'NB_BONDED_B2B',
+    inventoryDataAsOf: '2026-07-20T10:13:00Z',
+    decisionHash: 'b'.repeat(64),
+    lineDecisions: [
+      {
+        quotationLineId: '25000000-0000-4000-8000-000000000001',
+        skuId: '26000000-0000-4000-8000-000000000001',
+        requestedQuantity: '20',
+        quantityUnit: 'CASE',
+        allocationMode: 'FIXED_POOL',
+        supplyPoolId: '27000000-0000-4000-8000-000000000001',
+        supplyType: 'BONDED_ON_HAND',
+      },
+    ],
+  },
   sourceQuotation: {
     id: '21000000-0000-4000-8000-000000000001',
     number: common.sourceQuotationNumber,
@@ -82,6 +104,7 @@ const internalDetail: OrderDetail = {
         netUnitPrice: { amount: '6420.00', currency: 'CNY' },
         lineTotal: { amount: '128400.00', currency: 'CNY' },
         supplyPoolId: '27000000-0000-4000-8000-000000000001',
+        allocationMode: 'FIXED_POOL',
         supplyType: 'BONDED_ON_HAND',
       },
     ],
@@ -97,7 +120,7 @@ const internalDetail: OrderDetail = {
     capturedAt: '2026-07-20T10:15:30Z',
     snapshotHash: 'sha256:order-snapshot-example',
   },
-  reservation: { status: 'PENDING', message: 'Awaiting inventory reservation.' },
+  reservation: { status: 'PENDING', message: 'Inventory reservation is pending' },
   fulfillment: { status: 'NOT_STARTED', message: 'Starts after inventory reservation.' },
   settlement: { status: 'NOT_STARTED', message: 'Starts at the configured business trigger.' },
   timeline: [
@@ -137,7 +160,7 @@ const buyerDetail: BuyerOrderDetail = {
     route: { code: 'NB_BONDED_B2B', estimatedDeliveryDate: '2026-08-15' },
     capturedAt: '2026-07-20T10:15:30Z',
   },
-  reservation: { status: 'PENDING', message: 'Awaiting inventory reservation.' },
+  reservation: { status: 'PENDING', message: 'Inventory reservation is pending' },
   fulfillment: { status: 'NOT_STARTED', message: 'Starts after inventory reservation.' },
   settlement: { status: 'NOT_STARTED', message: 'Starts at the configured business trigger.' },
   timeline: [
@@ -218,7 +241,7 @@ describe('order workspace', () => {
     expect(await screen.findByRole('heading', { name: common.number })).toBeVisible();
     expect(screen.getByText('Buyer-safe view')).toBeVisible();
     expect(screen.getByText('Bordeaux Blend 2019 750ml x 6')).toBeVisible();
-    expect(screen.getByText('Awaiting inventory reservation.')).toBeVisible();
+    expect(screen.getByText('Inventory reservation is pending')).toBeVisible();
     expect(screen.queryByText('Conversion evidence')).not.toBeInTheDocument();
     expect(
       screen.queryByText(internalDetail.commercialSnapshot.snapshotHash),
@@ -230,5 +253,62 @@ describe('order workspace', () => {
     expect(new URL(orderRequest?.url ?? window.location.href).searchParams.has('partnerId')).toBe(
       false,
     );
+  });
+
+  it('shows verified frozen supply evidence and keeps reservation pending for internal users', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const path = new URL(incoming(input).url).pathname;
+      if (path.endsWith('/me')) return Promise.resolve(response(currentUser));
+      return Promise.resolve(response(internalDetail));
+    });
+    await router.navigate(`/app/orders/${orderId}`);
+    renderApplication();
+
+    expect(await screen.findByText('FROZEN')).toBeVisible();
+    expect(screen.getByText('SUPPLY-DECISION-2026-01')).toBeVisible();
+    expect(
+      screen.getByText(
+        'Frozen supply decision is an allocation constraint, not an inventory reservation.',
+      ),
+    ).toBeVisible();
+    expect(screen.getByText('FIXED POOL')).toBeVisible();
+    expect(screen.getByText('Inventory reservation is pending')).toBeVisible();
+  });
+
+  it('blocks legacy reservation without exposing unverified historical supply evidence', async () => {
+    const legacy: OrderDetail = {
+      ...internalDetail,
+      supplyDecisionStatus: 'LEGACY_UNVERIFIED',
+      supplyDecision: null,
+      commercialSnapshot: {
+        ...internalDetail.commercialSnapshot,
+        lines: internalDetail.commercialSnapshot.lines.map((line) => ({
+          ...line,
+          allocationMode: null,
+          supplyPoolId: null,
+          supplyType: null,
+        })),
+      },
+      reservation: {
+        status: 'BLOCKED',
+        message: 'Verified supply decision is missing; inventory reservation cannot start.',
+      },
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const path = new URL(incoming(input).url).pathname;
+      if (path.endsWith('/me')) return Promise.resolve(response(currentUser));
+      return Promise.resolve(response(legacy));
+    });
+    await router.navigate(`/app/orders/${orderId}`);
+    renderApplication();
+
+    expect(await screen.findByText('LEGACY UNVERIFIED')).toBeVisible();
+    expect(
+      screen.getByText(
+        'Legacy order requires controlled supply-decision remediation before inventory reservation.',
+      ),
+    ).toBeVisible();
+    expect(screen.getByText('BLOCKED')).toBeVisible();
+    expect(screen.queryByText('SUPPLY-DECISION-2026-01')).not.toBeInTheDocument();
   });
 });
