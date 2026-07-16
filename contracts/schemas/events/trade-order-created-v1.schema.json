@@ -273,7 +273,14 @@
                     "enum": ["FIXED_POOL", "ROUTE_ELIGIBLE_AUTO"]
                   },
                   "supplyType": {
-                    "type": "string"
+                    "type": "string",
+                    "enum": [
+                      "DOMESTIC_ON_HAND",
+                      "BONDED_ON_HAND",
+                      "HONG_KONG_ON_HAND",
+                      "IN_TRANSIT_PRESALE",
+                      "OVERSEAS_SOURCING"
+                    ]
                   }
                 }
               }

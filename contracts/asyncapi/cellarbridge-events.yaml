@@ -222,7 +222,7 @@ components:
               paymentTermDays: 30
               route:
                 code: NB_BONDED_B2B
-                policyVersion: TRP-2026-01
+                policyVersion: ROUTE-2026-03
                 estimatedDeliveryDate: '2026-08-15'
               acceptedTermsVersion: TERMS-2026-01
               requestedDeliveryDate: '2026-08-15'
@@ -233,7 +233,7 @@ components:
                 district: Pudong
                 line1: 88 Harbor Avenue
                 postalCode: '200120'
-              snapshotHash: a61b70c8847bbc58e64fa9d3dacdcf1277868166ea2c6af5762e89a010a96fad
+              snapshotHash: c2d9de573e494036e90e77b836956600a9054e0f890c602572fd1e278a1badde
               supplyDecision:
                 schemaVersion: 1
                 policyVersion: SUPPLY-DECISION-2026-01
@@ -300,7 +300,7 @@ components:
               paymentTermDays: 30
               route:
                 code: NB_BONDED_B2B
-                policyVersion: TRP-2026-01
+                policyVersion: ROUTE-2026-03
                 estimatedDeliveryDate: "2026-08-15"
               acceptedTermsVersion: TERMS-2026-01
               requestedDeliveryDate: "2026-08-15"
@@ -311,7 +311,7 @@ components:
                 district: Pudong
                 line1: 88 Harbor Avenue
                 postalCode: "200120"
-              snapshotHash: a61b70c8847bbc58e64fa9d3dacdcf1277868166ea2c6af5762e89a010a96fad
+              snapshotHash: c2d9de573e494036e90e77b836956600a9054e0f890c602572fd1e278a1badde
               supplyDecision:
                 schemaVersion: 1
                 policyVersion: SUPPLY-DECISION-2026-01

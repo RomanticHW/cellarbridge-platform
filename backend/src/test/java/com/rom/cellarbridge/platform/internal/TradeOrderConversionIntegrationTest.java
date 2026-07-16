@@ -609,18 +609,77 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
 
   @Test
   void snapshotHashV1MatchesThePublishedGoldenVector() throws Exception {
-    JsonNode example =
+    JsonNode accepted =
         jsonMapper.readTree(
             Files.readString(
                 contractPath("examples", "events", "quotation-accepted-v1.example.json")));
-    QuotationAcceptedV1.Payload payload = parsedPayload(example.path("payload").toString());
-    String expected = "a61b70c8847bbc58e64fa9d3dacdcf1277868166ea2c6af5762e89a010a96fad";
+    JsonNode order =
+        jsonMapper.readTree(
+            Files.readString(
+                contractPath("examples", "events", "trade-order-created-v1.example.json")));
+    JsonNode acceptedPayload = accepted.path("payload");
+    JsonNode orderPayload = order.path("payload");
+    QuotationAcceptedV1.Payload payload = parsedPayload(acceptedPayload.toString());
+    String expected = "c2d9de573e494036e90e77b836956600a9054e0f890c602572fd1e278a1badde";
+    String decisionHash = "02254fa78a2ff6eefd019f100a894d7ba76c2ce07d3f3283a75e214781ffe56c";
 
-    assertThat(example.path("payload").path("snapshotHash").asText()).isEqualTo(expected);
+    assertThat(acceptedPayload.path("route").path("policyVersion").asText())
+        .isEqualTo("ROUTE-2026-03")
+        .isEqualTo(orderPayload.path("route").path("policyVersion").asText());
+    assertThat(acceptedPayload.path("snapshotHash").asText())
+        .isEqualTo(expected)
+        .isEqualTo(orderPayload.path("snapshotHash").asText());
     assertThat(QuotationSnapshotHashV1.hash(QuotationSnapshotHashV1.Snapshot.from(payload)))
         .isEqualTo(expected);
+    assertThat(acceptedPayload.path("supplyDecision").path("decisionHash").asText())
+        .isEqualTo(decisionHash)
+        .isEqualTo(orderPayload.path("supplyDecision").path("decisionHash").asText());
+    assertThat(acceptedPayload.path("supplyDecision").path("selectedRouteCode").asText())
+        .isEqualTo(acceptedPayload.path("route").path("code").asText())
+        .isEqualTo(orderPayload.path("supplyDecision").path("selectedRouteCode").asText())
+        .isEqualTo(orderPayload.path("route").path("code").asText());
+    JsonNode decision = acceptedPayload.path("supplyDecision");
+    JsonNode line = acceptedPayload.path("lines").path(0);
+    assertThat(
+            SupplyDecisionSnapshot.create(
+                    decision.path("policyVersion").asText(),
+                    Instant.parse(decision.path("decidedAt").asText()),
+                    UUID.fromString(decision.path("sourceRouteEvaluationId").asText()),
+                    decision.path("sourceRouteInputHash").asText(),
+                    TradeRouteCode.valueOf(decision.path("selectedRouteCode").asText()),
+                    Instant.parse(decision.path("inventoryDataAsOf").asText()),
+                    List.of(
+                        new SupplyDecisionSnapshot.LineDecision(
+                            UUID.fromString(line.path("quotationLineId").asText()),
+                            UUID.fromString(line.path("skuId").asText()),
+                            new BigDecimal(line.path("quantity").asText()),
+                            TradePlanningQuantityUnit.valueOf(line.path("unit").asText()),
+                            SupplyAllocationMode.valueOf(line.path("allocationMode").asText()),
+                            UUID.fromString(line.path("supplyPoolId").asText()),
+                            TradePlanningSupplyType.valueOf(line.path("supplyType").asText()))))
+                .decisionHash())
+        .isEqualTo(decisionHash);
+    for (String legacyName :
+        List.of(
+            "quotation-accepted-v1.legacy.example.json",
+            "trade-order-created-v1.legacy.example.json")) {
+      JsonNode legacy =
+          jsonMapper.readTree(Files.readString(contractPath("examples", "events", legacyName)));
+      assertThat(legacy.path("payload").has("supplyDecision")).isFalse();
+      assertThat(legacy.path("payload").path("lines").path(0).has("allocationMode")).isFalse();
+    }
+    String asyncApi = Files.readString(contractPath("asyncapi", "cellarbridge-events.yaml"));
+    assertThat(asyncApi.lines().filter(value -> value.contains("ROUTE-2026-03")).count())
+        .isEqualTo(2);
+    assertThat(asyncApi.lines().filter(value -> value.contains(expected)).count()).isEqualTo(2);
+    assertThat(asyncApi.lines().filter(value -> value.contains(decisionHash)).count()).isEqualTo(2);
 
-    ObjectNode varied = (ObjectNode) example.path("payload");
+    ObjectNode varied = (ObjectNode) acceptedPayload.deepCopy();
+    ((ObjectNode) varied.path("route")).put("policyVersion", "TRP-2026-01");
+    assertThat(
+            QuotationSnapshotHashV1.hash(
+                QuotationSnapshotHashV1.Snapshot.from(parsedPayload(varied.toString()))))
+        .isEqualTo("a61b70c8847bbc58e64fa9d3dacdcf1277868166ea2c6af5762e89a010a96fad");
     varied.put("totalAmount", "256800.00");
     ((ObjectNode) varied.path("deliveryAddress")).putNull("district").putNull("postalCode");
     ArrayNode lines = (ArrayNode) varied.path("lines");

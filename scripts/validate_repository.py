@@ -250,6 +250,28 @@ def validate_contracts(files: Iterable[Path]) -> list[str]:
                 )
         except Exception as exc:  # noqa: BLE001 - diagnostic aggregation
             errors.append(f"cannot validate {relative(example_path)}: {type(exc).__name__}: {exc}")
+
+    trade_order_schema_path = schema_dir / "trade-order-created-v1.schema.json"
+    trade_order_example_path = example_dir / "trade-order-created-v1.example.json"
+    try:
+        trade_order_schema = json.loads(trade_order_schema_path.read_text(encoding="utf-8"))
+        trade_order_validator = Draft202012Validator(
+            trade_order_schema, registry=registry, format_checker=FormatChecker()
+        )
+        stable_supply_types = (
+            "DOMESTIC_ON_HAND", "BONDED_ON_HAND", "HONG_KONG_ON_HAND",
+            "IN_TRANSIT_PRESALE", "OVERSEAS_SOURCING",
+        )
+        for supply_type in (*stable_supply_types, "UNKNOWN_SUPPLY_TYPE"):
+            candidate = json.loads(trade_order_example_path.read_text(encoding="utf-8"))
+            candidate["payload"]["lines"][0]["supplyType"] = supply_type
+            violations = list(trade_order_validator.iter_errors(candidate))
+            if supply_type == "UNKNOWN_SUPPLY_TYPE" and not violations:
+                errors.append("TradeOrderCreatedV1 accepts UNKNOWN_SUPPLY_TYPE")
+            if supply_type in stable_supply_types and violations:
+                errors.append(f"TradeOrderCreatedV1 rejects stable supplyType {supply_type}")
+    except Exception as exc:  # noqa: BLE001 - diagnostic aggregation
+        errors.append(f"cannot validate TradeOrderCreatedV1 supplyType enum: {exc}")
     return errors
 
 
