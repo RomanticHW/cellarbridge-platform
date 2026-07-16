@@ -188,8 +188,10 @@ test('freezes an explicitly selected supply pool without fallback', async ({ bro
     .filter({ hasText: /DOMESTIC ON HAND.*CASE/ })
     .click();
   await expect(
-    sales.page.getByText(/Eastbank.*DOMESTIC ON HAND.*CASE.*HIGH/).first(),
-  ).toBeVisible();
+    sales.page
+      .locator('.ant-select')
+      .filter({ has: sales.page.getByLabel('Line 1 specific supply pool') }),
+  ).toContainText(/Eastbank.*DOMESTIC ON HAND.*CASE.*HIGH/);
   await sales.page.getByRole('button', { name: 'Save quotation draft' }).click();
   await sales.page.getByRole('button', { name: 'Evaluate routes' }).click();
 
