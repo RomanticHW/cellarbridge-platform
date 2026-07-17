@@ -7,6 +7,7 @@ import com.rom.cellarbridge.tradeorder.TradeOrderSupplyDecisionStatus;
 import com.rom.cellarbridge.tradeorder.internal.application.TradeOrderRepository;
 import com.rom.cellarbridge.tradeorder.internal.application.TradeOrderRepository.CursorPosition;
 import com.rom.cellarbridge.tradeorder.internal.application.TradeOrderRepository.OrderPage;
+import com.rom.cellarbridge.tradeorder.internal.application.TradeOrderRepository.ReservationOutcomeEvidence;
 import com.rom.cellarbridge.tradeorder.internal.application.TradeOrderRepository.TimelineEntry;
 import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrder;
 import com.rom.cellarbridge.tradeorder.internal.domain.TradeOrder.CommercialSnapshot;
@@ -26,6 +27,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -37,6 +40,8 @@ public class JdbcTradeOrderRepository implements TradeOrderRepository {
 
   private static final DateTimeFormatter NUMBER_PERIOD =
       DateTimeFormatter.ofPattern("yyyyMM").withZone(ZoneOffset.UTC);
+  private static final Pattern OUTCOME_EVIDENCE =
+      Pattern.compile("^Inventory reservation outcome evidence: ([0-9a-f]{64})$");
   private static final String SELECT_ORDER =
       """
       SELECT id, tenant_id, number, source_quotation_id, source_revision_id,
@@ -152,6 +157,117 @@ public class JdbcTradeOrderRepository implements TradeOrderRepository {
       parameters.addValue("ownerId", ownerScope);
     }
     return queryOne(sql, parameters);
+  }
+
+  @Override
+  public Optional<TradeOrder> findForUpdate(TenantId tenantId, UUID orderId) {
+    return queryOne(
+        SELECT_ORDER + " WHERE tenant_id = :tenantId AND id = :orderId FOR UPDATE",
+        new MapSqlParameterSource()
+            .addValue("tenantId", tenantId.value())
+            .addValue("orderId", orderId));
+  }
+
+  @Override
+  public Optional<ReservationOutcomeEvidence> findReservationOutcome(
+      TenantId tenantId, UUID orderId) {
+    List<ReservationOutcomeEvidence> rows =
+        jdbc.query(
+            """
+            SELECT event_id, event_type, status, code, message, occurred_at
+              FROM trade_order.timeline_entry
+             WHERE tenant_id = :tenantId
+               AND order_id = :orderId
+               AND event_type IN
+                   ('cellarbridge.inventory.reservation-confirmed.v1',
+                    'cellarbridge.inventory.reservation-failed.v1')
+             ORDER BY occurred_at, id
+            """,
+            new MapSqlParameterSource()
+                .addValue("tenantId", tenantId.value())
+                .addValue("orderId", orderId),
+            (resultSet, rowNumber) -> {
+              Matcher evidence = OUTCOME_EVIDENCE.matcher(resultSet.getString("message"));
+              if (!evidence.matches()) {
+                throw new IllegalStateException("Stored reservation outcome evidence is invalid");
+              }
+              return new ReservationOutcomeEvidence(
+                  resultSet.getObject("event_id", UUID.class),
+                  resultSet.getString("event_type"),
+                  TradeOrderStatus.valueOf(resultSet.getString("status")),
+                  resultSet.getString("code"),
+                  evidence.group(1),
+                  instant(resultSet, "occurred_at"));
+            });
+    if (rows.size() > 1) {
+      throw new IllegalStateException("Trade Order contains conflicting reservation outcomes");
+    }
+    return rows.stream().findFirst();
+  }
+
+  @Override
+  public void saveReservationOutcome(
+      TenantId tenantId,
+      TradeOrder before,
+      TradeOrder after,
+      ReservationOutcomeEvidence outcome,
+      UUID actorId) {
+    requireTenant(tenantId, before.tenantId());
+    requireTenant(tenantId, after.tenantId());
+    if (!before.id().equals(after.id())
+        || before.version() + 1 != after.version()
+        || outcome.status() != after.status()
+        || !outcome.occurredAt().equals(after.updatedAt())) {
+      throw new IllegalArgumentException("Reservation outcome does not match the order transition");
+    }
+    int updated =
+        jdbc.update(
+            """
+            UPDATE trade_order.trade_order
+               SET status = :status,
+                   updated_at = :occurredAt,
+                   updated_by = :actorId,
+                   version = :newVersion
+             WHERE tenant_id = :tenantId
+               AND id = :orderId
+               AND status = :previousStatus
+               AND version = :previousVersion
+            """,
+            new MapSqlParameterSource()
+                .addValue("status", after.status().name())
+                .addValue("occurredAt", timestamp(after.updatedAt()))
+                .addValue("actorId", actorId)
+                .addValue("newVersion", after.version())
+                .addValue("tenantId", tenantId.value())
+                .addValue("orderId", before.id())
+                .addValue("previousStatus", before.status().name())
+                .addValue("previousVersion", before.version()));
+    if (updated != 1) {
+      throw new IllegalStateException("Trade Order reservation transition lost its row lock");
+    }
+    jdbc.update(
+        """
+        INSERT INTO trade_order.timeline_entry
+          (id, tenant_id, order_id, event_id, event_type, status, code,
+           message, visibility, occurred_at, created_at, created_by,
+           updated_at, updated_by, version)
+        VALUES
+          (:id, :tenantId, :orderId, :eventId, :eventType, :status, :code,
+           :message, 'INTERNAL', :occurredAt, :occurredAt, :actorId,
+           :occurredAt, :actorId, 0)
+        """,
+        new MapSqlParameterSource()
+            .addValue("id", UUID.randomUUID())
+            .addValue("tenantId", tenantId.value())
+            .addValue("orderId", before.id())
+            .addValue("eventId", outcome.eventId())
+            .addValue("eventType", outcome.eventType())
+            .addValue("status", outcome.status().name())
+            .addValue("code", outcome.reasonCode())
+            .addValue(
+                "message", "Inventory reservation outcome evidence: " + outcome.evidenceHash())
+            .addValue("occurredAt", timestamp(outcome.occurredAt()))
+            .addValue("actorId", actorId));
   }
 
   @Override

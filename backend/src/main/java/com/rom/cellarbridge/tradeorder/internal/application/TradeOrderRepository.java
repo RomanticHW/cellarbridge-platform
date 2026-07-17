@@ -20,6 +20,18 @@ public interface TradeOrderRepository {
 
   Optional<TradeOrder> find(TenantId tenantId, UUID orderId, UUID partnerScope, UUID ownerScope);
 
+  /** Locks one tenant-scoped order while an asynchronous lifecycle outcome is applied. */
+  Optional<TradeOrder> findForUpdate(TenantId tenantId, UUID orderId);
+
+  Optional<ReservationOutcomeEvidence> findReservationOutcome(TenantId tenantId, UUID orderId);
+
+  void saveReservationOutcome(
+      TenantId tenantId,
+      TradeOrder before,
+      TradeOrder after,
+      ReservationOutcomeEvidence outcome,
+      UUID actorId);
+
   OrderPage list(
       TenantId tenantId,
       Set<TradeOrderStatus> statuses,
@@ -46,4 +58,12 @@ public interface TradeOrderRepository {
       TradeOrderStatus newState,
       String safeReason,
       String visibility) {}
+
+  record ReservationOutcomeEvidence(
+      UUID eventId,
+      String eventType,
+      TradeOrderStatus status,
+      String reasonCode,
+      String evidenceHash,
+      Instant occurredAt) {}
 }
