@@ -86,18 +86,19 @@ erDiagram
 - 根列与 JSON 的 schema、policy、hash、evaluation ID、input hash、selected route 交叉校验；Repository 读回时重算独立 Decision Hash。
 - 该证据属于 Planning，不写 `quotation` 或 `inventory`，也不表示已预占具体 Pool/Lot。
 
-### `inventory.inventory_reservation`
+### `inventory.reservation`
 
-状态：**Designed（Task 08）**。
+状态：**Task 08 A2 implemented in review**。
 
-- id；tenant；number；order_id；status；request_hash；failure_summary JSONB；version。
-- unique `(tenant, order_id)`。
+- id；tenant_id；order_id；request/supply-decision hash；route；status/failure；受约束 request lines；version/timestamps。
+- unique `(tenant_id, order_id)` 与 tenant-scoped request-hash identity；读取必须 fail closed。
 
-### `inventory.reservation_allocation`
+### Inventory-owned Reservation facts
 
-状态：**Designed（Task 08）**。
+状态：**Task 08 A2 implemented in review**。
 
-- reservation_id；order_line_id；lot_id；quantity；status；version；unique business keys。
+- `reservation_attempt`、`allocation`、`inventory_movement`、`shortage_snapshot` 为 append-only Repository 事实，数量使用 `numeric(19,6)`。
+- Lot reserve/release/consume 使用 tenant/unit/balance 条件的单语句更新；本层不执行订单预占工作流。
 
 ### `fulfillment.fulfillment_plan`
 

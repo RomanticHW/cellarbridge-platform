@@ -45,7 +45,7 @@ Design Baseline
 
 每个任务的可执行 Prompt 位于私有控制仓库，公共仓库只保存可长期维护的设计与实现证据。
 
-Task 08 当前保持 **Blocked**：必须先合并 Task 07A 的 `integrity-core` 与 `inventory-readiness` 两个准备 PR，不能从第一个 PR 的设计完成推断库存预占已经开始。
+Task 08 当前为 **Designed / In progress**：A1 domain 已合并，A2 persistence/atomic Inventory foundation 已实现并处于 review；Stack B/C 仍按顺序阻塞，不能从基础层推断库存预占已经可用。
 
 ## 3. 纵向切片定义
 
