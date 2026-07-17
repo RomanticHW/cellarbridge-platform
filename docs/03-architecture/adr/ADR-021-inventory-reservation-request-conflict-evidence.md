@@ -48,7 +48,7 @@ V16 只修改 `inventory` schema：
 
 ### 4. 幂等写入
 
-Repository 使用数据库唯一键仲裁并发写入。相同 tenant/order/conflicting hash 且全部事实一致时返回既有记录；相同业务键但 canonical Reservation、existing hash、source event 或 correlation 不一致时 fail closed，不覆盖历史。
+Repository 使用数据库唯一键仲裁并发写入。相同 tenant/order/conflicting hash 且 canonical Reservation 与 existing hash 一致时返回首次观察的既有记录；后续 replay 的新 event/correlation 不能覆盖首次证据。相同业务键但 canonical Reservation 或 existing hash 不一致时 fail closed，不覆盖历史。
 
 不同 tenant 的相同 order/hash 互不影响。读取与写入都要求显式 tenant，Repository 不提供无 tenant 查询。
 
