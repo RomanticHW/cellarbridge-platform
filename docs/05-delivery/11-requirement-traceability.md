@@ -7,6 +7,7 @@
 状态值：
 
 - `Designed`：设计和契约已存在，尚无可执行实现；
+- `Designed / In progress`：仅完成明确的非运行基础层，完整能力仍不可用；
 - `Implemented`：主行为已实现，仍可能缺少完整证据；
 - `Verified`：定义的自动测试和演示证据均通过；
 - `Deferred`：经明确范围决策延后，不得在 README 中作为已完成能力展示。
@@ -27,7 +28,8 @@
 | 07C-P | UC-TRD-001 | FR-TRD-001~005 | ADR-016、ROUTE-2026-03、SUPPLY-DECISION-2026-01、canonical input schema 3、Trade Planning-only V12 | REST/OpenAPI 1.5.0 shape unchanged | policy/application/hash tests、fresh + V11 → V12 Testcontainers、current/historical round trip、tamper/tenant/API field-hiding、四条既有 E2E | Verified |
 | 07C-Q | UC-QUO-001~004, UC-TRD-001 | FR-QUO-001~011, FR-TRD-001~006 | ADR-017、quotation-only V13、Revision decision state、exact line identity | internal OpenAPI 1.6 Decision evidence；public DTO unchanged | domain/repository/API rollback+tamper+Legacy tests、React AUTO/FIXED/detail tests、四条既有 E2E回归 | Verified |
 | 07C-PROP | UC-ORD-001, UC-INV-001 | FR-ORD-001~004, FR-INV-001~004 | ADR-018、trade_order-only V14、Current/Legacy evidence | OpenAPI 1.7；V1 events additive；Buyer hidden | Hash/presence/tamper、V13→V14、tenant/Buyer、React tests | Verified |
-| 08 | UC-INV-002/003 | FR-INV-010~016 | Inventory aggregate、ADR-008、atomic SQL | reservation query; reservation outcome events | concurrent no-oversell、all-or-nothing、release/consume idempotency | Designed |
+| 08-A1 | UC-INV-002/003 | FR-INV-010~016 | ADR-019、Reservation/Attempt/Allocation/Movement/Shortage、ExactQuantity、Request Hash | 无新增 HTTP/Event 契约 | focused domain invariants and deterministic hash tests；无 PostgreSQL correctness 声明 | Designed / In progress |
+| 08-A2/B/C | UC-INV-002/003 | FR-INV-010~016 | ADR-008/014/015/019、Inventory persistence/atomic execution/outcome operations | reservation query; reservation outcome events | migration、concurrent no-oversell、all-or-nothing、release/consume idempotency | Designed |
 | 09 | UC-FUL-001/002 | FR-FUL-001~005 | versioned templates、Fulfillment state machine | fulfillment list/detail/actions; completion/failure events | dependency/concurrency/SLA/customer visibility/E2E | Designed |
 | 10 | UC-EXC-001 | FR-EXC-001~004 | Exception aggregate、recovery catalog、failure model | exception query/recovery; `ExceptionOpenedV1` | dedup、recovery verification、safe replay、permissions | Designed |
 | 11 | UC-SET-001 | FR-SET-001~004 | Receivable aggregate、money/reversal rules | receivables/payments/reversal; `ReceivableCreatedV1` | money properties、external-reference idempotency、overdue/reversal | Designed |

@@ -37,7 +37,7 @@ Status date: **2026-07-16**
 | Supply Decision propagation | Available | Current/Legacy V1、FROZEN/LEGACY_UNVERIFIED Order、V14、OpenAPI 1.7/AsyncAPI 1.1；Task 08 未实施 |
 | Customer quotation decision | Available | controlled portal context, strict customer DTO, accept/reject idempotency, immutable decision, leased expiry work, durable `QuotationAcceptedV1`, React receipt and refresh-safe E2E |
 | Quote-to-order conversion | Available | transactional Inbox consumer, immutable Trade Order snapshot, unique quotation conversion, reliable `TradeOrderCreatedV1`, eventual Quotation link, tenant/Buyer-scoped query UI and real OIDC E2E |
-| Inventory reservation | Designed | orders intentionally remain `PENDING_RESERVATION`; atomic allocation and reservation outcome handling remain Task 08 |
+| Inventory reservation | Designed / In progress | A1 defines Reservation facts, exact quantity and Request Hash only；orders remain `PENDING_RESERVATION`；Repository、V15、Inventory writes and execution remain blocked in A2/B/C |
 | Fulfillment/exception/settlement/reporting | Designed | implementation not started |
 | Architecture fitness functions | Partially available | Modulith、domain/controller/public-contract、Catalog/Inventory 单位与 migration 核心规则已执行；shared-kernel、运行和性能门禁仍按 fitness status 分为 Partially available/Planned |
 | Kafka/Redis/OTel/Prometheus/Grafana full profile | Planned | no current runtime dependency or compose service |
@@ -46,7 +46,7 @@ Status date: **2026-07-16**
 
 ## 3. 声明
 
-当前基线已在 Quotation、Current/Legacy Event 和 Trade Order 中保存一致的决策证据，客户与 Buyer DTO 仍严格隐藏内部证据。库存预占尚未实现并保持 `Designed`；订单的 `PENDING_RESERVATION` 是明确的未完成状态。
+当前基线已在 Quotation、Current/Legacy Event 和 Trade Order 中保存一致的决策证据，客户与 Buyer DTO 仍严格隐藏内部证据。库存预占处于 `Designed / In progress`：A1 只建立领域与 Request Hash，尚无 Repository、V15 或库存写入；订单的 `PENDING_RESERVATION` 是明确的未完成状态。
 
 ## 4. 追踪模板
 
