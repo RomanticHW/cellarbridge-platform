@@ -39,6 +39,14 @@
             "orderNumber": {
               "type": "string"
             },
+            "requestHash": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "supplyDecisionHash": {
+              "type": ["string", "null"],
+              "pattern": "^[0-9a-f]{64}$"
+            },
             "failedAt": {
               "type": "string",
               "format": "date-time"
@@ -49,7 +57,11 @@
                 "INVENTORY_INSUFFICIENT",
                 "SUPPLY_NOT_AUTOMATICALLY_RESERVABLE",
                 "ALLOCATION_CONFLICT",
-                "INTERNAL_FAILURE"
+                "INTERNAL_FAILURE",
+                "INVENTORY_FIXED_POOL_INELIGIBLE",
+                "INVENTORY_ALLOCATION_CONFLICT",
+                "SUPPLY_DECISION_MISSING",
+                "RESERVATION_REQUEST_CONFLICT"
               ]
             },
             "shortages": {
@@ -67,6 +79,34 @@
                   "unit"
                 ],
                 "properties": {
+                  "orderLineId": { "type": "string", "format": "uuid" },
+                  "skuId": { "type": "string", "format": "uuid" },
+                  "skuCode": { "type": "string" },
+                  "requestedQuantity": { "type": "string" },
+                  "observedAvailableQuantity": { "type": "string" },
+                  "shortageQuantity": { "type": "string" },
+                  "unit": { "type": "string", "enum": ["CASE", "BOTTLE"] }
+                }
+              }
+            },
+            "lineFailures": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "orderLineId",
+                  "skuId",
+                  "skuCode",
+                  "requestedQuantity",
+                  "unit",
+                  "allocationMode",
+                  "supplyPoolId",
+                  "supplyType",
+                  "observedAvailableQuantity",
+                  "shortageQuantity"
+                ],
+                "properties": {
                   "orderLineId": {
                     "type": "string",
                     "format": "uuid"
@@ -81,11 +121,30 @@
                   "requestedQuantity": {
                     "type": "string"
                   },
+                  "allocationMode": {
+                    "type": ["string", "null"],
+                    "enum": ["ROUTE_ELIGIBLE_AUTO", "FIXED_POOL", null]
+                  },
+                  "supplyPoolId": {
+                    "type": ["string", "null"],
+                    "format": "uuid"
+                  },
+                  "supplyType": {
+                    "type": ["string", "null"],
+                    "enum": [
+                      "DOMESTIC_ON_HAND",
+                      "BONDED_ON_HAND",
+                      "HONG_KONG_ON_HAND",
+                      "IN_TRANSIT_PRESALE",
+                      "OVERSEAS_SOURCING",
+                      null
+                    ]
+                  },
                   "observedAvailableQuantity": {
-                    "type": "string"
+                    "type": ["string", "null"]
                   },
                   "shortageQuantity": {
-                    "type": "string"
+                    "type": ["string", "null"]
                   },
                   "unit": {
                     "type": "string",

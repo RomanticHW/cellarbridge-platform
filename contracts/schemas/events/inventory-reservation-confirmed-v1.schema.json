@@ -38,6 +38,14 @@
             "orderNumber": {
               "type": "string"
             },
+            "requestHash": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "supplyDecisionHash": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
             "confirmedAt": {
               "type": "string",
               "format": "date-time"
@@ -60,12 +68,28 @@
                     "type": "string",
                     "format": "uuid"
                   },
+                  "skuId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "supplyPoolId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
                   "lotId": {
                     "type": "string",
                     "format": "uuid"
                   },
                   "lotCode": {
                     "type": "string"
+                  },
+                  "supplyType": {
+                    "type": "string",
+                    "enum": [
+                      "DOMESTIC_ON_HAND",
+                      "BONDED_ON_HAND",
+                      "HONG_KONG_ON_HAND"
+                    ]
                   },
                   "quantity": {
                     "type": "string"

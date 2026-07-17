@@ -1,7 +1,7 @@
 asyncapi: 3.0.0
 info:
   title: CellarBridge Integration Events
-  version: 1.1.0-design
+  version: 1.2.0-design
   description: |
     Versioned integration-event contract for the CellarBridge full profile.
     Delivery semantics are at-least-once; every consumer must deduplicate by event id.

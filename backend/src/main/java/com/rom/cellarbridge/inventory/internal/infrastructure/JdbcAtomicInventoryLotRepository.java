@@ -2,6 +2,7 @@ package com.rom.cellarbridge.inventory.internal.infrastructure;
 
 import com.rom.cellarbridge.identityaccess.TenantId;
 import com.rom.cellarbridge.inventory.QuantityUnit;
+import com.rom.cellarbridge.inventory.SupplyType;
 import com.rom.cellarbridge.inventory.internal.application.AtomicInventoryLotRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -61,6 +62,58 @@ public class JdbcAtomicInventoryLotRepository implements AtomicInventoryLotRepos
         RETURNING id, quantity_unit, on_hand_quantity, reserved_quantity, version
         """,
         parameters(tenantId, lotId, quantityUnit, quantity, actorId, now));
+  }
+
+  @Override
+  public Optional<LotBalance> reserveExact(
+      TenantId tenantId,
+      UUID lotId,
+      UUID supplyPoolId,
+      UUID skuId,
+      String routeCode,
+      SupplyType supplyType,
+      QuantityUnit quantityUnit,
+      BigDecimal quantity,
+      UUID actorId,
+      Instant now) {
+    MapSqlParameterSource parameters =
+        parameters(tenantId, lotId, quantityUnit, quantity, actorId, now)
+            .addValue("supplyPoolId", Objects.requireNonNull(supplyPoolId, "supplyPoolId"))
+            .addValue("skuId", Objects.requireNonNull(skuId, "skuId"))
+            .addValue("routeCode", Objects.requireNonNull(routeCode, "routeCode"))
+            .addValue("supplyType", Objects.requireNonNull(supplyType, "supplyType").name());
+    return update(
+        """
+        UPDATE inventory.inventory_lot AS lot
+           SET reserved_quantity = reserved_quantity + :quantity,
+               updated_at = :now,
+               updated_by = :actorId,
+               version = version + 1
+         WHERE lot.tenant_id = :tenantId
+           AND lot.id = :lotId
+           AND lot.supply_pool_id = :supplyPoolId
+           AND lot.sku_id = :skuId
+           AND lot.quantity_unit = :quantityUnit
+           AND lot.status = 'AVAILABLE'
+           AND lot.on_hand_quantity - lot.reserved_quantity >= :quantity
+           AND (lot.available_from IS NULL OR lot.available_from <= :now)
+           AND EXISTS (
+               SELECT 1
+                 FROM inventory.supply_pool pool
+                 JOIN inventory.warehouse warehouse
+                   ON warehouse.tenant_id = pool.tenant_id
+                  AND warehouse.id = pool.warehouse_id
+                WHERE pool.tenant_id = lot.tenant_id
+                  AND pool.id = lot.supply_pool_id
+                  AND pool.route_code = :routeCode
+                  AND pool.supply_type = :supplyType
+                  AND pool.status = 'ACTIVE'
+                  AND pool.automatically_reservable
+                  AND warehouse.status = 'ACTIVE'
+                  AND (pool.available_from IS NULL OR pool.available_from <= :now))
+        RETURNING lot.id, lot.quantity_unit, lot.on_hand_quantity, lot.reserved_quantity, lot.version
+        """,
+        parameters);
   }
 
   @Override
