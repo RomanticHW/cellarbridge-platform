@@ -20,12 +20,9 @@
             "reservationNumber",
             "orderId",
             "orderNumber",
-            "requestHash",
-            "supplyDecisionHash",
             "failedAt",
             "reasonCode",
-            "lineFailures",
-            "retryable"
+            "shortages"
           ],
           "properties": {
             "reservationId": {
@@ -59,11 +56,38 @@
               "enum": [
                 "INVENTORY_INSUFFICIENT",
                 "SUPPLY_NOT_AUTOMATICALLY_RESERVABLE",
+                "ALLOCATION_CONFLICT",
+                "INTERNAL_FAILURE",
                 "INVENTORY_FIXED_POOL_INELIGIBLE",
                 "INVENTORY_ALLOCATION_CONFLICT",
                 "SUPPLY_DECISION_MISSING",
                 "RESERVATION_REQUEST_CONFLICT"
               ]
+            },
+            "shortages": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "orderLineId",
+                  "skuId",
+                  "skuCode",
+                  "requestedQuantity",
+                  "observedAvailableQuantity",
+                  "shortageQuantity",
+                  "unit"
+                ],
+                "properties": {
+                  "orderLineId": { "type": "string", "format": "uuid" },
+                  "skuId": { "type": "string", "format": "uuid" },
+                  "skuCode": { "type": "string" },
+                  "requestedQuantity": { "type": "string" },
+                  "observedAvailableQuantity": { "type": "string" },
+                  "shortageQuantity": { "type": "string" },
+                  "unit": { "type": "string", "enum": ["CASE", "BOTTLE"] }
+                }
+              }
             },
             "lineFailures": {
               "type": "array",

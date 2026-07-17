@@ -18,6 +18,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
@@ -31,6 +32,8 @@ import org.springframework.stereotype.Component;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.NullNode;
+import tools.jackson.databind.node.ObjectNode;
 
 /** Classifies raw Current/Legacy presence before binding it to the immutable request model. */
 @Component
@@ -60,6 +63,7 @@ final class TradeOrderReservationRequestParser {
       require(EVENT_TYPE.equals(delivery.eventType()) && delivery.eventVersion() == 1);
       JsonNode body = jsonMapper.readTree(delivery.payloadJson());
       Kind kind = classifyPresence(body);
+      verifyCommercialSnapshot(body);
       Payload payload = jsonMapper.readValue(body.toString(), Payload.class);
       validate(delivery, payload);
       TenantId tenantId = TenantId.of(delivery.tenantId());
@@ -79,7 +83,10 @@ final class TradeOrderReservationRequestParser {
           lines);
     } catch (EventHandlingException exception) {
       throw exception;
-    } catch (JacksonException | IllegalArgumentException | NullPointerException exception) {
+    } catch (JacksonException
+        | NoSuchAlgorithmException
+        | IllegalArgumentException
+        | NullPointerException exception) {
       throw EventHandlingException.finalFailure("TRADE_ORDER_CREATED_EVENT_INVALID");
     }
   }
@@ -147,6 +154,90 @@ final class TradeOrderReservationRequestParser {
     }
   }
 
+  private void verifyCommercialSnapshot(JsonNode body)
+      throws JacksonException, NoSuchAlgorithmException {
+    JsonNode customer = body.path("customer");
+    JsonNode route = body.path("route");
+    JsonNode address = body.path("deliveryAddress");
+    require(customer.isObject() && route.isObject() && address.isObject());
+    requireText(
+        text(body, "sourceQuotationNumber"),
+        text(customer, "partnerNumber"),
+        text(customer, "displayName"),
+        text(body, "currency"),
+        text(route, "policyVersion"),
+        text(body, "acceptedTermsVersion"),
+        text(address, "province"),
+        text(address, "city"),
+        text(address, "line1"));
+    UUID.fromString(text(customer, "partnerId"));
+    LocalDate.parse(text(route, "estimatedDeliveryDate"));
+    LocalDate.parse(text(body, "requestedDeliveryDate"));
+    nonNegative(text(body, "totalAmount"));
+    ObjectNode snapshot = jsonMapper.createObjectNode().put("schemaVersion", 1);
+    snapshot.set("quotationId", body.path("sourceQuotationId"));
+    snapshot.set("revisionId", body.path("sourceRevisionId"));
+    snapshot.set("quotationNumber", body.path("sourceQuotationNumber"));
+    snapshot.set("revision", body.path("sourceRevision"));
+    snapshot.set(
+        "customer",
+        projection(customer, "partnerId", "partnerNumber", "displayName", "sourceVersion"));
+    snapshot.set("currency", body.path("currency"));
+    snapshot.put("totalAmount", decimal(text(body, "totalAmount")));
+    snapshot.set("paymentTermDays", body.path("paymentTermDays"));
+    snapshot.set("route", projection(route, "code", "policyVersion", "estimatedDeliveryDate"));
+    snapshot.set("acceptedTermsVersion", body.path("acceptedTermsVersion"));
+    snapshot.set("requestedDeliveryDate", body.path("requestedDeliveryDate"));
+    snapshot.set(
+        "deliveryAddress",
+        projection(address, "countryCode", "province", "city", "district", "line1", "postalCode"));
+    var lines = jsonMapper.createArrayNode();
+    for (JsonNode line : body.path("lines")) {
+      ObjectNode projected = jsonMapper.createObjectNode();
+      projected.set("quotationLineId", line.path("sourceQuotationLineId"));
+      append(projected, line, "skuId", "skuCode", "description");
+      projected.put("quantity", decimal(text(line, "quantity")));
+      projected.set("unit", line.path("unit"));
+      projected.put("netUnitPrice", decimal(text(line, "netUnitPrice")));
+      projected.put("lineTotal", decimal(text(line, "lineTotal")));
+      append(projected, line, "supplyPoolId", "supplyType");
+      lines.add(projected);
+    }
+    snapshot.set("lines", lines);
+    String incoming = text(body, "snapshotHash").replaceFirst("^sha256:", "");
+    require(incoming.matches("^[0-9a-f]{64}$"));
+    String rebuilt =
+        HexFormat.of()
+            .formatHex(
+                MessageDigest.getInstance("SHA-256")
+                    .digest(jsonMapper.writeValueAsBytes(snapshot)));
+    if (!hashMatches(rebuilt, incoming)) {
+      throw EventHandlingException.finalFailure("TRADE_ORDER_CREATED_COMMERCIAL_HASH_MISMATCH");
+    }
+  }
+
+  private ObjectNode projection(JsonNode source, String... fields) {
+    return append(jsonMapper.createObjectNode(), source, fields);
+  }
+
+  private static ObjectNode append(ObjectNode target, JsonNode source, String... fields) {
+    for (String field : fields) {
+      JsonNode value = source.get(field);
+      target.set(field, value == null ? NullNode.getInstance() : value);
+    }
+    return target;
+  }
+
+  private static String text(JsonNode source, String field) {
+    JsonNode value = source.get(field);
+    require(value != null && value.isTextual());
+    return value.textValue();
+  }
+
+  private static String decimal(String value) {
+    return new BigDecimal(value).stripTrailingZeros().toPlainString();
+  }
+
   private static String rebuildDecision(Payload payload) {
     SupplyDecision root = payload.supplyDecision();
     try {
@@ -170,7 +261,7 @@ final class TradeOrderReservationRequestParser {
               .sorted(Comparator.comparing(EventLine::sourceQuotationLineId))
               .toList();
       String rebuilt = decisionHash(root, ordered);
-      if (!rebuilt.equals(root.decisionHash())) {
+      if (!hashMatches(rebuilt, root.decisionHash())) {
         throw EventHandlingException.finalFailure(
             "TRADE_ORDER_CREATED_SUPPLY_DECISION_HASH_MISMATCH");
       }
@@ -234,6 +325,11 @@ final class TradeOrderReservationRequestParser {
     output.write(bytes);
   }
 
+  private static boolean hashMatches(String expected, String actual) {
+    return MessageDigest.isEqual(
+        expected.getBytes(StandardCharsets.US_ASCII), actual.getBytes(StandardCharsets.US_ASCII));
+  }
+
   private static boolean microsecond(Instant value) {
     return value.equals(value.truncatedTo(ChronoUnit.MICROS));
   }
@@ -275,8 +371,14 @@ final class TradeOrderReservationRequestParser {
     return quantity;
   }
 
-  private static void requireText(String value) {
-    require(value != null && !value.isBlank() && value.length() <= 80);
+  private static void requireText(String... values) {
+    for (String value : values) {
+      require(value != null && !value.isBlank() && value.length() <= 80);
+    }
+  }
+
+  private static void nonNegative(String value) {
+    require(value != null && new BigDecimal(value).signum() >= 0);
   }
 
   private static void require(boolean valid) {

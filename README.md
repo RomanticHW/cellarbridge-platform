@@ -37,7 +37,7 @@ flowchart LR
     K -.-> L
 
     classDef planned fill:#fff7e6,stroke:#b26a00,color:#5f3700,stroke-dasharray:5 5;
-    class H,I,J,K,L planned;
+    class I,J,K,L planned;
 ```
 
 ### 3. Product capabilities

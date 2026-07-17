@@ -87,7 +87,7 @@ public final class TradeOrderCreatedReservationHandler implements LocalEventHand
         return createLegacyFailure(request, delivery, now);
       }
       Reservation pending = pending(request, now);
-      InventoryReservationRepository.CreateResult created = create(pending, request, delivery, now);
+      InventoryReservationRepository.CreateResult created = create(pending, request);
       if (created == null) {
         return conflictAfterCreateRace(request, delivery, now);
       }
@@ -132,8 +132,7 @@ public final class TradeOrderCreatedReservationHandler implements LocalEventHand
     }
   }
 
-  private InventoryReservationRepository.CreateResult create(
-      Reservation pending, Request request, EventDelivery delivery, Instant now) {
+  private InventoryReservationRepository.CreateResult create(Reservation pending, Request request) {
     try {
       return reservations.create(request.tenantId(), pending);
     } catch (ReservationPersistenceException exception) {
@@ -212,7 +211,7 @@ public final class TradeOrderCreatedReservationHandler implements LocalEventHand
             0,
             now,
             now);
-    InventoryReservationRepository.CreateResult created = create(failed, request, delivery, now);
+    InventoryReservationRepository.CreateResult created = create(failed, request);
     if (created == null) {
       return conflictAfterCreateRace(request, delivery, now);
     }
@@ -327,6 +326,20 @@ public final class TradeOrderCreatedReservationHandler implements LocalEventHand
                       shortage == null ? null : shortage.toPlainString());
                 })
             .toList();
+    List<InventoryReservationFailedV1.Shortage> shortages =
+        lines.stream()
+            .filter(line -> line.observedAvailableQuantity() != null)
+            .map(
+                line ->
+                    new InventoryReservationFailedV1.Shortage(
+                        line.orderLineId(),
+                        line.skuId(),
+                        line.skuCode(),
+                        line.requestedQuantity(),
+                        line.observedAvailableQuantity(),
+                        line.shortageQuantity(),
+                        line.unit()))
+            .toList();
     publish(
         UUID.randomUUID(),
         reservation,
@@ -342,6 +355,7 @@ public final class TradeOrderCreatedReservationHandler implements LocalEventHand
             request.supplyDecisionHash(),
             now,
             failureCode,
+            shortages,
             lines,
             false));
   }

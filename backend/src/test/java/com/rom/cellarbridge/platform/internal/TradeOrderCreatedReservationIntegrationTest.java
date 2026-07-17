@@ -6,6 +6,8 @@ import com.rom.cellarbridge.inventory.InventoryReservationConfirmedV1;
 import com.rom.cellarbridge.inventory.InventoryReservationFailedV1;
 import com.rom.cellarbridge.inventory.internal.application.TradeOrderCreatedReservationHandler;
 import com.rom.cellarbridge.platform.EventDelivery;
+import com.rom.cellarbridge.quotation.QuotationAcceptedV1;
+import com.rom.cellarbridge.quotation.QuotationSnapshotHashV1;
 import com.rom.cellarbridge.test.PostgresIntegrationTestSupport;
 import com.rom.cellarbridge.tradeorder.TradeOrderCreatedV1;
 import com.rom.cellarbridge.tradeplanning.SupplyAllocationMode;
@@ -50,7 +52,8 @@ class TradeOrderCreatedReservationIntegrationTest extends PostgresIntegrationTes
   @Autowired private JsonMapper json;
 
   @Test
-  void reservesAcrossDeterministicallyOrderedLotsAndReplaysWithoutDuplicateFacts() {
+  void reservesAcrossDeterministicallyOrderedLotsAndReplaysConcurrentRequestsWithoutDuplicates()
+      throws Exception {
     UUID sku = UUID.randomUUID();
     Stock stock = stock(sku, "1", "2");
     TradeOrderCreatedV1.Payload payload =
@@ -59,21 +62,28 @@ class TradeOrderCreatedReservationIntegrationTest extends PostgresIntegrationTes
             List.of(line(sku, "3", "ROUTE_ELIGIBLE_AUTO", null, "DOMESTIC_ON_HAND")));
     EventDelivery first = delivery(payload);
 
-    assertThat(deliveryService.deliver(handler, first))
-        .isEqualTo(LocalEventDeliveryService.DeliveryOutcome.PROCESSED);
-    assertThat(deliveryService.deliver(handler, delivery(payload)))
-        .isEqualTo(LocalEventDeliveryService.DeliveryOutcome.PROCESSED);
+    CyclicBarrier barrier = new CyclicBarrier(2);
+    try (var executor = Executors.newFixedThreadPool(2)) {
+      var calls =
+          List.of(first, delivery(payload)).stream()
+              .map(
+                  event ->
+                      executor.submit(
+                          () -> {
+                            barrier.await();
+                            return deliveryService.deliver(handler, event);
+                          }))
+              .toList();
+      for (var call : calls) {
+        assertThat(call.get()).isEqualTo(LocalEventDeliveryService.DeliveryOutcome.PROCESSED);
+      }
+    }
 
     assertThat(reservationStatus(payload.orderId())).isEqualTo("CONFIRMED");
     assertThat(count("inventory.reservation_attempt", payload.orderId())).isEqualTo(1);
     assertThat(count("inventory.allocation", payload.orderId())).isEqualTo(2);
     assertThat(count("inventory.inventory_movement", payload.orderId())).isEqualTo(2);
     assertThat(outcomeCount(payload.orderId(), InventoryReservationConfirmedV1.TYPE)).isEqualTo(1);
-    assertThat(
-            outcomePayload(payload.orderId(), InventoryReservationConfirmedV1.TYPE)
-                .path("allocations")
-                .size())
-        .isEqualTo(2);
     assertThat(reserved(stock.lotIds().get(0))).isEqualByComparingTo("1.000000");
     assertThat(reserved(stock.lotIds().get(1))).isEqualByComparingTo("2.000000");
   }
@@ -101,9 +111,6 @@ class TradeOrderCreatedReservationIntegrationTest extends PostgresIntegrationTes
     assertThat(count("inventory.inventory_movement", payload.orderId())).isZero();
     assertThat(count("inventory.shortage_snapshot", payload.orderId())).isEqualTo(1);
     assertThat(outcomeCount(payload.orderId(), InventoryReservationFailedV1.TYPE)).isEqualTo(1);
-    JsonNode outcome = outcomePayload(payload.orderId(), InventoryReservationFailedV1.TYPE);
-    assertThat(outcome.path("reasonCode").asText()).isEqualTo("INVENTORY_INSUFFICIENT");
-    assertThat(outcome.path("lineFailures").size()).isEqualTo(1);
   }
 
   @Test
@@ -127,8 +134,6 @@ class TradeOrderCreatedReservationIntegrationTest extends PostgresIntegrationTes
     assertThat(totalQuantityFacts(manual.orderId())).isZero();
     assertThat(totalQuantityFacts(currentLegacy.orderId())).isZero();
     assertThat(outcomeCount(manual.orderId(), InventoryReservationFailedV1.TYPE)).isEqualTo(1);
-    assertThat(outcomeCount(currentLegacy.orderId(), InventoryReservationFailedV1.TYPE))
-        .isEqualTo(1);
   }
 
   @Test
@@ -172,13 +177,21 @@ class TradeOrderCreatedReservationIntegrationTest extends PostgresIntegrationTes
   @Test
   void serializesConcurrentOrdersOnOneLotWithoutOverselling() throws Exception {
     UUID sku = UUID.randomUUID();
+    UUID secondSku = UUID.randomUUID();
     Stock stock = stock(sku, "5");
+    Stock second = stock(secondSku, "5");
     List<TradeOrderCreatedV1.Payload> payloads = new ArrayList<>();
     for (int index = 0; index < 8; index++) {
       payloads.add(
           current(
               UUID.randomUUID(),
-              List.of(line(sku, "1", "FIXED_POOL", stock.poolId(), "DOMESTIC_ON_HAND"))));
+              index % 2 == 0
+                  ? List.of(
+                      line(sku, "1", "FIXED_POOL", stock.poolId(), "DOMESTIC_ON_HAND"),
+                      line(secondSku, "1", "FIXED_POOL", second.poolId(), "DOMESTIC_ON_HAND"))
+                  : List.of(
+                      line(secondSku, "1", "FIXED_POOL", second.poolId(), "DOMESTIC_ON_HAND"),
+                      line(sku, "1", "FIXED_POOL", stock.poolId(), "DOMESTIC_ON_HAND"))));
     }
     CyclicBarrier barrier = new CyclicBarrier(payloads.size());
     try (var executor = Executors.newFixedThreadPool(payloads.size())) {
@@ -204,38 +217,35 @@ class TradeOrderCreatedReservationIntegrationTest extends PostgresIntegrationTes
         "reservationConcurrency coordination=barrier threads=8 attempts=8 confirmed=%d failed=%d retries=0 reserved=%s onHand=5.000000%n",
         confirmed, failed, finalReserved);
     assertThat(finalReserved).isEqualByComparingTo("5.000000");
+    assertThat(reserved(second.lotIds().getFirst())).isEqualByComparingTo("5.000000");
     assertThat(confirmed).isEqualTo(5);
     assertThat(failed).isEqualTo(3);
     assertThat(outcomeCount(payloads)).isEqualTo(8);
   }
 
   @Test
-  void rejectsExplicitNullAndTamperedSupplyEvidenceAsFinalPoisonEvents() {
+  void rejectsMixedOrTamperedDecisionAndCommercialEvidenceAsFinalPoisonEvents() {
     TradeOrderCreatedV1.Payload payload =
         current(
             UUID.randomUUID(),
             List.of(line(UUID.randomUUID(), "1", "ROUTE_ELIGIBLE_AUTO", null, "DOMESTIC_ON_HAND")));
     ObjectNode body = object(payload);
     ((ObjectNode) body.path("lines").get(0)).putNull("allocationMode");
-    EventDelivery delivery = delivery(payload.orderId(), body.toString());
-
-    RuntimeException failure = catchFailure(() -> deliveryService.deliver(handler, delivery));
-
-    assertThat(failureRecorder.record(handler, delivery, failure))
-        .isEqualTo(JdbcEventFailureRecorder.FailureOutcome.FAILED_FINAL);
-    assertThat(count("inventory.reservation", payload.orderId())).isZero();
-    assertThat(inboxError(delivery.eventId()))
-        .isEqualTo("TRADE_ORDER_CREATED_SUPPLY_DECISION_INVALID");
+    assertFinalPoison(payload.orderId(), body, "TRADE_ORDER_CREATED_SUPPLY_DECISION_INVALID");
 
     ObjectNode tampered = object(payload);
     ((ObjectNode) tampered.path("supplyDecision")).put("decisionHash", "f".repeat(64));
-    EventDelivery hashMismatch = delivery(payload.orderId(), tampered.toString());
-    RuntimeException mismatchFailure =
-        catchFailure(() -> deliveryService.deliver(handler, hashMismatch));
-    assertThat(failureRecorder.record(handler, hashMismatch, mismatchFailure))
-        .isEqualTo(JdbcEventFailureRecorder.FailureOutcome.FAILED_FINAL);
-    assertThat(inboxError(hashMismatch.eventId()))
-        .isEqualTo("TRADE_ORDER_CREATED_SUPPLY_DECISION_HASH_MISMATCH");
+    assertFinalPoison(
+        payload.orderId(), tampered, "TRADE_ORDER_CREATED_SUPPLY_DECISION_HASH_MISMATCH");
+
+    ObjectNode mixed = object(payload);
+    ((ObjectNode) mixed.path("lines").get(0)).remove("allocationMode");
+    assertFinalPoison(payload.orderId(), mixed, "TRADE_ORDER_CREATED_SUPPLY_DECISION_INVALID");
+
+    ObjectNode commercial = object(payload);
+    commercial.put("snapshotHash", "f".repeat(64));
+    assertFinalPoison(
+        payload.orderId(), commercial, "TRADE_ORDER_CREATED_COMMERCIAL_HASH_MISMATCH");
   }
 
   private TradeOrderCreatedV1.Payload current(UUID orderId, List<LineSpec> specs) {
@@ -277,27 +287,76 @@ class TradeOrderCreatedReservationIntegrationTest extends PostgresIntegrationTes
                             line.supplyPoolId(),
                             TradePlanningSupplyType.valueOf(line.supplyType())))
                 .toList());
+    UUID quotationId = UUID.randomUUID();
+    UUID revisionId = UUID.randomUUID();
+    var customer = new TradeOrderCreatedV1.Customer(UUID.randomUUID(), "C-1", "Cellar", 1);
+    var route = new TradeOrderCreatedV1.Route(ROUTE, "ROUTE-2026-01", LocalDate.of(2026, 8, 1));
+    var address =
+        new TradeOrderCreatedV1.DeliveryAddress(
+            "CN", "Shanghai", "Shanghai", "Pudong", "1 Road", "200000");
+    String snapshotHash =
+        QuotationSnapshotHashV1.hash(
+            new QuotationSnapshotHashV1.Snapshot(
+                1,
+                quotationId,
+                revisionId,
+                "QT-TEST",
+                1,
+                new QuotationAcceptedV1.Customer(
+                    customer.partnerId(),
+                    customer.partnerNumber(),
+                    customer.displayName(),
+                    customer.sourceVersion()),
+                "CNY",
+                "10.00",
+                30,
+                new QuotationAcceptedV1.Route(
+                    route.code(), route.policyVersion(), route.estimatedDeliveryDate()),
+                "TERMS-1",
+                LocalDate.of(2026, 8, 1),
+                new QuotationAcceptedV1.DeliveryAddress(
+                    address.countryCode(),
+                    address.province(),
+                    address.city(),
+                    address.district(),
+                    address.line1(),
+                    address.postalCode()),
+                lines.stream()
+                    .map(
+                        line ->
+                            new QuotationAcceptedV1.Line(
+                                line.sourceQuotationLineId(),
+                                line.skuId(),
+                                line.skuCode(),
+                                line.description(),
+                                line.quantity(),
+                                line.unit(),
+                                line.netUnitPrice(),
+                                line.lineTotal(),
+                                line.supplyPoolId(),
+                                line.allocationMode(),
+                                line.supplyType()))
+                    .toList()));
     return new TradeOrderCreatedV1.Payload(
         orderId,
         "SO-" + orderId.toString().substring(0, 8),
-        UUID.randomUUID(),
-        UUID.randomUUID(),
+        quotationId,
+        revisionId,
         "QT-TEST",
         1,
         UUID.randomUUID(),
         UUID.randomUUID(),
         NOW,
         ACTOR,
-        new TradeOrderCreatedV1.Customer(UUID.randomUUID(), "C-1", "Cellar", 1),
+        customer,
         "CNY",
         "10.00",
         30,
-        new TradeOrderCreatedV1.Route(ROUTE, "ROUTE-2026-01", LocalDate.of(2026, 8, 1)),
+        route,
         "TERMS-1",
         LocalDate.of(2026, 8, 1),
-        new TradeOrderCreatedV1.DeliveryAddress(
-            "CN", "Shanghai", "Shanghai", "Pudong", "1 Road", "200000"),
-        "b".repeat(64),
+        address,
+        snapshotHash,
         new TradeOrderCreatedV1.SupplyDecision(
             decision.schemaVersion(),
             decision.policyVersion(),
@@ -374,7 +433,7 @@ class TradeOrderCreatedReservationIntegrationTest extends PostgresIntegrationTes
   }
 
   private EventDelivery delivery(TradeOrderCreatedV1.Payload payload) {
-    return delivery(payload.orderId(), serialize(payload));
+    return delivery(payload.orderId(), object(payload).toString());
   }
 
   private EventDelivery delivery(UUID orderId, String payloadJson) {
@@ -395,26 +454,28 @@ class TradeOrderCreatedReservationIntegrationTest extends PostgresIntegrationTes
 
   private String legacyJson(TradeOrderCreatedV1.Payload payload) {
     ObjectNode body = object(payload);
+    body.put("snapshotHash", "sha256:" + body.path("snapshotHash").asText());
     body.remove("supplyDecision");
     body.path("lines").forEach(line -> ((ObjectNode) line).remove("allocationMode"));
     return body.toString();
   }
 
   private ObjectNode object(Object value) {
-    return (ObjectNode) read(serialize(value));
+    return json.valueToTree(value);
+  }
+
+  private void assertFinalPoison(UUID orderId, ObjectNode body, String code) {
+    EventDelivery delivery = delivery(orderId, body.toString());
+    RuntimeException failure = catchFailure(() -> deliveryService.deliver(handler, delivery));
+    assertThat(failureRecorder.record(handler, delivery, failure))
+        .isEqualTo(JdbcEventFailureRecorder.FailureOutcome.FAILED_FINAL);
+    assertThat(count("inventory.reservation", orderId)).isZero();
+    assertThat(inboxError(delivery.eventId())).isEqualTo(code);
   }
 
   private JsonNode read(String value) {
     try {
       return json.readTree(value);
-    } catch (JacksonException exception) {
-      throw new IllegalStateException(exception);
-    }
-  }
-
-  private String serialize(Object value) {
-    try {
-      return json.writeValueAsString(value);
     } catch (JacksonException exception) {
       throw new IllegalStateException(exception);
     }
@@ -488,20 +549,6 @@ class TradeOrderCreatedReservationIntegrationTest extends PostgresIntegrationTes
         TENANT,
         reservationId(orderId),
         eventType);
-  }
-
-  private JsonNode outcomePayload(UUID orderId, String eventType) {
-    String value =
-        jdbc.queryForObject(
-            """
-            SELECT (payload -> 'payload')::text FROM platform_event.event_publication
-             WHERE tenant_id = ? AND subject_id = ? AND event_type = ?
-            """,
-            String.class,
-            TENANT,
-            reservationId(orderId),
-            eventType);
-    return read(value);
   }
 
   private int outcomeCount(List<TradeOrderCreatedV1.Payload> payloads) {

@@ -20,13 +20,24 @@ public final class InventoryReservationFailedV1 {
       String supplyDecisionHash,
       Instant failedAt,
       String reasonCode,
+      List<Shortage> shortages,
       List<LineFailure> lineFailures,
       boolean retryable) {
 
     public Payload {
+      shortages = List.copyOf(shortages);
       lineFailures = List.copyOf(lineFailures);
     }
   }
+
+  public record Shortage(
+      UUID orderLineId,
+      UUID skuId,
+      String skuCode,
+      String requestedQuantity,
+      String observedAvailableQuantity,
+      String shortageQuantity,
+      QuantityUnit unit) {}
 
   public record LineFailure(
       UUID orderLineId,

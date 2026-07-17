@@ -20,8 +20,6 @@
             "reservationNumber",
             "orderId",
             "orderNumber",
-            "requestHash",
-            "supplyDecisionHash",
             "confirmedAt",
             "allocations"
           ],
@@ -60,11 +58,8 @@
                 "additionalProperties": false,
                 "required": [
                   "orderLineId",
-                  "skuId",
-                  "supplyPoolId",
                   "lotId",
                   "lotCode",
-                  "supplyType",
                   "quantity",
                   "unit"
                 ],
