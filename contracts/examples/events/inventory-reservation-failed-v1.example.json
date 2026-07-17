@@ -17,14 +17,19 @@
     "reservationNumber": "RES-202607-000002",
     "orderId": "51000000-0000-4000-8000-000000000002",
     "orderNumber": "ORD-202607-000002",
+    "requestHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "supplyDecisionHash": "02254fa78a2ff6eefd019f100a894d7ba76c2ce07d3f3283a75e214781ffe56c",
     "failedAt": "2026-07-20T10:16:10Z",
     "reasonCode": "INVENTORY_INSUFFICIENT",
-    "shortages": [
+    "lineFailures": [
       {
         "orderLineId": "52000000-0000-4000-8000-000000000001",
         "skuId": "26000000-0000-4000-8000-000000000001",
         "skuCode": "CB-BDX-2019-750X6",
         "requestedQuantity": "20",
+        "allocationMode": "FIXED_POOL",
+        "supplyPoolId": "27000000-0000-4000-8000-000000000001",
+        "supplyType": "BONDED_ON_HAND",
         "observedAvailableQuantity": "8",
         "shortageQuantity": "12",
         "unit": "CASE"
