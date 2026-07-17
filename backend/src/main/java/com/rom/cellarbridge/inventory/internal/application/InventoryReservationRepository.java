@@ -12,29 +12,29 @@ import java.util.UUID;
 
 public interface InventoryReservationRepository {
 
-  CreateResult create(Reservation reservation);
+  CreateResult create(TenantId tenantId, Reservation reservation);
 
   Optional<ReservationAggregate> findByTenantAndOrder(TenantId tenantId, UUID orderId);
 
   Optional<ReservationAggregate> findByRequestHash(TenantId tenantId, String requestHash);
 
-  void updateState(Reservation reservation, long expectedVersion);
+  void updateState(TenantId tenantId, Reservation reservation, long expectedVersion);
 
-  boolean compareAndUpdateVersion(Reservation reservation, long expectedVersion);
+  boolean compareAndUpdateVersion(TenantId tenantId, Reservation reservation, long expectedVersion);
 
-  void appendAttempt(ReservationAttempt attempt);
+  void appendAttempt(TenantId tenantId, ReservationAttempt attempt);
 
   List<ReservationAttempt> findAttempts(TenantId tenantId, UUID reservationId);
 
-  void appendAllocations(List<Allocation> allocations);
+  void appendAllocations(TenantId tenantId, List<Allocation> allocations);
 
   List<Allocation> findAllocationsByReservation(TenantId tenantId, UUID reservationId);
 
-  void appendMovement(InventoryMovement movement);
+  void appendMovement(TenantId tenantId, InventoryMovement movement);
 
   List<InventoryMovement> findMovements(TenantId tenantId, UUID reservationId);
 
-  void appendShortage(ShortageSnapshot shortage);
+  void appendShortage(TenantId tenantId, ShortageSnapshot shortage);
 
   List<ShortageSnapshot> findShortages(TenantId tenantId, UUID reservationId);
 

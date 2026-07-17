@@ -20,10 +20,11 @@ CREATE TABLE inventory.reservation (
         UNIQUE (tenant_id, order_id, request_hash),
     CONSTRAINT uq_inventory_reservation_tenant_hash UNIQUE (tenant_id, request_hash),
     CONSTRAINT ck_inventory_reservation_request_hash
-        CHECK (request_hash ~ '^[0-9a-f]{64}$'),
+        CHECK (request_hash ~ '^[0-9a-f]{64}' AND char_length(request_hash) = 64),
     CONSTRAINT ck_inventory_reservation_decision_hash
         CHECK (supply_decision_hash IS NULL
-            OR supply_decision_hash ~ '^[0-9a-f]{64}$'),
+            OR (supply_decision_hash ~ '^[0-9a-f]{64}'
+                AND char_length(supply_decision_hash) = 64)),
     CONSTRAINT ck_inventory_reservation_route CHECK (btrim(route_code) <> ''),
     CONSTRAINT ck_inventory_reservation_status
         CHECK (status IN ('PENDING', 'CONFIRMED', 'FAILED', 'RELEASED', 'CONSUMED')),
@@ -66,7 +67,7 @@ CREATE TABLE inventory.reservation_attempt (
         REFERENCES inventory.reservation (tenant_id, id, request_hash),
     CONSTRAINT ck_inventory_attempt_number CHECK (attempt_number > 0),
     CONSTRAINT ck_inventory_attempt_request_hash
-        CHECK (request_hash ~ '^[0-9a-f]{64}$'),
+        CHECK (request_hash ~ '^[0-9a-f]{64}' AND char_length(request_hash) = 64),
     CONSTRAINT ck_inventory_attempt_trigger
         CHECK (trigger_type IN ('EVENT', 'MANUAL_RETRY')),
     CONSTRAINT ck_inventory_attempt_status CHECK (status IN ('CONFIRMED', 'FAILED')),
@@ -201,10 +202,3 @@ CREATE TABLE inventory.shortage_snapshot (
 
 CREATE INDEX ix_inventory_shortage_reservation
     ON inventory.shortage_snapshot (tenant_id, reservation_id, order_line_id, id);
-
-COMMENT ON COLUMN inventory.reservation.order_id IS
-    'Logical Trade Order identifier. No cross-module foreign key is permitted.';
-COMMENT ON COLUMN inventory.allocation.source_quotation_line_id IS
-    'Frozen Quotation line identifier. No cross-module foreign key is permitted.';
-COMMENT ON COLUMN inventory.allocation.sku_id IS
-    'Frozen Catalog SKU identifier. No cross-module foreign key is permitted.';

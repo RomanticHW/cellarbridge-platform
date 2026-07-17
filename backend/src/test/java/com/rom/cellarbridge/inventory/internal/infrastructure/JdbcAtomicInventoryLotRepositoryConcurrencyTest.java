@@ -37,8 +37,7 @@ class JdbcAtomicInventoryLotRepositoryConcurrencyTest extends PostgresIntegratio
   private static final TenantId TENANT =
       TenantId.of(UUID.fromString("10000000-0000-4000-8000-000000000001"));
   private static final UUID POOL = UUID.fromString("36000000-0000-4000-8000-000000000001");
-  private static final UUID MANUAL_POOL =
-      UUID.fromString("36000000-0000-4000-8000-000000000004");
+  private static final UUID MANUAL_POOL = UUID.fromString("36000000-0000-4000-8000-000000000004");
   private static final UUID SKU = UUID.fromString("34000000-0000-4000-8000-000000000001");
   private static final UUID ACTOR = UUID.fromString("11200000-0000-4000-8000-000000000004");
   private static final Instant NOW = Instant.parse("2026-07-16T13:00:00Z");
@@ -60,6 +59,7 @@ class JdbcAtomicInventoryLotRepositoryConcurrencyTest extends PostgresIntegratio
             () ->
                 !reservations
                     .create(
+                        TENANT,
                         Reservation.pending(
                             UUID.randomUUID(),
                             TENANT,

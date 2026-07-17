@@ -55,7 +55,7 @@ class JdbcInventoryReservationRepositoryIntegrationTest extends PostgresIntegrat
     PersistedFacts facts = appendConfirmedFacts(pending);
     Reservation confirmed =
         pending.transition(Reservation.Status.CONFIRMED, null, NOW.plusSeconds(2));
-    repository.updateState(confirmed, 0);
+    repository.updateState(TENANT, confirmed, 0);
 
     var aggregate = repository.findByTenantAndOrder(TENANT, pending.orderId()).orElseThrow();
 
@@ -71,7 +71,7 @@ class JdbcInventoryReservationRepositoryIntegrationTest extends PostgresIntegrat
   @Test
   void persistsIdempotencyTenantIsolationAndOptimisticVersionArbitration() {
     Reservation pending = pending("2");
-    assertThat(repository.create(pending).replayed()).isFalse();
+    assertThat(repository.create(TENANT, pending).replayed()).isFalse();
     Reservation duplicateIdentity =
         Reservation.pending(
             UUID.randomUUID(),
@@ -83,15 +83,15 @@ class JdbcInventoryReservationRepositoryIntegrationTest extends PostgresIntegrat
             pending.lines(),
             NOW);
 
-    var replay = repository.create(duplicateIdentity);
+    var replay = repository.create(TENANT, duplicateIdentity);
 
     assertThat(replay.replayed()).isTrue();
     assertThat(replay.reservation()).isEqualTo(pending);
     assertThat(repository.findByTenantAndOrder(OTHER_TENANT, pending.orderId())).isEmpty();
     Reservation confirmed =
         pending.transition(Reservation.Status.CONFIRMED, null, NOW.plusSeconds(1));
-    assertThat(repository.compareAndUpdateVersion(confirmed, 0)).isTrue();
-    assertThat(repository.compareAndUpdateVersion(confirmed, 0)).isFalse();
+    assertThat(repository.compareAndUpdateVersion(TENANT, confirmed, 0)).isTrue();
+    assertThat(repository.compareAndUpdateVersion(TENANT, confirmed, 0)).isFalse();
 
     Reservation conflicting =
         Reservation.pending(
@@ -103,7 +103,7 @@ class JdbcInventoryReservationRepositoryIntegrationTest extends PostgresIntegrat
             pending.routeCode(),
             pending.lines(),
             NOW);
-    assertThatThrownBy(() -> repository.create(conflicting))
+    assertThatThrownBy(() -> repository.create(TENANT, conflicting))
         .isInstanceOfSatisfying(
             ReservationPersistenceException.class,
             error -> assertThat(error.code()).isEqualTo(Code.RESERVATION_REQUEST_CONFLICT));
@@ -112,7 +112,7 @@ class JdbcInventoryReservationRepositoryIntegrationTest extends PostgresIntegrat
   @Test
   void roundTripsFailedAttemptAndShortageWithoutInventoryFacts() {
     Reservation pending = pending("3");
-    repository.create(pending);
+    repository.create(TENANT, pending);
     ReservationAttempt attempt = failedAttempt(pending, "INSUFFICIENT_INVENTORY");
     ShortageSnapshot shortage =
         new ShortageSnapshot(
@@ -129,9 +129,10 @@ class JdbcInventoryReservationRepositoryIntegrationTest extends PostgresIntegrat
             POOL,
             SupplyType.DOMESTIC_ON_HAND,
             NOW.plusSeconds(1));
-    repository.appendAttempt(attempt);
-    repository.appendShortage(shortage);
+    repository.appendAttempt(TENANT, attempt);
+    repository.appendShortage(TENANT, shortage);
     repository.updateState(
+        TENANT,
         pending.transition(Reservation.Status.FAILED, "INSUFFICIENT_INVENTORY", NOW.plusSeconds(2)),
         0);
 
@@ -148,7 +149,7 @@ class JdbcInventoryReservationRepositoryIntegrationTest extends PostgresIntegrat
     Reservation pending = pending("2");
     PersistedFacts facts = appendConfirmedFacts(pending);
     repository.updateState(
-        pending.transition(Reservation.Status.CONFIRMED, null, NOW.plusSeconds(2)), 0);
+        TENANT, pending.transition(Reservation.Status.CONFIRMED, null, NOW.plusSeconds(2)), 0);
     jdbc.update("DELETE FROM inventory.inventory_movement WHERE id = ?", facts.movement().id());
 
     assertThatThrownBy(() -> repository.findByTenantAndOrder(TENANT, pending.orderId()))
@@ -170,12 +171,12 @@ class JdbcInventoryReservationRepositoryIntegrationTest extends PostgresIntegrat
             null,
             UUID.randomUUID(),
             UUID.randomUUID());
-    assertThatThrownBy(() -> repository.appendAttempt(duplicate))
+    assertThatThrownBy(() -> repository.appendAttempt(TENANT, duplicate))
         .isInstanceOf(DataIntegrityViolationException.class);
   }
 
   private PersistedFacts appendConfirmedFacts(Reservation pending) {
-    repository.create(pending);
+    repository.create(TENANT, pending);
     ReservationAttempt attempt =
         new ReservationAttempt(
             UUID.randomUUID(),
@@ -223,9 +224,9 @@ class JdbcInventoryReservationRepositoryIntegrationTest extends PostgresIntegrat
             QuantityUnit.CASE,
             "reserve:" + pending.id(),
             NOW.plusSeconds(1));
-    repository.appendAttempt(attempt);
-    repository.appendAllocations(List.of(allocation));
-    repository.appendMovement(movement);
+    repository.appendAttempt(TENANT, attempt);
+    repository.appendAllocations(TENANT, List.of(allocation));
+    repository.appendMovement(TENANT, movement);
     return new PersistedFacts(attempt, allocation, movement);
   }
 

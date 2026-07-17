@@ -53,8 +53,9 @@ public class JdbcInventoryReservationRepository implements InventoryReservationR
   }
 
   @Override
-  public CreateResult create(Reservation reservation) {
+  public CreateResult create(TenantId tenantId, Reservation reservation) {
     Objects.requireNonNull(reservation, "reservation");
+    requireTenant(tenantId, reservation.tenantId());
     int inserted =
         jdbc.update(
             """
@@ -100,16 +101,18 @@ public class JdbcInventoryReservationRepository implements InventoryReservationR
   }
 
   @Override
-  public void updateState(Reservation reservation, long expectedVersion) {
-    if (!compareAndUpdateVersion(reservation, expectedVersion)) {
+  public void updateState(TenantId tenantId, Reservation reservation, long expectedVersion) {
+    if (!compareAndUpdateVersion(tenantId, reservation, expectedVersion)) {
       throw new ReservationPersistenceException(
           Code.OPTIMISTIC_VERSION_CONFLICT, "Reservation state update lost its expected version");
     }
   }
 
   @Override
-  public boolean compareAndUpdateVersion(Reservation reservation, long expectedVersion) {
+  public boolean compareAndUpdateVersion(
+      TenantId tenantId, Reservation reservation, long expectedVersion) {
     Objects.requireNonNull(reservation, "reservation");
+    requireTenant(tenantId, reservation.tenantId());
     if (expectedVersion < 0 || reservation.version() != expectedVersion + 1) {
       throw new IllegalArgumentException("Reservation must advance exactly one expected version");
     }
@@ -131,7 +134,8 @@ public class JdbcInventoryReservationRepository implements InventoryReservationR
   }
 
   @Override
-  public void appendAttempt(ReservationAttempt attempt) {
+  public void appendAttempt(TenantId tenantId, ReservationAttempt attempt) {
+    requireTenant(tenantId, attempt.tenantId());
     jdbc.update(
         """
         INSERT INTO inventory.reservation_attempt
@@ -174,8 +178,9 @@ public class JdbcInventoryReservationRepository implements InventoryReservationR
   }
 
   @Override
-  public void appendAllocations(List<Allocation> allocations) {
+  public void appendAllocations(TenantId tenantId, List<Allocation> allocations) {
     Objects.requireNonNull(allocations, "allocations");
+    allocations.forEach(allocation -> requireTenant(tenantId, allocation.tenantId()));
     for (Allocation allocation : allocations) {
       jdbc.update(
           """
@@ -211,7 +216,8 @@ public class JdbcInventoryReservationRepository implements InventoryReservationR
   }
 
   @Override
-  public void appendMovement(InventoryMovement movement) {
+  public void appendMovement(TenantId tenantId, InventoryMovement movement) {
+    requireTenant(tenantId, movement.tenantId());
     jdbc.update(
         """
         INSERT INTO inventory.inventory_movement
@@ -250,7 +256,8 @@ public class JdbcInventoryReservationRepository implements InventoryReservationR
   }
 
   @Override
-  public void appendShortage(ShortageSnapshot shortage) {
+  public void appendShortage(TenantId tenantId, ShortageSnapshot shortage) {
+    requireTenant(tenantId, shortage.tenantId());
     jdbc.update(
         """
         INSERT INTO inventory.shortage_snapshot
@@ -654,6 +661,13 @@ public class JdbcInventoryReservationRepository implements InventoryReservationR
     if (!condition) {
       throw new IllegalStateException(
           "Persisted Reservation facts do not form a complete aggregate");
+    }
+  }
+
+  private static void requireTenant(TenantId expected, TenantId actual) {
+    Objects.requireNonNull(expected, "tenantId");
+    if (!expected.equals(actual)) {
+      throw new IllegalArgumentException("Tenant scope mismatch");
     }
   }
 
