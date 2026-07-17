@@ -92,6 +92,50 @@ class JdbcAtomicInventoryLotRepositoryConcurrencyTest extends PostgresIntegratio
   }
 
   @Test
+  void concurrentVersionUpdatesAllowOnlyOneWinner() throws Exception {
+    Reservation pending =
+        Reservation.pending(
+            UUID.randomUUID(),
+            TENANT,
+            UUID.randomUUID(),
+            "f".repeat(64),
+            "e".repeat(64),
+            "SH_GENERAL_TRADE",
+            List.of(
+                new Reservation.Line(
+                    UUID.randomUUID(),
+                    UUID.randomUUID(),
+                    SKU,
+                    one(),
+                    QuantityUnit.CASE,
+                    AllocationMode.FIXED_POOL,
+                    POOL,
+                    SupplyType.DOMESTIC_ON_HAND)),
+            NOW);
+    reservations.create(TENANT, pending);
+    Reservation confirmed =
+        pending.transition(Reservation.Status.CONFIRMED, null, NOW.plusSeconds(1));
+
+    long successes = compete(2, () -> reservations.compareAndUpdateVersion(TENANT, confirmed, 0));
+
+    assertThat(successes).isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT status FROM inventory.reservation WHERE tenant_id = ? AND order_id = ?",
+                String.class,
+                TENANT.value(),
+                pending.orderId()))
+        .isEqualTo("CONFIRMED");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT version FROM inventory.reservation WHERE tenant_id = ? AND order_id = ?",
+                Long.class,
+                TENANT.value(),
+                pending.orderId()))
+        .isEqualTo(1L);
+  }
+
+  @Test
   void twoTransactionsCannotReservePastOneAvailableUnit() throws Exception {
     UUID lotId = insertLot("1", "0");
 
