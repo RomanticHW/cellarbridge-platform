@@ -1,7 +1,7 @@
 # 实现状态
 
 Baseline version: **Design Baseline v1.0**  
-Status date: **2026-07-16**
+Status date: **2026-07-17**
 
 ## 1. 状态定义
 
@@ -37,7 +37,7 @@ Status date: **2026-07-16**
 | Supply Decision propagation | Available | Current/Legacy V1、FROZEN/LEGACY_UNVERIFIED Order、V14、OpenAPI 1.7/AsyncAPI 1.2 |
 | Customer quotation decision | Available | controlled portal context, strict customer DTO, accept/reject idempotency, immutable decision, leased expiry work, durable `QuotationAcceptedV1`, React receipt and refresh-safe E2E |
 | Quote-to-order conversion | Available | transactional Inbox consumer, immutable Trade Order snapshot, unique quotation conversion, reliable `TradeOrderCreatedV1`, eventual Quotation link, tenant/Buyer-scoped query UI and real OIDC E2E |
-| Inventory reservation | Implemented in review | B1 已消费自包含 Current/Legacy `TradeOrderCreatedV1`，以外层 delivery 事务和 NESTED savepoint 执行确定性 FIXED/AUTO 分配，可靠发布 confirmed/failed outcome；manual、legacy、shortage 与 request conflict 均保留零/不可变数量证据。B2 订单 outcome 消费及 C 的 API/UI/E2E 尚未实施 |
+| Inventory reservation | Implemented in review | B1 已消费自包含 Current/Legacy `TradeOrderCreatedV1`，以外层 delivery 事务和 NESTED savepoint 执行确定性 FIXED/AUTO 分配并可靠发布 outcome；B2 以订单行锁、重建 Request/Supply Decision Hash、语义证据哈希和内部 append-only timeline 幂等消费成功/失败，使订单进入 `RESERVED` 或 `RESERVATION_FAILED`。C 的 release/consume、API/UI/E2E 尚未实施 |
 | Fulfillment/exception/settlement/reporting | Designed | implementation not started |
 | Architecture fitness functions | Partially available | Modulith、domain/controller/public-contract、Catalog/Inventory 单位与 migration 核心规则已执行；shared-kernel、运行和性能门禁仍按 fitness status 分为 Partially available/Planned |
 | Kafka/Redis/OTel/Prometheus/Grafana full profile | Planned | no current runtime dependency or compose service |
@@ -46,7 +46,7 @@ Status date: **2026-07-16**
 
 ## 3. 声明
 
-当前基线已在 Quotation、Current/Legacy Event 和 Trade Order 中保存一致的决策证据，客户与 Buyer DTO 仍严格隐藏内部证据。库存预占 B1 执行层已实现并处于 review，包含事件消费、订单级原子预留、业务失败证据与可靠 outcome；Trade Order 尚未消费 outcome，API/UI 与 Reservation E2E 也不在 B1，因此 `PENDING_RESERVATION` 仍是跨模块工作流的明确未完成状态。
+当前基线已在 Quotation、Current/Legacy Event 和 Trade Order 中保存一致的决策证据，客户与 Buyer DTO 仍严格隐藏内部证据。库存预占 B1 执行层和 B2 订单结果集成已实现并处于 review：订单会在证据匹配时幂等进入 `RESERVED` 或 `RESERVATION_FAILED`，乱序、跨租户、未知订单、哈希不匹配和相反终态均 fail closed。Release/consume、API/UI 与 Reservation E2E 属于后续 C 切片。
 
 ## 4. 追踪模板
 
