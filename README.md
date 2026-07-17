@@ -157,7 +157,7 @@ Current versions and planned targets are recorded separately in [the technology 
 
 **Explainable route decisions.** The trade-planning engine rejects invalid routes with machine-readable reason codes and scores valid routes using versioned policies. A manager may override a recommendation only with a recorded reason.
 
-**Concurrency designed to be demonstrated.** The current readiness slice preserves exact CASE/BOTTLE units and warehouse priority/version inputs without performing allocation. Task 08 is designed to use deterministic lot ordering and atomic conditional SQL; its planned evidence includes concurrent reservation attempts, transaction rollback, retry limits, and proof that reserved quantity never exceeds on-hand quantity.
+**Concurrency demonstrated at the persistence boundary.** Task 08 Stack A2 is implemented in review: PostgreSQL conditional reserve/release/consume primitives preserve exact CASE/BOTTLE units and prove under controlled contention that reserved quantity never exceeds on-hand quantity. Order-level allocation, savepoint rollback, retry limits, and outcome handling remain in later stacks; inventory reservation is not yet available.
 
 **Reliable asynchronous collaboration.** The current core uses persisted local event publications and idempotent Consumer Inbox handlers. Correlation and causation identifiers are retained for business evidence; external broker delivery and trace export remain planned.
 
@@ -354,7 +354,7 @@ flowchart LR
 
 **决策过程可解释。** 贸易路径引擎先执行硬约束，再对合格方案评分。每个拒绝原因和得分项都可以展示、审计和测试。人工覆盖推荐结果时必须填写理由，并保存使用的策略版本。
 
-**并发行为被设计为可证明。** 当前准备度切片保留精确 CASE/BOTTLE 单位与仓库优先级/版本输入，但不执行分配。Task 08 计划采用确定性批次排序和原子条件 SQL，并通过并发预占、事务回滚、有限重试以及“预占数量永远不超过在库数量”证明该设计。
+**并发正确性已在持久化边界获得证明。** Task 08 Stack A2 已实现并处于 review：PostgreSQL 条件 reserve/release/consume 原语保持 CASE/BOTTLE 精确单位，并在受控并发下证明预占量不会超过在库量。订单级分配、savepoint 回滚、有限重试和 outcome 仍属于后续 Stack；库存预占尚不可用。
 
 **异步协作可恢复。** 当前 core 使用持久化本地发布记录和幂等 Consumer Inbox，并保留 correlation/causation 业务证据；外部 broker 投递和 trace 导出仍在计划中。
 

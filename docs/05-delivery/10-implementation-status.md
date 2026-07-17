@@ -34,10 +34,10 @@ Status date: **2026-07-16**
 | Quotation and trade planning | Available | revisioned snapshots/pricing, ROUTE-2026-03 route-bound supply evidence, independent approval, issue token, customer-safe preview, React workspace, Testcontainers and real OIDC E2E |
 | Route supply-decision Planning evidence | Available | ROUTE-2026-03 single-source eligibility/confidence, one microsecond evaluation time, canonical input schema 3, V12 selected-route evidence and historical reads |
 | Quotation Supply Decision freeze | Available | V13 quotation-owned copy, exact line identity, AUTO/FIXED, original Evaluation issue verification, Legacy gates, OpenAPI 1.6 and React evidence |
-| Supply Decision propagation | Available | Current/Legacy V1、FROZEN/LEGACY_UNVERIFIED Order、V14、OpenAPI 1.7/AsyncAPI 1.1；Task 08 未实施 |
+| Supply Decision propagation | Available | Current/Legacy V1、FROZEN/LEGACY_UNVERIFIED Order、V14、OpenAPI 1.7/AsyncAPI 1.1；Task 08 执行层未实施 |
 | Customer quotation decision | Available | controlled portal context, strict customer DTO, accept/reject idempotency, immutable decision, leased expiry work, durable `QuotationAcceptedV1`, React receipt and refresh-safe E2E |
 | Quote-to-order conversion | Available | transactional Inbox consumer, immutable Trade Order snapshot, unique quotation conversion, reliable `TradeOrderCreatedV1`, eventual Quotation link, tenant/Buyer-scoped query UI and real OIDC E2E |
-| Inventory reservation | Designed / In progress | A1 defines Reservation facts, exact quantity and Request Hash only；orders remain `PENDING_RESERVATION`；Repository、V15、Inventory writes and execution remain blocked in A2/B/C |
+| Inventory reservation | Designed / In progress | A1 domain 已合并；A2 的 Inventory-owned V15、fail-closed Repository、乐观版本和原子 Lot reserve/release/consume 原语已实现并处于 review；订单工作流、事件、API/UI 与 E2E 仍留在 B/C，订单保持 `PENDING_RESERVATION` |
 | Fulfillment/exception/settlement/reporting | Designed | implementation not started |
 | Architecture fitness functions | Partially available | Modulith、domain/controller/public-contract、Catalog/Inventory 单位与 migration 核心规则已执行；shared-kernel、运行和性能门禁仍按 fitness status 分为 Partially available/Planned |
 | Kafka/Redis/OTel/Prometheus/Grafana full profile | Planned | no current runtime dependency or compose service |
@@ -46,7 +46,7 @@ Status date: **2026-07-16**
 
 ## 3. 声明
 
-当前基线已在 Quotation、Current/Legacy Event 和 Trade Order 中保存一致的决策证据，客户与 Buyer DTO 仍严格隐藏内部证据。库存预占处于 `Designed / In progress`：A1 只建立领域与 Request Hash，尚无 Repository、V15 或库存写入；订单的 `PENDING_RESERVATION` 是明确的未完成状态。
+当前基线已在 Quotation、Current/Legacy Event 和 Trade Order 中保存一致的决策证据，客户与 Buyer DTO 仍严格隐藏内部证据。库存预占处于 `Designed / In progress`：A1 领域与 A2 持久化/原子 Lot 原语已实现并处于 review，但没有事件消费、订单级事务编排、outcome、API/UI 或 E2E；`PENDING_RESERVATION` 仍是明确的未完成状态。
 
 ## 4. 追踪模板
 

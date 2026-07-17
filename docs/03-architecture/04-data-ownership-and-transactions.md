@@ -9,7 +9,7 @@
 | `identity_access` | identity-access | tenant, user_access, role_binding |
 | `partner` | partner | partner, contact, route_eligibility, review_decision |
 | `catalog` | catalog | wine_product, sku, producer, region |
-| `inventory` | inventory | warehouse, supply_pool, inventory_lot；reservation/allocation/movement 为 Task 08 设计 |
+| `inventory` | inventory | warehouse, supply_pool, inventory_lot；A2 reservation/attempt/allocation/movement/shortage persistence |
 | `quotation` | quotation | quotation, revision, line, approval, acceptance |
 | `trade_planning` | trade-planning | route_definition, policy_version, evaluation, candidate_result |
 | `trade_order` | trade-order | trade_order, order_line, cancellation |
@@ -58,7 +58,7 @@
 
 ## 5. 库存 SQL 语义
 
-状态：**Designed**。Task 08 合并前，当前 Inventory 只提供供给查询；下述条件更新是 ADR-014 冻结的实现协议，不是已可运行能力。
+状态：**A2 implemented in review**。下述 reserve/release/consume 条件更新已作为 Inventory 内部数据库原语实现并通过真实 PostgreSQL 并发测试；订单级选择、事务/savepoint 编排和公开操作仍为 Designed，不能据此声明预占可用。
 
 示意：
 
