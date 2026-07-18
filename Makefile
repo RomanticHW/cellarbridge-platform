@@ -23,7 +23,7 @@ help:
 	  '  make catalog-e2e         Verify catalog search and local quote selection' \
 	  '  make quotation-e2e       Verify quotation routing, approval, issue, and preview' \
 	  '  make acceptance-e2e      Verify customer acceptance idempotency and refresh safety' \
-	  '  make order-e2e           Verify quote-to-order conversion and Buyer-safe access' \
+	  '  make order-e2e           Verify order conversion, Reservation operations, and Buyer-safe access' \
 	  '  make catalog-benchmark   Seed and benchmark PostgreSQL catalog search' \
 	  '  make generate-api-client Regenerate TypeScript API types from OpenAPI'
 

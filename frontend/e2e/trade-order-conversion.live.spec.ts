@@ -1,4 +1,4 @@
-import { expect, test, type Browser, type Page } from '@playwright/test';
+import { expect, test, type APIResponse, type Browser, type Page } from '@playwright/test';
 
 const password = 'CellarBridge-Demo-2026!';
 const forbiddenBuyerFields = new Set([
@@ -212,8 +212,8 @@ async function acceptAndAwaitOrder(browser: Browser, publicPath: string): Promis
   return created;
 }
 
-async function authenticatedGetStatus(page: Page, path: string): Promise<number> {
-  const accessToken = await page.evaluate(() => {
+async function oidcAccessToken(page: Page): Promise<string> {
+  return page.evaluate(() => {
     const storedUser = Object.entries(window.sessionStorage)
       .filter(([key]) => key.startsWith('oidc.user:'))
       .map(([, value]) => JSON.parse(value) as { access_token?: string })
@@ -223,10 +223,38 @@ async function authenticatedGetStatus(page: Page, path: string): Promise<number>
     }
     return storedUser.access_token;
   });
-  const response = await page.context().request.get(path, {
+}
+
+async function authenticatedGet(page: Page, path: string): Promise<APIResponse> {
+  const accessToken = await oidcAccessToken(page);
+  return page.context().request.get(path, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
+}
+
+async function authenticatedGetStatus(page: Page, path: string): Promise<number> {
+  const response = await authenticatedGet(page, path);
   return response.status();
+}
+
+async function awaitConfirmedReservation(page: Page, orderId: string) {
+  const path = `/api/v1/inventory/reservations/by-order/${orderId}`;
+  let body: Record<string, unknown> | undefined;
+  await expect
+    .poll(
+      async () => {
+        const response = await authenticatedGet(page, path);
+        if (response.status() !== 200) return `HTTP_${response.status()}`;
+        body = (await response.json()) as Record<string, unknown>;
+        return body.status;
+      },
+      { timeout: 45_000 },
+    )
+    .toBe('CONFIRMED');
+  if (body === undefined || typeof body.id !== 'string') {
+    throw new Error('Confirmed Reservation response is invalid');
+  }
+  return body;
 }
 
 function collectObjectKeys(value: unknown, keys: string[] = []): string[] {
@@ -241,7 +269,7 @@ function collectObjectKeys(value: unknown, keys: string[] = []): string[] {
   return keys;
 }
 
-test('converts accepted quotations once and enforces Buyer, partner, and tenant order scope', async ({
+test('converts accepted quotations once, operates Reservation, and enforces order scope', async ({
   browser,
 }) => {
   const sales = await login(browser, 'north.sales');
@@ -285,23 +313,86 @@ test('converts accepted quotations once and enforces Buyer, partner, and tenant 
   );
   expect(crossPartnerStatus).toBe(404);
 
+  const reservationBoundaryStatus = await authenticatedGetStatus(
+    buyer.page,
+    `/api/v1/inventory/reservations/by-order/${mappedOrder.id}`,
+  );
+  expect(reservationBoundaryStatus).toBe(403);
+
+  const warehouse = await login(browser, 'north.warehouse');
+  const reservation = await awaitConfirmedReservation(warehouse.page, mappedOrder.id);
+  const reservationResponsePromise = warehouse.page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname ===
+      `/api/v1/inventory/reservations/by-order/${mappedOrder.id}`,
+  );
+  await warehouse.page.goto(mappedOrder.path);
+  expect((await reservationResponsePromise).status()).toBe(200);
+  await expect(warehouse.page.getByText('CONFIRMED', { exact: true })).toBeVisible();
+  await expect(warehouse.page.getByText(/^Pool /)).toBeVisible();
+  await expect(warehouse.page.getByText('Restricted')).toHaveCount(0);
+
+  const releaseResponsePromise = warehouse.page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      new URL(response.url()).pathname ===
+        `/api/v1/inventory/reservations/${reservation.id as string}/release`,
+  );
+  await warehouse.page.getByRole('button', { name: 'Release remaining' }).click();
+  await warehouse.page.getByRole('button', { name: 'OK' }).click();
+  const releaseResponse = await releaseResponsePromise;
+  expect(releaseResponse.status()).toBe(200);
+  const releaseResult = (await releaseResponse.json()) as {
+    commandId: string;
+    reservationStatus: string;
+  };
+  expect(releaseResult.reservationStatus).toBe('RELEASED');
+  const releaseRequest = releaseResponse.request();
+  const idempotencyKey = releaseRequest.headers()['idempotency-key'];
+  const releaseBody = releaseRequest.postDataJSON() as unknown;
+  if (idempotencyKey === undefined || !/^[A-Za-z0-9._~-]{20,200}$/.test(idempotencyKey)) {
+    throw new Error('Release request did not carry a valid Idempotency-Key');
+  }
+  await expect(warehouse.page.getByText('RELEASED', { exact: true })).toBeVisible();
+  await expect(warehouse.page.getByText('RELEASE · COMPLETED')).toBeVisible();
+
+  const replayResponse = await warehouse.page.context().request.post(releaseRequest.url(), {
+    headers: {
+      Authorization: `Bearer ${await oidcAccessToken(warehouse.page)}`,
+      'Content-Type': 'application/json',
+      'Idempotency-Key': idempotencyKey,
+    },
+    data: releaseBody,
+  });
+  expect(replayResponse.status()).toBe(200);
+  expect(replayResponse.headers()['idempotency-replayed']).toBe('true');
+  const replayResult = (await replayResponse.json()) as { commandId: string };
+  expect(replayResult.commandId).toBe(releaseResult.commandId);
+
   const harborManager = await login(browser, 'harbor.manager');
   const crossTenantStatus = await authenticatedGetStatus(
     harborManager.page,
     `/api/v1/orders/${mappedOrder.id}`,
   );
   expect(crossTenantStatus).toBe(404);
+  const crossTenantReservationStatus = await authenticatedGetStatus(
+    harborManager.page,
+    `/api/v1/inventory/reservations/by-order/${mappedOrder.id}`,
+  );
+  expect(crossTenantReservationStatus).toBe(404);
 
   expect(mappedOrder.browserErrors).toEqual([]);
   expect(otherOrder.browserErrors).toEqual([]);
   expect(sales.browserErrors).toEqual([]);
   expect(manager.browserErrors).toEqual([]);
   expect(buyer.browserErrors).toEqual([]);
+  expect(warehouse.browserErrors).toEqual([]);
   expect(harborManager.browserErrors).toEqual([]);
   await Promise.all([
     sales.page.context().close(),
     manager.page.context().close(),
     buyer.page.context().close(),
+    warehouse.page.context().close(),
     harborManager.page.context().close(),
   ]);
 });

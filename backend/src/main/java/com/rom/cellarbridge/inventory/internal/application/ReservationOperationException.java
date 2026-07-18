@@ -4,7 +4,7 @@ public final class ReservationOperationException extends RuntimeException {
 
   private final String code;
 
-  ReservationOperationException(String code, String message) {
+  public ReservationOperationException(String code, String message) {
     super(message);
     this.code = code;
   }

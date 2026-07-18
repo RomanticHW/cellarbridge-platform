@@ -58,6 +58,7 @@ Task 04 的稳定权限码与字段规则：
 
 - `catalog:read` 与 `inventory:read` 必须同时具备，才可访问内部 Catalog + 供给摘要页；
 - `inventory:read-exact` 只提升到精确数量/批次，并继续受 tenant 与 warehouse assignment 限制；
+- `inventory:reserve` 独立授权幂等 release/consume；当前演示模板仅 Warehouse Operator 与 Tenant Administrator 获得，且不隐含跨 tenant 或未分配仓库的精确字段读取；
 - `inventory:adjust` 不由查询权限隐式授予；Task 04 没有库存写入口；
 - Buyer 即使拥有有限 `catalog:read`，也不因此获得内部 `inventory:read` 或供给页访问；
 - Sales/Manager 只看数量带，Trade/Warehouse/Tenant Admin 仅在显式授予 exact 权限后看授权范围精确值。

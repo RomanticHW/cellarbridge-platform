@@ -426,6 +426,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/inventory/reservations/by-order/{orderId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the current tenant's Reservation for an order */
+        get: operations["getInventoryReservationByOrder"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inventory/reservations/{reservationId}/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Idempotently release confirmed Reservation quantities */
+        post: operations["releaseInventoryReservation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inventory/reservations/{reservationId}/consume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Idempotently consume confirmed Reservation quantities */
+        post: operations["consumeInventoryReservation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/fulfillment/plans": {
         parameters: {
             query?: never;
@@ -1312,7 +1363,7 @@ export interface components {
         };
         OrderProcessProjection: {
             /** @enum {string} */
-            status: "PENDING" | "BLOCKED" | "NOT_STARTED";
+            status: "PENDING" | "CONFIRMED" | "FAILED" | "BLOCKED" | "NOT_STARTED";
             message: string;
         };
         OrderTimelineEntry: {
@@ -1403,7 +1454,7 @@ export interface components {
         };
         BuyerOrderProcessProjection: {
             /** @enum {string} */
-            status: "PENDING" | "BLOCKED" | "NOT_STARTED";
+            status: "PENDING" | "CONFIRMED" | "FAILED" | "BLOCKED" | "NOT_STARTED";
             message: string;
         };
         BuyerOrderTimelineEntry: {
@@ -1441,32 +1492,139 @@ export interface components {
             /** @enum {string} */
             processStatus: "ACCEPTED" | "IN_PROGRESS" | "COMPLETED" | "FAILED";
         };
+        /** @enum {string} */
+        InventoryReservationStatus: "PENDING" | "CONFIRMED" | "FAILED" | "RELEASED" | "CONSUMED";
+        InventoryReservationRequestedLine: {
+            /** Format: uuid */
+            orderLineId: string;
+            /** Format: uuid */
+            skuId: string;
+            quantity: string;
+            quantityUnit: components["schemas"]["QuantityUnit"];
+        };
+        InventoryReservationAllocation: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            orderLineId: string;
+            /** Format: uuid */
+            skuId: string;
+            allocatedQuantity: string;
+            releasedQuantity: string;
+            consumedQuantity: string;
+            remainingReservedQuantity: string;
+            quantityUnit: components["schemas"]["QuantityUnit"];
+            supplyType: components["schemas"]["SupplyType"];
+            /**
+             * Format: uuid
+             * @description Present only with inventory:read-exact and a current warehouse assignment.
+             */
+            supplyPoolId: string | null;
+            /**
+             * Format: uuid
+             * @description Present only with inventory:read-exact and a current warehouse assignment.
+             */
+            lotId: string | null;
+            /** @description Present only with inventory:read-exact and a current warehouse assignment. */
+            warehouseLabel: string | null;
+            /** @description Present only with inventory:read-exact and a current warehouse assignment. */
+            warehousePriority: number | null;
+            /**
+             * Format: int64
+             * @description Present only with inventory:read-exact and a current warehouse assignment.
+             */
+            warehouseVersion: number | null;
+        };
+        InventoryReservationShortage: {
+            /** Format: uuid */
+            orderLineId: string;
+            /** Format: uuid */
+            skuId: string;
+            requestedQuantity: string;
+            availableQuantity: string;
+            shortageQuantity: string;
+            quantityUnit: components["schemas"]["QuantityUnit"];
+            failureCode: string;
+        };
+        InventoryReservationAttempt: {
+            attemptNumber: number;
+            /** @enum {string} */
+            outcome: "CONFIRMED" | "FAILED";
+            failureCode: string | null;
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            completedAt: string;
+        };
+        InventoryReservationOperationAudit: {
+            /** Format: uuid */
+            commandId: string;
+            /** @enum {string} */
+            action: "RELEASE" | "CONSUME";
+            /** @enum {string} */
+            outcome: "COMPLETED" | "REJECTED";
+            reasonCode: string;
+            previousState: components["schemas"]["InventoryReservationStatus"];
+            newState: components["schemas"]["InventoryReservationStatus"];
+            /** Format: date-time */
+            occurredAt: string;
+        };
         InventoryReservationDetail: {
             /** Format: uuid */
             id: string;
-            number: string;
             /** Format: uuid */
             orderId: string;
-            /** @enum {string} */
-            status: "PENDING" | "CONFIRMED" | "FAILED" | "PARTIALLY_CONSUMED" | "PARTIALLY_RELEASED" | "RELEASED" | "CONSUMED";
-            requestedLines: {
-                /** Format: uuid */
-                orderLineId: string;
-                sku: components["schemas"]["SkuSnapshot"];
-                requestedQuantity: components["schemas"]["Quantity"];
-                shortageQuantity?: components["schemas"]["Quantity"] | null;
-            }[];
-            allocations: {
-                /** Format: uuid */
-                lotId: string;
-                lotCode?: string;
-                /** Format: uuid */
-                orderLineId: string;
-                quantity: components["schemas"]["Quantity"];
-                status: string;
-            }[];
+            status: components["schemas"]["InventoryReservationStatus"];
+            failureCode: string | null;
             /** Format: int64 */
             version: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            requestedLines: components["schemas"]["InventoryReservationRequestedLine"][];
+            allocations: components["schemas"]["InventoryReservationAllocation"][];
+            shortages: components["schemas"]["InventoryReservationShortage"][];
+            attempts: components["schemas"]["InventoryReservationAttempt"][];
+            operations: components["schemas"]["InventoryReservationOperationAudit"][];
+            allowedActions: ("RELEASE" | "CONSUME")[];
+        };
+        InventoryReservationOperationItem: {
+            /** Format: uuid */
+            allocationId: string;
+            quantity: string;
+            quantityUnit: components["schemas"]["QuantityUnit"];
+        };
+        InventoryReservationOperationRequest: {
+            allocations: components["schemas"]["InventoryReservationOperationItem"][];
+        };
+        InventoryReservationOperationBalance: {
+            /** Format: uuid */
+            allocationId: string;
+            releasedQuantity: string;
+            consumedQuantity: string;
+            remainingReservedQuantity: string;
+            quantityUnit: components["schemas"]["QuantityUnit"];
+        };
+        InventoryReservationOperationResult: {
+            /** Format: uuid */
+            commandId: string;
+            /** Format: uuid */
+            reservationId: string;
+            /** @enum {string} */
+            action: "RELEASE" | "CONSUME";
+            replayed: boolean;
+            /** @constant */
+            completed: true;
+            /** @constant */
+            code: "COMPLETED";
+            message: string;
+            reservationStatus: components["schemas"]["InventoryReservationStatus"];
+            /** Format: int64 */
+            reservationVersion: number;
+            /** Format: date-time */
+            completedAt: string;
+            allocations: components["schemas"]["InventoryReservationOperationBalance"][];
         };
         /** @enum {string} */
         FulfillmentStatus: "PLANNED" | "READY" | "IN_PROGRESS" | "ON_HOLD" | "COMPLETED" | "CANCELLING" | "CANCELLATION_FAILED" | "CANCELLED";
@@ -2681,13 +2839,112 @@ export interface operations {
             /** @description Reservation detail */
             200: {
                 headers: {
+                    ETag: components["headers"]["ETag"];
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["InventoryReservationDetail"];
                 };
             };
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    getInventoryReservationByOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orderId: components["parameters"]["OrderId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reservation detail */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryReservationDetail"];
+                };
+            };
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    releaseInventoryReservation: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                reservationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InventoryReservationOperationRequest"];
+            };
+        };
+        responses: {
+            /** @description Release completed or safely replayed */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    "Idempotency-Replayed": components["headers"]["IdempotencyReplayed"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryReservationOperationResult"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    consumeInventoryReservation: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                reservationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InventoryReservationOperationRequest"];
+            };
+        };
+        responses: {
+            /** @description Consumption completed or safely replayed */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    "Idempotency-Replayed": components["headers"]["IdempotencyReplayed"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryReservationOperationResult"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     listFulfillmentPlans: {

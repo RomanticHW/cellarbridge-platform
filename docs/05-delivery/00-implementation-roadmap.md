@@ -45,7 +45,7 @@ Design Baseline
 
 每个任务的可执行 Prompt 位于私有控制仓库，公共仓库只保存可长期维护的设计与实现证据。
 
-Task 08 当前为 **Designed / In progress**：A1 domain 已合并，A2 persistence/atomic Inventory foundation 已实现并处于 review；Stack B/C 仍按顺序阻塞，不能从基础层推断库存预占已经可用。
+Task 08 当前为 **Implemented in review**：A1/A2/A2C、B1/B2、C1/C2 已按顺序实现原子预占、订单结果、幂等 release/consume、内部 API、Order workbench 与真实后端 E2E；合并及 CI 全绿前不标记 Available。
 
 ## 3. 纵向切片定义
 

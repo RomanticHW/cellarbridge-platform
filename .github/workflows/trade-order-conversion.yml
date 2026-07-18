@@ -1,4 +1,4 @@
-name: Trade order conversion workflow
+name: Trade order and Reservation workflow
 
 on:
   workflow_call:
@@ -42,5 +42,5 @@ jobs:
       - name: Install Chromium
         working-directory: frontend
         run: pnpm exec playwright install --with-deps chromium
-      - name: Verify idempotent conversion and Buyer-safe order access
+      - name: Verify conversion, Reservation operations, and Buyer-safe access
         run: ./scripts/trade_order_conversion_e2e.sh
