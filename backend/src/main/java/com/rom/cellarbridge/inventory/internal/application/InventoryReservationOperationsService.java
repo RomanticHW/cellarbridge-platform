@@ -5,6 +5,7 @@ import com.rom.cellarbridge.identityaccess.PermissionCode;
 import com.rom.cellarbridge.identityaccess.TenantContext;
 import com.rom.cellarbridge.identityaccess.TenantContextHolder;
 import com.rom.cellarbridge.identityaccess.TenantId;
+import com.rom.cellarbridge.inventory.InventorySupplyQuery;
 import com.rom.cellarbridge.inventory.QuantityUnit;
 import com.rom.cellarbridge.inventory.internal.application.InventoryReservationMutationService.MutationConflict;
 import com.rom.cellarbridge.inventory.internal.application.InventoryReservationMutationService.PlannedChange;
@@ -33,6 +34,7 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import org.springframework.security.access.AccessDeniedException;
@@ -52,6 +54,7 @@ public class InventoryReservationOperationsService {
 
   private final TenantContextHolder contextHolder;
   private final AuthorizationService authorization;
+  private final InventorySupplyQuery supplyQuery;
   private final InventoryReservationRepository reservations;
   private final ReservationOperationRepository operations;
   private final InventoryReservationMutationService mutations;
@@ -62,6 +65,7 @@ public class InventoryReservationOperationsService {
   InventoryReservationOperationsService(
       TenantContextHolder contextHolder,
       AuthorizationService authorization,
+      InventorySupplyQuery supplyQuery,
       InventoryReservationRepository reservations,
       ReservationOperationRepository operations,
       InventoryReservationMutationService mutations,
@@ -70,12 +74,31 @@ public class InventoryReservationOperationsService {
       Clock clock) {
     this.contextHolder = contextHolder;
     this.authorization = authorization;
+    this.supplyQuery = supplyQuery;
     this.reservations = reservations;
     this.operations = operations;
     this.mutations = mutations;
     this.json = json;
     this.meters = meters;
     this.clock = clock;
+  }
+
+  @Transactional(readOnly = true)
+  public Detail get(UUID reservationId) {
+    TenantContext context = readableContext();
+    return reservations
+        .findById(context.tenantId(), Objects.requireNonNull(reservationId, "reservationId"))
+        .map(aggregate -> detail(context, aggregate))
+        .orElseThrow(InventoryReservationOperationsService::notFound);
+  }
+
+  @Transactional(readOnly = true)
+  public Detail getByOrder(UUID orderId) {
+    TenantContext context = readableContext();
+    return reservations
+        .findByTenantAndOrder(context.tenantId(), Objects.requireNonNull(orderId, "orderId"))
+        .map(aggregate -> detail(context, aggregate))
+        .orElseThrow(InventoryReservationOperationsService::notFound);
   }
 
   @Transactional
@@ -356,6 +379,115 @@ public class InventoryReservationOperationsService {
     }
   }
 
+  private Detail detail(TenantContext context, ReservationAggregate aggregate) {
+    Set<UUID> exactPoolIds =
+        context.hasPermission(PermissionCode.INVENTORY_READ_EXACT)
+            ? supplyQuery.authorizedSupplyPoolIds()
+            : Set.of();
+    Map<UUID, String> warehouseLabelsByLot = new HashMap<>();
+    supplyQuery
+        .findAuthorizedLots(exactPoolIds)
+        .forEach(lot -> warehouseLabelsByLot.put(lot.lotId(), lot.warehouseLabel()));
+    Reservation reservation = aggregate.reservation();
+    Set<String> allowed = allowedActions(context, reservation, aggregate.allocations());
+    return new Detail(
+        reservation.id(),
+        reservation.orderId(),
+        reservation.status().name(),
+        reservation.failureCode(),
+        reservation.version(),
+        reservation.createdAt(),
+        reservation.updatedAt(),
+        reservation.lines().stream()
+            .map(
+                line ->
+                    new RequestedLine(
+                        line.orderLineId(),
+                        line.skuId(),
+                        quantity(line.requestedQuantity()),
+                        line.quantityUnit().name()))
+            .toList(),
+        aggregate.allocations().stream()
+            .map(
+                allocation -> {
+                  boolean exact = exactPoolIds.contains(allocation.supplyPoolId());
+                  return new AllocationView(
+                      allocation.id(),
+                      allocation.orderLineId(),
+                      allocation.skuId(),
+                      quantity(allocation.allocatedQuantity()),
+                      quantity(allocation.releasedQuantity()),
+                      quantity(allocation.consumedQuantity()),
+                      quantity(allocation.remainingReservedQuantity()),
+                      allocation.quantityUnit().name(),
+                      allocation.supplyType().name(),
+                      exact ? allocation.supplyPoolId() : null,
+                      exact ? allocation.lotId() : null,
+                      exact ? warehouseLabelsByLot.get(allocation.lotId()) : null,
+                      exact ? allocation.warehousePriority() : null,
+                      exact ? allocation.warehouseVersion() : null);
+                })
+            .toList(),
+        aggregate.shortages().stream()
+            .map(
+                shortage ->
+                    new ShortageView(
+                        shortage.orderLineId(),
+                        shortage.skuId(),
+                        quantity(shortage.requestedQuantity()),
+                        quantity(shortage.availableQuantity()),
+                        quantity(shortage.shortageQuantity()),
+                        shortage.quantityUnit().name(),
+                        shortage.failureCode()))
+            .toList(),
+        aggregate.attempts().stream()
+            .map(
+                attempt ->
+                    new AttemptView(
+                        attempt.attemptNumber(),
+                        attempt.outcome().name(),
+                        attempt.failureCode(),
+                        attempt.startedAt(),
+                        attempt.completedAt()))
+            .toList(),
+        operations.findAudits(context.tenantId(), reservation.id()).stream()
+            .map(
+                audit ->
+                    new OperationAuditView(
+                        audit.commandId(),
+                        audit.action().name(),
+                        audit.outcome().name(),
+                        audit.reasonCode(),
+                        audit.previousState(),
+                        audit.newState(),
+                        audit.occurredAt()))
+            .toList(),
+        allowed);
+  }
+
+  private TenantContext readableContext() {
+    TenantContext context = contextHolder.requireCurrent();
+    authorization.require(PermissionCode.INVENTORY_READ, context.tenantId());
+    return context;
+  }
+
+  private static Set<String> allowedActions(
+      TenantContext context, Reservation reservation, List<Allocation> allocations) {
+    if (!context.hasPermission(PermissionCode.INVENTORY_RESERVE)
+        || reservation.status() != Reservation.Status.CONFIRMED) {
+      return Set.of();
+    }
+    boolean released = allocations.stream().anyMatch(item -> item.releasedQuantity().signum() > 0);
+    boolean consumed = allocations.stream().anyMatch(item -> item.consumedQuantity().signum() > 0);
+    if (released) {
+      return Set.of("RELEASE");
+    }
+    if (consumed) {
+      return Set.of("CONSUME");
+    }
+    return Set.of("RELEASE", "CONSUME");
+  }
+
   private List<Item> normalize(List<Item> items) {
     if (items == null || items.isEmpty() || items.size() > 100) {
       throw validation("An operation requires between one and 100 Allocation items");
@@ -488,6 +620,64 @@ public class InventoryReservationOperationsService {
   }
 
   public record Item(UUID allocationId, BigDecimal quantity, QuantityUnit quantityUnit) {}
+
+  public record Detail(
+      UUID id,
+      UUID orderId,
+      String status,
+      String failureCode,
+      long version,
+      Instant createdAt,
+      Instant updatedAt,
+      List<RequestedLine> requestedLines,
+      List<AllocationView> allocations,
+      List<ShortageView> shortages,
+      List<AttemptView> attempts,
+      List<OperationAuditView> operations,
+      Set<String> allowedActions) {}
+
+  public record RequestedLine(UUID orderLineId, UUID skuId, String quantity, String quantityUnit) {}
+
+  public record AllocationView(
+      UUID id,
+      UUID orderLineId,
+      UUID skuId,
+      String allocatedQuantity,
+      String releasedQuantity,
+      String consumedQuantity,
+      String remainingReservedQuantity,
+      String quantityUnit,
+      String supplyType,
+      UUID supplyPoolId,
+      UUID lotId,
+      String warehouseLabel,
+      Integer warehousePriority,
+      Long warehouseVersion) {}
+
+  public record ShortageView(
+      UUID orderLineId,
+      UUID skuId,
+      String requestedQuantity,
+      String availableQuantity,
+      String shortageQuantity,
+      String quantityUnit,
+      String failureCode) {}
+
+  public record AttemptView(
+      int attemptNumber,
+      String outcome,
+      String failureCode,
+      Instant startedAt,
+      Instant completedAt) {}
+
+  public record OperationAuditView(
+      UUID commandId,
+      String action,
+      String outcome,
+      String reasonCode,
+      String previousState,
+      String newState,
+      Instant occurredAt) {}
 
   public record OperationOutcome(
       UUID commandId,

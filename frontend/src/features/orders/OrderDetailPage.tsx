@@ -1,15 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import {
-  Alert,
-  Card,
-  Descriptions,
-  List,
-  Space,
-  Table,
-  Tag,
-  Typography,
-  type TableProps,
-} from 'antd';
+import { Alert, Card, Descriptions, Space, Table, Tag, Typography, type TableProps } from 'antd';
 import { Link, useParams } from 'react-router-dom';
 import { useCurrentUser } from '../../api/currentUser';
 import {
@@ -23,6 +13,7 @@ import {
 import { ErrorState } from '../../components/ErrorState';
 import { LoadingState } from '../../components/LoadingState';
 import { useAuthSession } from '../identity-access/authSession';
+import { ReservationOperationsPanel } from './ReservationOperationsPanel';
 
 type OrderLine =
   | OrderDetail['commercialSnapshot']['lines'][number]
@@ -82,7 +73,6 @@ const statusColors: Record<OrderStatus, string> = {
 };
 const responsiveColumns = { xs: 1 as const, md: 2 as const };
 const orderLineTableScroll = { x: 720 };
-const timelineLocale = { emptyText: 'No order milestones are available.' };
 
 function isInternalOrder(detail: OrderDetailView): detail is OrderDetail {
   return 'partnerId' in detail;
@@ -129,10 +119,10 @@ export function OrderDetailPage() {
 
   const detail = order.data;
   const internal = isInternalOrder(detail);
+  const canReadReservation = currentUser.data?.permissions.includes('inventory:read') ?? false;
   const snapshot = detail.commercialSnapshot;
   const deliveryAddress = snapshot.deliveryAddress;
   const processProjections = [
-    { key: 'reservation', title: 'Inventory reservation', projection: detail.reservation },
     { key: 'fulfillment', title: 'Fulfillment', projection: detail.fulfillment },
     { key: 'settlement', title: 'Settlement', projection: detail.settlement },
   ];
@@ -274,6 +264,23 @@ export function OrderDetailPage() {
           </Descriptions>
         </Card>
 
+        {internal && canReadReservation ? (
+          <ReservationOperationsPanel
+            accessToken={accessToken}
+            orderId={detail.id}
+            permissions={currentUser.data?.permissions ?? []}
+          />
+        ) : (
+          <Card title="Inventory Reservation" size="small">
+            <Tag color={detail.reservation.status === 'BLOCKED' ? 'warning' : 'processing'}>
+              {detail.reservation.status.replaceAll('_', ' ')}
+            </Tag>
+            <Typography.Paragraph className="order-process-message" type="secondary">
+              {detail.reservation.message}
+            </Typography.Paragraph>
+          </Card>
+        )}
+
         <section aria-labelledby="order-process-title">
           <Typography.Title id="order-process-title" level={3}>
             Downstream processes
@@ -301,25 +308,27 @@ export function OrderDetailPage() {
         </section>
 
         <Card title="Timeline">
-          <List
-            dataSource={detail.timeline}
-            rowKey={timelineKey}
-            locale={timelineLocale}
-            renderItem={(entry) => {
-              const safeReason = 'safeReason' in entry ? entry.safeReason : null;
-              return (
-                <List.Item>
-                  <List.Item.Meta
-                    title={entry.action.replaceAll('_', ' ')}
-                    description={`${new Date(entry.occurredAt).toLocaleString()} · ${entry.newState.replaceAll('_', ' ')}`}
-                  />
-                  {typeof safeReason === 'string' && safeReason !== '' ? (
-                    <Typography.Text type="secondary">{safeReason}</Typography.Text>
-                  ) : null}
-                </List.Item>
-              );
-            }}
-          />
+          {detail.timeline.length === 0 ? (
+            <Typography.Text type="secondary">No order milestones are available.</Typography.Text>
+          ) : (
+            <ul className="order-evidence-list">
+              {detail.timeline.map((entry) => {
+                const safeReason = 'safeReason' in entry ? entry.safeReason : null;
+                return (
+                  <li key={timelineKey(entry)}>
+                    <Typography.Text>{entry.action.replaceAll('_', ' ')}</Typography.Text>
+                    <Typography.Text type="secondary">
+                      {new Date(entry.occurredAt).toLocaleString()} ·{' '}
+                      {entry.newState.replaceAll('_', ' ')}
+                    </Typography.Text>
+                    {typeof safeReason === 'string' && safeReason !== '' ? (
+                      <Typography.Text type="secondary">{safeReason}</Typography.Text>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </Card>
       </Space>
     </article>

@@ -104,6 +104,21 @@ body {
   margin-block: 8px 4px;
 }
 
+.order-evidence-list {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.order-evidence-list li {
+  display: grid;
+  gap: 2px;
+  padding-block: 8px;
+  border-bottom: 1px solid #e3e8eb;
+}
+
 .order-filters {
   display: grid;
   grid-template-columns: minmax(280px, 520px);

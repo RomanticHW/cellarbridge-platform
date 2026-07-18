@@ -180,6 +180,16 @@ final class TradeOrderWebMapper {
   }
 
   private static ProcessResponse internalReservation(TradeOrder order) {
+    if (order.status() == TradeOrderStatus.RESERVED) {
+      return new ProcessResponse("CONFIRMED", "Inventory reservation is confirmed");
+    }
+    if (order.status() == TradeOrderStatus.RESERVATION_FAILED) {
+      return new ProcessResponse(
+          "FAILED",
+          order.supplyDecisionStatus() == TradeOrderSupplyDecisionStatus.LEGACY_UNVERIFIED
+              ? "Inventory reservation failed because verified supply evidence is missing."
+              : "Inventory reservation failed; review the controlled Reservation summary.");
+    }
     if (order.supplyDecisionStatus() == TradeOrderSupplyDecisionStatus.LEGACY_UNVERIFIED) {
       return new ProcessResponse(
           "BLOCKED", "Verified supply decision is missing; inventory reservation cannot start.");
@@ -188,6 +198,12 @@ final class TradeOrderWebMapper {
   }
 
   private static ProcessResponse buyerReservation(TradeOrder order) {
+    if (order.status() == TradeOrderStatus.RESERVED) {
+      return new ProcessResponse("CONFIRMED", "Inventory reservation is confirmed.");
+    }
+    if (order.status() == TradeOrderStatus.RESERVATION_FAILED) {
+      return new ProcessResponse("FAILED", "Inventory reservation requires internal review.");
+    }
     if (order.supplyDecisionStatus() == TradeOrderSupplyDecisionStatus.LEGACY_UNVERIFIED) {
       return new ProcessResponse("BLOCKED", "Inventory reservation requires manual review.");
     }

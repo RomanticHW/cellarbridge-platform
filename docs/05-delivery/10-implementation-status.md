@@ -1,7 +1,7 @@
 # 实现状态
 
 Baseline version: **Design Baseline v1.0**  
-Status date: **2026-07-17**
+Status date: **2026-07-18**
 
 ## 1. 状态定义
 
@@ -37,7 +37,7 @@ Status date: **2026-07-17**
 | Supply Decision propagation | Available | Current/Legacy V1、FROZEN/LEGACY_UNVERIFIED Order、V14、OpenAPI 1.7/AsyncAPI 1.2 |
 | Customer quotation decision | Available | controlled portal context, strict customer DTO, accept/reject idempotency, immutable decision, leased expiry work, durable `QuotationAcceptedV1`, React receipt and refresh-safe E2E |
 | Quote-to-order conversion | Available | transactional Inbox consumer, immutable Trade Order snapshot, unique quotation conversion, reliable `TradeOrderCreatedV1`, eventual Quotation link, tenant/Buyer-scoped query UI and real OIDC E2E |
-| Inventory reservation | Implemented in review | B1/B2 已完成原子预占和订单 outcome；C1 以 V17 command/audit、actor-scoped request hash、Reservation/Allocation 锁、NESTED savepoint 和条件 Lot SQL 实现幂等 release/consume。C2 的 API/UI/真实后端 E2E 尚未实施 |
+| Inventory reservation | Implemented in review | B1/B2 原子预占与订单 outcome；C1 V17 command/audit、actor-scoped request hash、Reservation/Allocation 锁、NESTED savepoint 与条件 Lot SQL；C2 tenant-scoped Reservation API、warehouse-assignment exact 投影、React Order workbench、组件测试与真实 OIDC/PostgreSQL E2E |
 | Fulfillment/exception/settlement/reporting | Designed | implementation not started |
 | Architecture fitness functions | Partially available | Modulith、domain/controller/public-contract、Catalog/Inventory 单位与 migration 核心规则已执行；shared-kernel、运行和性能门禁仍按 fitness status 分为 Partially available/Planned |
 | Kafka/Redis/OTel/Prometheus/Grafana full profile | Planned | no current runtime dependency or compose service |
@@ -46,7 +46,7 @@ Status date: **2026-07-17**
 
 ## 3. 声明
 
-当前基线已在 Quotation、Current/Legacy Event 和 Trade Order 中保存一致决策证据；B1/B2 原子预占与订单结果、C1 release/consume 内部事务均已实现并处于 review。客户与 Buyer DTO 继续隐藏内部证据；Reservation API/UI 与真实后端 E2E 属于 C2，完整 Task 08 尚未标记 Available。
+当前基线已在 Quotation、Current/Legacy Event 和 Trade Order 中保存一致决策证据；Task 08 A/B/C 均已形成可执行实现并处于 review。内部 API 与 Order workbench 展示授权范围的 Reservation、Allocation、Shortage、Attempt 和 release/consume 审计；客户与 Buyer DTO 继续隐藏内部证据。合并与 CI 全绿前仍不标记 Available。
 
 ## 4. 追踪模板
 
