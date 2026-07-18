@@ -9,14 +9,14 @@ baseline:
   approved_on: 2026-07-13
   implementation_present: true
   current_openapi_contract: "1.7.0"
-  current_database_migration: 16
+  current_database_migration: 17
   current_route_policy: ROUTE-2026-03
   route_input_summary_schema: 3
   planning_supply_decision_evidence: available
   quotation_supply_decision_freeze: available
   supply_decision_propagation: available
   inventory_unit_readiness: available
-  inventory_reservation: atomic-execution-and-order-outcome-in-review
+  inventory_reservation: atomic-operations-in-progress
   architecture_style: domain-oriented-modular-monolith
   primary_scenario: b2b-quotation-to-order-to-fulfillment
   data_policy: synthetic-only

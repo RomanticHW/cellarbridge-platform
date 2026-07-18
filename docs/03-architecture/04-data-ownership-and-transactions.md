@@ -58,7 +58,7 @@
 
 ## 5. 库存 SQL 语义
 
-状态：**A2 implemented in review**。下述 reserve/release/consume 条件更新已作为 Inventory 内部数据库原语实现并通过真实 PostgreSQL 并发测试；订单级选择、事务/savepoint 编排和公开操作仍为 Designed，不能据此声明预占可用。
+状态：**Task 08 C1 implemented in review**。B1 已编排订单级原子预占；C1 在 Reservation 行锁和确定性 Allocation 顺序下，以 NESTED savepoint 编排 release/consume、append-only Movement、命令幂等结果与审计。公开 API/UI/E2E 仍属于 C2，不能据此声明完整能力 Available。
 
 示意：
 
@@ -77,7 +77,7 @@ WHERE tenant_id = :tenant_id
   AND on_hand_quantity - reserved_quantity >= :quantity;
 ```
 
-受影响行为 1 才成功。所有订单行在同一 savepoint 中全成全败；业务失败由外层事务可靠记录，技术失败回滚外层事务并有限重试。实际实现仍需数量精度、单位、索引和审计 movement。
+受影响行为 1 才成功。C1 的多 Allocation 操作在同一 savepoint 中全成全败；业务拒绝由外层事务保存稳定命令结果和审计，技术失败回滚整个命令。数量精度、单位、Movement 和余额守恒均由领域、SQL 与真实 PostgreSQL 测试共同约束。
 
 ## 6. 乐观并发
 

@@ -55,4 +55,43 @@ public record Allocation(
       throw new IllegalArgumentException("Warehouse priority evidence cannot be negative");
     }
   }
+
+  public Allocation release(BigDecimal quantity) {
+    BigDecimal exact = ExactQuantity.positive(quantity, "releaseQuantity");
+    if (consumedQuantity.signum() != 0 || exact.compareTo(remainingReservedQuantity) > 0) {
+      throw new IllegalStateException("Allocation cannot release the requested quantity");
+    }
+    return copy(
+        releasedQuantity.add(exact), consumedQuantity, remainingReservedQuantity.subtract(exact));
+  }
+
+  public Allocation consume(BigDecimal quantity) {
+    BigDecimal exact = ExactQuantity.positive(quantity, "consumeQuantity");
+    if (releasedQuantity.signum() != 0 || exact.compareTo(remainingReservedQuantity) > 0) {
+      throw new IllegalStateException("Allocation cannot consume the requested quantity");
+    }
+    return copy(
+        releasedQuantity, consumedQuantity.add(exact), remainingReservedQuantity.subtract(exact));
+  }
+
+  private Allocation copy(BigDecimal released, BigDecimal consumed, BigDecimal remainingReserved) {
+    return new Allocation(
+        id,
+        tenantId,
+        reservationId,
+        orderLineId,
+        sourceQuotationLineId,
+        skuId,
+        quantityUnit,
+        supplyType,
+        allocationMode,
+        supplyPoolId,
+        lotId,
+        allocatedQuantity,
+        released,
+        consumed,
+        remainingReserved,
+        warehousePriority,
+        warehouseVersion);
+  }
 }

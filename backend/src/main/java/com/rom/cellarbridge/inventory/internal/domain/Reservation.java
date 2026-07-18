@@ -118,6 +118,29 @@ public record Reservation(
         now);
   }
 
+  public Reservation recordOperation(Status finalStatus, Instant now) {
+    Objects.requireNonNull(now, "now");
+    if (status != Status.CONFIRMED) {
+      throw new IllegalStateException("Only a confirmed Reservation accepts operations");
+    }
+    if (finalStatus != null && finalStatus != Status.RELEASED && finalStatus != Status.CONSUMED) {
+      throw new IllegalArgumentException("Operation final status must be RELEASED or CONSUMED");
+    }
+    return new Reservation(
+        id,
+        tenantId,
+        orderId,
+        requestHash,
+        supplyDecisionHash,
+        routeCode,
+        finalStatus == null ? Status.CONFIRMED : finalStatus,
+        null,
+        lines,
+        version + 1,
+        createdAt,
+        now);
+  }
+
   public enum Status {
     PENDING,
     CONFIRMED,

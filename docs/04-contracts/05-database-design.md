@@ -95,10 +95,11 @@ erDiagram
 
 ### Inventory-owned Reservation facts
 
-状态：**Task 08 A2 implemented in review**。
+状态：**Task 08 C1 implemented in review**。
 
 - `reservation_attempt`、`allocation`、`inventory_movement`、`shortage_snapshot` 为 append-only Repository 事实，数量使用 `numeric(19,6)`。
-- Lot reserve/release/consume 使用 tenant/unit/balance 条件的单语句更新；本层不执行订单预占工作流。
+- Lot reserve/release/consume 使用 tenant/unit/balance 条件的单语句更新。
+- V17 增加 actor-scoped request hash 的 `reservation_operation_command` 和 append-only `reservation_operation_audit`；组合外键绑定同一 Reservation/action/actor/key 摘要，原始 Idempotency-Key 不落库。
 
 ### `fulfillment.fulfillment_plan`
 

@@ -5,7 +5,7 @@
 
 [English](#english) · [简体中文](#简体中文)
 
-> **Project status — Atomic inventory reservation and order outcome integration in review.** Current/Legacy order events drive deterministic FIXED/AUTO allocation and reliable outcomes; Trade Order validates the request and Supply Decision evidence before idempotently entering `RESERVED` or `RESERVATION_FAILED`. Release/consume and Reservation API/UI remain later slices.
+> **Project status — Inventory reservation operations in review.** Current/Legacy order events drive deterministic FIXED/AUTO allocation and reliable order outcomes; internal release/consume commands now add durable idempotency, audit and atomic balance changes. Reservation API/UI and real-backend workbench E2E remain the next slice.
 
 ---
 
@@ -270,7 +270,7 @@ CellarBridge is an independent technical demonstration based on public business 
 
 ### 1. 项目定位
 
-CellarBridge（酒桥）模拟一家进口酒饮供应链服务商的目标企业流程。它不是面向消费者的酒类商城，也不是把若干 CRUD 页面拼在一起的后台模板。当前可运行范围从商业客户准入、单位化酒款与货源检索、报价和客户决定延伸到幂等转订单，并将经验证的路线绑定供给决策从报价冻结后通过 Current V1 事件传播到 FROZEN 订单；Legacy 保持可读但不补造证据。库存尚未预占；冻结与传播只是后续分配约束。
+CellarBridge（酒桥）模拟一家进口酒饮供应链服务商的目标企业流程。它不是面向消费者的酒类商城，也不是把若干 CRUD 页面拼在一起的后台模板。当前评审范围已覆盖报价转订单、原子库存预占、订单结果，以及内部幂等释放/消费事务；Reservation API、操作工作台和真实后端 E2E 仍属于下一切片，因此完整库存能力尚未标记为 Available。
 
 本项目强调“设计可以被审阅”。技术评审者可以从一条业务需求出发，继续追踪到限界上下文、聚合不变量、接口或事件契约、数据库归属、验收场景和实现任务，而不需要依赖口头补充来理解系统。
 

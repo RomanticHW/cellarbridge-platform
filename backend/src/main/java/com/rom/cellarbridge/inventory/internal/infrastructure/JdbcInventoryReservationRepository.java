@@ -88,6 +88,17 @@ public class JdbcInventoryReservationRepository implements InventoryReservationR
   }
 
   @Override
+  public Optional<ReservationAggregate> findById(TenantId tenantId, UUID reservationId) {
+    Objects.requireNonNull(reservationId, "reservationId");
+    return queryReservation(
+            RESERVATION_SELECT + " WHERE tenant_id = :tenantId AND id = :reservationId",
+            new MapSqlParameterSource()
+                .addValue("tenantId", tenantId.value())
+                .addValue("reservationId", reservationId))
+        .map(this::hydrate);
+  }
+
+  @Override
   public Optional<ReservationAggregate> findByRequestHash(TenantId tenantId, String requestHash) {
     if (requestHash == null || !HASH.matcher(requestHash).matches()) {
       throw new IllegalArgumentException("requestHash must be lowercase SHA-256 hex");
@@ -387,7 +398,6 @@ public class JdbcInventoryReservationRepository implements InventoryReservationR
       allocatedByLine.merge(
           allocation.orderLineId(), allocation.allocatedQuantity(), BigDecimal::add);
       requireFacts(allocationsById.put(allocation.id(), allocation) == null);
-      validateAllocationState(reservation.status(), allocation);
     }
     for (Reservation.Line line : reservation.lines()) {
       requireFacts(
@@ -422,26 +432,23 @@ public class JdbcInventoryReservationRepository implements InventoryReservationR
                       .compareTo(allocation.consumedQuantity())
                   == 0);
     }
+    validateOperationState(reservation.status(), allocations);
   }
 
-  private static void validateAllocationState(Reservation.Status status, Allocation allocation) {
-    boolean valid =
+  private static void validateOperationState(
+      Reservation.Status status, List<Allocation> allocations) {
+    boolean released = allocations.stream().anyMatch(item -> item.releasedQuantity().signum() > 0);
+    boolean consumed = allocations.stream().anyMatch(item -> item.consumedQuantity().signum() > 0);
+    boolean remaining =
+        allocations.stream().anyMatch(item -> item.remainingReservedQuantity().signum() > 0);
+    requireFacts(!(released && consumed));
+    requireFacts(
         switch (status) {
-          case CONFIRMED ->
-              allocation.remainingReservedQuantity().compareTo(allocation.allocatedQuantity()) == 0
-                  && allocation.releasedQuantity().signum() == 0
-                  && allocation.consumedQuantity().signum() == 0;
-          case RELEASED ->
-              allocation.releasedQuantity().compareTo(allocation.allocatedQuantity()) == 0
-                  && allocation.remainingReservedQuantity().signum() == 0
-                  && allocation.consumedQuantity().signum() == 0;
-          case CONSUMED ->
-              allocation.consumedQuantity().compareTo(allocation.allocatedQuantity()) == 0
-                  && allocation.remainingReservedQuantity().signum() == 0
-                  && allocation.releasedQuantity().signum() == 0;
+          case CONFIRMED -> remaining;
+          case RELEASED -> released && !consumed && !remaining;
+          case CONSUMED -> consumed && !released && !remaining;
           default -> false;
-        };
-    requireFacts(valid);
+        });
   }
 
   private static void validateShortages(Reservation reservation, List<ShortageSnapshot> shortages) {
