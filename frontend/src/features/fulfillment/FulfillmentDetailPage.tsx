@@ -219,7 +219,7 @@ export function FulfillmentDetailPage() {
                 .filter((milestone) => milestone.customerVisible)
                 .map((milestone) => ({
                   color: 'green',
-                  children: (
+                  content: (
                     <Space orientation="vertical" size={0}>
                       <Typography.Text>{milestone.label}</Typography.Text>
                       <Typography.Text type="secondary">

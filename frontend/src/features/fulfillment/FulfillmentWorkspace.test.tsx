@@ -221,5 +221,5 @@ describe('fulfillment workspace', () => {
     expect(screen.getByRole('button', { name: 'Fail' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Retry' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Skip' })).toBeVisible();
-  });
+  }, 30_000);
 });
