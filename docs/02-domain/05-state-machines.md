@@ -94,16 +94,15 @@ stateDiagram-v2
     [*] --> PENDING
     PENDING --> CONFIRMED: all allocations committed
     PENDING --> FAILED: transaction fails
-    CONFIRMED --> PARTIALLY_CONSUMED: some allocations consumed
+    CONFIRMED --> CONFIRMED: partial release or consume
     CONFIRMED --> RELEASED: all released
     CONFIRMED --> CONSUMED: all consumed
-    PARTIALLY_CONSUMED --> CONSUMED: remainder consumed
-    PARTIALLY_CONSUMED --> PARTIALLY_RELEASED: remainder released
-    PARTIALLY_RELEASED --> [*]
+    RELEASED --> [*]
+    CONSUMED --> [*]
     FAILED --> [*]
 ```
 
-P1 业务订单不会主动拆分，但履约可逐批消费 allocation，因此存在部分消费内部状态；订单层只根据业务里程碑判断。
+部分操作通过 Allocation 的 released/consumed/remaining 数量表达，Reservation 聚合保持 `CONFIRMED`；同一 Reservation 不混用 release 与 consume，余额全部归零后才进入 `RELEASED` 或 `CONSUMED`。
 
 ## 6. Fulfillment Plan
 
