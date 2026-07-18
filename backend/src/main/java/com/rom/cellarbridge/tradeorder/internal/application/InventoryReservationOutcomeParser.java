@@ -16,6 +16,7 @@ import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -210,7 +211,10 @@ final class InventoryReservationOutcomeParser {
             && Objects.equals(order.createdEventId(), delivery.causationId()));
     require(
         occurredAt != null
-            && occurredAt.equals(delivery.occurredAt())
+            && Duration.between(occurredAt, delivery.occurredAt())
+                    .abs()
+                    .compareTo(Duration.ofNanos(1_000))
+                <= 0
             && !occurredAt.isBefore(order.updatedAt()));
 
     String expectedRequestHash = requestHash(order);

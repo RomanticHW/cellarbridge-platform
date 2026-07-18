@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cellarbridge.dev/schemas/events/fulfillment-step-started-v1.schema.json",
+  "title": "FulfillmentStepStartedV1",
+  "allOf": [
+    { "$ref": "event-envelope.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "type": { "const": "cellarbridge.fulfillment.step-started.v1" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["planId", "planNumber", "orderId", "orderNumber", "stepId", "stepCode", "startedAt"],
+          "properties": {
+            "planId": { "type": "string", "format": "uuid" },
+            "planNumber": { "type": "string" },
+            "orderId": { "type": "string", "format": "uuid" },
+            "orderNumber": { "type": "string" },
+            "stepId": { "type": "string", "format": "uuid" },
+            "stepCode": { "type": "string" },
+            "startedAt": { "type": "string", "format": "date-time" }
+          }
+        }
+      }
+    }
+  ]
+}

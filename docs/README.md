@@ -112,9 +112,10 @@ The documentation is organized from evidence to delivery. Each layer narrows the
 - [Quotation and trade-planning runbook](05-delivery/16-quotation-trade-planning-runbook.md)
 - [Customer quotation acceptance runbook](05-delivery/17-customer-quotation-acceptance-runbook.md)
 - [Trade order conversion runbook](05-delivery/18-trade-order-conversion-runbook.md)
+- [Fulfillment orchestration runbook](05-delivery/19-fulfillment-orchestration-runbook.md)
 
 ## Change control
 
 `docs/design-baseline.yaml` identifies the approved baseline. A behavior change must update its requirement, domain, contract, test, and implementation status together. Architecture changes require an ADR before code changes.
 
-Task 07C follows [ADR-016](03-architecture/adr/ADR-016-route-supply-decision-readiness-layers.md): Planning, Quotation freeze, and [Propagation](03-architecture/adr/ADR-018-pre-1-0-supply-decision-event-propagation.md) are available. Task 08 remains designed/in progress: A1 is merged and A2 persistence is implemented in review; execution and operations stacks remain blocked.
+Task 07C follows [ADR-016](03-architecture/adr/ADR-016-route-supply-decision-readiness-layers.md): Planning, Quotation freeze, and [Propagation](03-architecture/adr/ADR-018-pre-1-0-supply-decision-event-propagation.md) are available. Task 08 Inventory reservation is available. Task 09 Fulfillment orchestration is implemented in review; Task 10 remains blocked until a separate start authorization.

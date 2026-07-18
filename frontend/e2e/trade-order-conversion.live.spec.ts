@@ -33,6 +33,13 @@ const forbiddenBuyerFields = new Set([
   'internalComment',
   'internalComments',
   'comments',
+  'planId',
+  'stepId',
+  'dependencies',
+  'ownerRole',
+  'assigneeRole',
+  'latestAdapterAttempt',
+  'failureCode',
 ]);
 
 interface AuthenticatedPage {
@@ -257,6 +264,59 @@ async function awaitConfirmedReservation(page: Page, orderId: string) {
   return body;
 }
 
+interface FulfillmentPlan {
+  id: string;
+  number: string;
+  orderId: string;
+  steps: { id: string; name: string; status: string }[];
+}
+
+async function awaitFulfillmentPlan(page: Page, orderId: string): Promise<FulfillmentPlan> {
+  let planId: string | undefined;
+  await expect
+    .poll(
+      async () => {
+        const response = await authenticatedGet(page, '/api/v1/fulfillment/plans?pageSize=100');
+        if (response.status() !== 200) return `HTTP_${response.status()}`;
+        const body = (await response.json()) as { items?: { id: string; orderId: string }[] };
+        planId = body.items?.find((item) => item.orderId === orderId)?.id;
+        return planId === undefined ? 'MISSING' : 'READY';
+      },
+      { timeout: 45_000 },
+    )
+    .toBe('READY');
+  if (planId === undefined) throw new Error('Fulfillment Plan was not created');
+  const response = await authenticatedGet(page, `/api/v1/fulfillment/plans/${planId}`);
+  expect(response.status()).toBe(200);
+  return (await response.json()) as FulfillmentPlan;
+}
+
+async function confirmFulfillmentAction(
+  page: Page,
+  stepName: string,
+  action: 'Start' | 'Complete' | 'Retry',
+  scenario: 'Success' | 'Failure' = 'Success',
+) {
+  const step = page.locator('.fulfillment-step-node').filter({ hasText: stepName });
+  await step.getByRole('button', { name: action, exact: true }).click();
+  if (action === 'Complete' && scenario === 'Failure') {
+    await page.getByLabel('Simulation outcome').click();
+    await page.getByText('Failure', { exact: true }).last().click();
+  }
+  const responsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      /\/api\/v1\/fulfillment\/plans\/[0-9a-f-]{36}\/steps\/[0-9a-f-]{36}\/actions$/.test(
+        new URL(response.url()).pathname,
+      ),
+  );
+  await page.getByRole('button', { name: 'Confirm action' }).click();
+  const response = await responsePromise;
+  expect(response.status()).toBe(200);
+  expect(response.request().headers()['if-match']).toMatch(/^"\d+"$/);
+  expect(response.request().headers()['idempotency-key']).toMatch(/^fulfillment-ui-[0-9a-f-]{36}$/);
+}
+
 function collectObjectKeys(value: unknown, keys: string[] = []): string[] {
   if (Array.isArray(value)) {
     value.forEach((item) => collectObjectKeys(item, keys));
@@ -318,15 +378,20 @@ test('converts accepted quotations once, operates Reservation, and enforces orde
     `/api/v1/inventory/reservations/by-order/${mappedOrder.id}`,
   );
   expect(reservationBoundaryStatus).toBe(403);
+  const fulfillmentBoundaryStatus = await authenticatedGetStatus(
+    buyer.page,
+    '/api/v1/fulfillment/plans',
+  );
+  expect(fulfillmentBoundaryStatus).toBe(403);
 
   const warehouse = await login(browser, 'north.warehouse');
-  const reservation = await awaitConfirmedReservation(warehouse.page, mappedOrder.id);
+  const reservation = await awaitConfirmedReservation(warehouse.page, otherOrder.id);
   const reservationResponsePromise = warehouse.page.waitForResponse(
     (response) =>
       new URL(response.url()).pathname ===
-      `/api/v1/inventory/reservations/by-order/${mappedOrder.id}`,
+      `/api/v1/inventory/reservations/by-order/${otherOrder.id}`,
   );
-  await warehouse.page.goto(mappedOrder.path);
+  await warehouse.page.goto(otherOrder.path);
   expect((await reservationResponsePromise).status()).toBe(200);
   await expect(warehouse.page.getByText('CONFIRMED', { exact: true })).toBeVisible();
   await expect(warehouse.page.getByText(/^Pool /)).toBeVisible();
@@ -369,6 +434,69 @@ test('converts accepted quotations once, operates Reservation, and enforces orde
   const replayResult = (await replayResponse.json()) as { commandId: string };
   expect(replayResult.commandId).toBe(releaseResult.commandId);
 
+  const administrator = await login(browser, 'north.admin');
+  const fulfillment = await awaitFulfillmentPlan(administrator.page, mappedOrder.id);
+  expect(fulfillment.steps).toHaveLength(5);
+  expect(fulfillment.steps.map((step) => step.status)).toEqual([
+    'READY',
+    'BLOCKED',
+    'BLOCKED',
+    'BLOCKED',
+    'BLOCKED',
+  ]);
+  await administrator.page.goto(`/app/fulfillment/${fulfillment.id}`);
+  await expect(administrator.page.getByRole('heading', { name: fulfillment.number })).toBeVisible();
+
+  for (let index = 0; index < fulfillment.steps.length; index += 1) {
+    const step = fulfillment.steps[index];
+    if (step === undefined) throw new Error('Fulfillment step snapshot changed unexpectedly');
+    await confirmFulfillmentAction(administrator.page, step.name, 'Start');
+    if (index === 1) {
+      await confirmFulfillmentAction(administrator.page, step.name, 'Complete', 'Failure');
+      await expect(
+        administrator.page
+          .locator('.fulfillment-step-node')
+          .filter({ hasText: step.name })
+          .getByText('FAILED', { exact: true }),
+      ).toBeVisible();
+      await confirmFulfillmentAction(administrator.page, step.name, 'Retry');
+      await confirmFulfillmentAction(administrator.page, step.name, 'Start');
+    }
+    await confirmFulfillmentAction(administrator.page, step.name, 'Complete');
+  }
+  await expect(administrator.page.getByText('COMPLETED', { exact: true }).first()).toBeVisible();
+  await expect(
+    administrator.page.getByText('Order confirmation', { exact: true }).last(),
+  ).toBeVisible();
+  await expect(administrator.page.getByText('Dispatch', { exact: true }).last()).toBeVisible();
+  await expect(
+    administrator.page.getByText('Signed delivery', { exact: true }).last(),
+  ).toBeVisible();
+
+  let completedBuyerBody: unknown;
+  await expect
+    .poll(
+      async () => {
+        const response = await authenticatedGet(
+          buyer.page,
+          `/api/v1/buyer/orders/${mappedOrder.id}`,
+        );
+        if (response.status() !== 200) return `HTTP_${response.status()}`;
+        completedBuyerBody = (await response.json()) as unknown;
+        return (completedBuyerBody as { status?: string }).status;
+      },
+      { timeout: 45_000 },
+    )
+    .toBe('FULFILLED');
+  expect(
+    collectObjectKeys(completedBuyerBody).filter((key) => forbiddenBuyerFields.has(key)),
+  ).toEqual([]);
+  await buyer.page.reload();
+  await expect(buyer.page.getByText('FULFILLED', { exact: true })).toBeVisible();
+  await expect(buyer.page.getByText('ORDER CONFIRMATION', { exact: true })).toBeVisible();
+  await expect(buyer.page.getByText('DISPATCH', { exact: true })).toBeVisible();
+  await expect(buyer.page.getByText('SIGNED DELIVERY', { exact: true })).toBeVisible();
+
   const harborManager = await login(browser, 'harbor.manager');
   const crossTenantStatus = await authenticatedGetStatus(
     harborManager.page,
@@ -380,6 +508,14 @@ test('converts accepted quotations once, operates Reservation, and enforces orde
     `/api/v1/inventory/reservations/by-order/${mappedOrder.id}`,
   );
   expect(crossTenantReservationStatus).toBe(404);
+  const crossTenantFulfillment = await authenticatedGet(
+    harborManager.page,
+    `/api/v1/fulfillment/plans/${fulfillment.id}`,
+  );
+  expect(crossTenantFulfillment.status()).toBe(403);
+  expect((await crossTenantFulfillment.json()) as { code?: string }).toMatchObject({
+    code: 'ACCESS_DENIED',
+  });
 
   expect(mappedOrder.browserErrors).toEqual([]);
   expect(otherOrder.browserErrors).toEqual([]);
@@ -387,12 +523,14 @@ test('converts accepted quotations once, operates Reservation, and enforces orde
   expect(manager.browserErrors).toEqual([]);
   expect(buyer.browserErrors).toEqual([]);
   expect(warehouse.browserErrors).toEqual([]);
+  expect(administrator.browserErrors).toEqual([]);
   expect(harborManager.browserErrors).toEqual([]);
   await Promise.all([
     sales.page.context().close(),
     manager.page.context().close(),
     buyer.page.context().close(),
     warehouse.page.context().close(),
+    administrator.page.context().close(),
     harborManager.page.context().close(),
   ]);
 });

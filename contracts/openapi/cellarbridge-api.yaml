@@ -1,12 +1,12 @@
 openapi: 3.1.0
 info:
   title: CellarBridge API
-  version: 1.8.0
+  version: 1.9.0
   summary: Contract baseline for B2B wine quotation, order, inventory and fulfillment
   description: |
     This contract remains the design-first integration baseline for CellarBridge. All examples are synthetic.
     The authenticated `/me`, partner-onboarding, catalog supply-search, quotation and trade-order
-    endpoints and Inventory Reservation operations are delivered as vertical slices; remaining business endpoints retain their approved contracts.
+    endpoints, Inventory Reservation operations, and Fulfillment Plan operations are delivered as vertical slices; remaining business endpoints retain their approved contracts.
     Internal commercial fields and customer-portal fields intentionally use separate schemas.
   license:
     name: Apache-2.0
@@ -902,12 +902,23 @@ paths:
         - name: overdue
           in: query
           schema: { type: boolean }
+        - name: ownerRole
+          in: query
+          description: Return plans with unfinished work owned by this operational role.
+          schema: { type: string, pattern: '^[A-Z][A-Z0-9_]{2,59}$' }
+        - name: orderId
+          in: query
+          description: Restrict the board to one Trade Order.
+          schema: { type: string, format: uuid }
       responses:
         '200':
           description: Fulfillment plan page
           content:
             application/json:
               schema: { $ref: '#/components/schemas/FulfillmentPlanPage' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
   /fulfillment/plans/{planId}:
     get:
       tags: [Fulfillment]
@@ -925,6 +936,8 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/FulfillmentPlanDetail' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
   /fulfillment/plans/{planId}/steps/{stepId}/actions:
     post:
       tags: [Fulfillment]
@@ -948,11 +961,19 @@ paths:
       responses:
         '200':
           description: Step action result
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+            Idempotency-Replayed: { $ref: '#/components/headers/IdempotencyReplayed' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/FulfillmentStepActionResult' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '412': { $ref: '#/components/responses/VersionConflict' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
   /exceptions:
     get:
       tags: [Exceptions]
@@ -2183,7 +2204,7 @@ components:
       additionalProperties: false
       required: [status, message]
       properties:
-        status: { type: string, enum: [PENDING, CONFIRMED, FAILED, BLOCKED, NOT_STARTED] }
+        status: { type: string, enum: [PENDING, CONFIRMED, FAILED, BLOCKED, NOT_STARTED, READY, IN_PROGRESS, COMPLETED] }
         message: { type: string, minLength: 1, maxLength: 240 }
     OrderTimelineEntry:
       type: object
@@ -2306,7 +2327,7 @@ components:
       additionalProperties: false
       required: [status, message]
       properties:
-        status: { type: string, enum: [PENDING, CONFIRMED, FAILED, BLOCKED, NOT_STARTED] }
+        status: { type: string, enum: [PENDING, CONFIRMED, FAILED, BLOCKED, NOT_STARTED, READY, IN_PROGRESS, COMPLETED] }
         message: { type: string, minLength: 1, maxLength: 240 }
     BuyerOrderTimelineEntry:
       type: object
@@ -2547,7 +2568,7 @@ components:
               type: array
               items:
                 type: object
-                required: [id, code, name, status, dependencies, public, version]
+                required: [id, code, name, status, dependencies, customerVisible, optional, skippable, version, allowedActions]
                 properties:
                   id: { type: string, format: uuid }
                   code: { type: string }
@@ -2562,18 +2583,35 @@ components:
                   dueAt: { type: [string, 'null'], format: date-time }
                   startedAt: { type: [string, 'null'], format: date-time }
                   completedAt: { type: [string, 'null'], format: date-time }
-                  public: { type: boolean }
+                  customerVisible: { type: boolean }
+                  optional: { type: boolean }
+                  skippable: { type: boolean }
+                  failureCode: { type: [string, 'null'] }
+                  safeMessage: { type: [string, 'null'] }
+                  allowedActions:
+                    type: array
+                    items: { type: string, enum: [START, COMPLETE, FAIL, RETRY, SKIP] }
+                  latestAdapterAttempt:
+                    oneOf:
+                      - type: object
+                        required: [scenario, outcome, reference, occurredAt]
+                        properties:
+                          scenario: { type: string, enum: [SUCCESS, FAILURE, DELAY] }
+                          outcome: { type: string, enum: [CONFIRMED, FAILED, DELAYED] }
+                          reference: { type: string }
+                          occurredAt: { type: string, format: date-time }
+                      - type: 'null'
                   version: { type: integer, format: int64 }
             milestones:
               type: array
               items:
                 type: object
-                required: [code, label, occurredAt, public]
+                required: [code, label, occurredAt, customerVisible]
                 properties:
                   code: { type: string }
                   label: { type: string }
                   occurredAt: { type: string, format: date-time }
-                  public: { type: boolean }
+                  customerVisible: { type: boolean }
             allowedActions:
               type: array
               items: { type: string }

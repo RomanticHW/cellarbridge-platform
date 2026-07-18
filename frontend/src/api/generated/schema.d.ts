@@ -1363,7 +1363,7 @@ export interface components {
         };
         OrderProcessProjection: {
             /** @enum {string} */
-            status: "PENDING" | "CONFIRMED" | "FAILED" | "BLOCKED" | "NOT_STARTED";
+            status: "PENDING" | "CONFIRMED" | "FAILED" | "BLOCKED" | "NOT_STARTED" | "READY" | "IN_PROGRESS" | "COMPLETED";
             message: string;
         };
         OrderTimelineEntry: {
@@ -1454,7 +1454,7 @@ export interface components {
         };
         BuyerOrderProcessProjection: {
             /** @enum {string} */
-            status: "PENDING" | "CONFIRMED" | "FAILED" | "BLOCKED" | "NOT_STARTED";
+            status: "PENDING" | "CONFIRMED" | "FAILED" | "BLOCKED" | "NOT_STARTED" | "READY" | "IN_PROGRESS" | "COMPLETED";
             message: string;
         };
         BuyerOrderTimelineEntry: {
@@ -1671,7 +1671,21 @@ export interface components {
                 startedAt?: string | null;
                 /** Format: date-time */
                 completedAt?: string | null;
-                public: boolean;
+                customerVisible: boolean;
+                optional: boolean;
+                skippable: boolean;
+                failureCode?: string | null;
+                safeMessage?: string | null;
+                allowedActions: ("START" | "COMPLETE" | "FAIL" | "RETRY" | "SKIP")[];
+                latestAdapterAttempt?: {
+                    /** @enum {string} */
+                    scenario: "SUCCESS" | "FAILURE" | "DELAY";
+                    /** @enum {string} */
+                    outcome: "CONFIRMED" | "FAILED" | "DELAYED";
+                    reference: string;
+                    /** Format: date-time */
+                    occurredAt: string;
+                } | null;
                 /** Format: int64 */
                 version: number;
             }[];
@@ -1680,7 +1694,7 @@ export interface components {
                 label: string;
                 /** Format: date-time */
                 occurredAt: string;
-                public: boolean;
+                customerVisible: boolean;
             }[];
             allowedActions: string[];
         };
@@ -2954,6 +2968,10 @@ export interface operations {
                 cursor?: components["parameters"]["Cursor"];
                 status?: components["schemas"]["FulfillmentStatus"][];
                 overdue?: boolean;
+                /** @description Return plans with unfinished work owned by this operational role. */
+                ownerRole?: string;
+                /** @description Restrict the board to one Trade Order. */
+                orderId?: string;
             };
             header?: never;
             path?: never;
@@ -2970,6 +2988,9 @@ export interface operations {
                     "application/json": components["schemas"]["FulfillmentPlanPage"];
                 };
             };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
         };
     };
     getFulfillmentPlan: {
@@ -2993,6 +3014,8 @@ export interface operations {
                     "application/json": components["schemas"]["FulfillmentPlanDetail"];
                 };
             };
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -3018,14 +3041,21 @@ export interface operations {
             /** @description Step action result */
             200: {
                 headers: {
+                    ETag: components["headers"]["ETag"];
+                    "Idempotency-Replayed": components["headers"]["IdempotencyReplayed"];
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["FulfillmentStepActionResult"];
                 };
             };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
+            404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             412: components["responses"]["VersionConflict"];
+            428: components["responses"]["PreconditionRequired"];
         };
     };
     listExceptions: {

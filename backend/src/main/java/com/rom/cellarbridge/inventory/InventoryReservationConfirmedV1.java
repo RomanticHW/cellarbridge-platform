@@ -18,11 +18,34 @@ public final class InventoryReservationConfirmedV1 {
       String orderNumber,
       String requestHash,
       String supplyDecisionHash,
+      String routeCode,
       Instant confirmedAt,
       List<Allocation> allocations) {
 
     public Payload {
       allocations = List.copyOf(allocations);
+    }
+
+    /** Compatibility constructor for V1 producers that predate the additive route field. */
+    public Payload(
+        UUID reservationId,
+        String reservationNumber,
+        UUID orderId,
+        String orderNumber,
+        String requestHash,
+        String supplyDecisionHash,
+        Instant confirmedAt,
+        List<Allocation> allocations) {
+      this(
+          reservationId,
+          reservationNumber,
+          orderId,
+          orderNumber,
+          requestHash,
+          supplyDecisionHash,
+          null,
+          confirmedAt,
+          allocations);
     }
   }
 

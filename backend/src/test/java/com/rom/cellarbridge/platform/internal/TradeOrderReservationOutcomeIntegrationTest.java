@@ -126,6 +126,39 @@ class TradeOrderReservationOutcomeIntegrationTest extends PostgresIntegrationTes
   }
 
   @Test
+  void acceptsPostgresMicrosecondPrecisionForConfirmedOutcomeTime() {
+    Fixture fixture = currentOrder();
+    UUID reservationId = UUID.randomUUID();
+    Instant payloadTime = Instant.parse("2026-07-17T08:00:01.123456789Z");
+    InventoryReservationConfirmedV1.Payload baseline = confirmed(fixture, reservationId);
+    InventoryReservationConfirmedV1.Payload payload =
+        new InventoryReservationConfirmedV1.Payload(
+            baseline.reservationId(),
+            baseline.reservationNumber(),
+            baseline.orderId(),
+            baseline.orderNumber(),
+            baseline.requestHash(),
+            baseline.supplyDecisionHash(),
+            fixture.order().commercialSnapshot().route().code(),
+            payloadTime,
+            baseline.allocations());
+
+    EventDelivery delivery =
+        delivery(
+            UUID.randomUUID(),
+            TENANT,
+            InventoryReservationConfirmedV1.TYPE,
+            fixture,
+            reservationId,
+            payload,
+            Instant.parse("2026-07-17T08:00:01.123457Z"));
+
+    assertThat(deliveryService.deliver(confirmedHandler, delivery))
+        .isEqualTo(LocalEventDeliveryService.DeliveryOutcome.PROCESSED);
+    assertThat(status(fixture.order().id())).isEqualTo("RESERVED");
+  }
+
+  @Test
   void preservesTheFirstTerminalOutcomeAndRejectsTheOppositeOutcome() {
     Fixture fixture = currentOrder();
     UUID reservationId = UUID.randomUUID();
@@ -516,12 +549,23 @@ class TradeOrderReservationOutcomeIntegrationTest extends PostgresIntegrationTes
       Fixture fixture,
       UUID reservationId,
       Object payload) {
+    return delivery(eventId, tenantId, type, fixture, reservationId, payload, OUTCOME_AT);
+  }
+
+  private EventDelivery delivery(
+      UUID eventId,
+      UUID tenantId,
+      String type,
+      Fixture fixture,
+      UUID reservationId,
+      Object payload,
+      Instant occurredAt) {
     return new EventDelivery(
         eventId,
         tenantId,
         type,
         1,
-        OUTCOME_AT,
+        occurredAt,
         "inventory",
         new EventDelivery.Subject("INVENTORY_RESERVATION", reservationId, "RES-" + reservationId),
         fixture.order().correlationId(),
