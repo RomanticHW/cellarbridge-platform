@@ -2,6 +2,11 @@ package com.rom.cellarbridge.platform.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.rom.cellarbridge.identityaccess.PermissionCode;
+import com.rom.cellarbridge.identityaccess.TenantContext;
+import com.rom.cellarbridge.identityaccess.TenantContextHolder;
+import com.rom.cellarbridge.identityaccess.TenantId;
+import com.rom.cellarbridge.inventory.InventoryRecoveryOperations;
 import com.rom.cellarbridge.inventory.InventoryReservationConfirmedV1;
 import com.rom.cellarbridge.inventory.InventoryReservationFailedV1;
 import com.rom.cellarbridge.inventory.internal.application.TradeOrderCreatedReservationHandler;
@@ -48,6 +53,8 @@ class TradeOrderCreatedReservationIntegrationTest extends PostgresIntegrationTes
   @Autowired private LocalEventDeliveryService deliveryService;
   @Autowired private JdbcEventFailureRecorder failureRecorder;
   @Autowired private TradeOrderCreatedReservationHandler handler;
+  @Autowired private InventoryRecoveryOperations recovery;
+  @Autowired private TenantContextHolder contexts;
   @Autowired private JdbcTemplate jdbc;
   @Autowired private JsonMapper json;
 
@@ -111,6 +118,51 @@ class TradeOrderCreatedReservationIntegrationTest extends PostgresIntegrationTes
     assertThat(count("inventory.inventory_movement", payload.orderId())).isZero();
     assertThat(count("inventory.shortage_snapshot", payload.orderId())).isEqualTo(1);
     assertThat(outcomeCount(payload.orderId(), InventoryReservationFailedV1.TYPE)).isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT (payload #>> '{payload,retryable}')::boolean FROM platform_event.event_publication WHERE tenant_id = ? AND subject_id = ? AND event_type = ?",
+                Boolean.class,
+                TENANT,
+                reservationId(payload.orderId()),
+                InventoryReservationFailedV1.TYPE))
+        .isTrue();
+
+    try (TenantContextHolder.Scope ignored = contexts.open(exceptionOperator())) {
+      var stillFailed =
+          recovery.retryReservation(
+              reservationId(payload.orderId()),
+              payload.orderNumber(),
+              UUID.randomUUID(),
+              UUID.randomUUID());
+      assertThat(stillFailed.status()).isEqualTo(InventoryRecoveryOperations.Status.FAILED);
+      assertThat(stillFailed.failureCode()).isEqualTo("INVENTORY_INSUFFICIENT");
+    }
+    assertThat(count("inventory.reservation_attempt", payload.orderId())).isEqualTo(2);
+    assertThat(totalQuantityFacts(payload.orderId())).isZero();
+
+    jdbc.update(
+        "UPDATE inventory.inventory_lot SET on_hand_quantity = 2 WHERE tenant_id = ? AND id = ?",
+        TENANT,
+        second.lotIds().getFirst());
+    try (TenantContextHolder.Scope ignored = contexts.open(exceptionOperator())) {
+      UUID correlationId = UUID.randomUUID();
+      UUID causationId = UUID.randomUUID();
+      var confirmed =
+          recovery.retryReservation(
+              reservationId(payload.orderId()), payload.orderNumber(), correlationId, causationId);
+      var replayed =
+          recovery.retryReservation(
+              reservationId(payload.orderId()), payload.orderNumber(), correlationId, causationId);
+      assertThat(confirmed.status()).isEqualTo(InventoryRecoveryOperations.Status.CONFIRMED);
+      assertThat(replayed.status()).isEqualTo(InventoryRecoveryOperations.Status.CONFIRMED);
+      assertThat(replayed.replayed()).isTrue();
+    }
+    assertThat(reservationStatus(payload.orderId())).isEqualTo("CONFIRMED");
+    assertThat(count("inventory.reservation_attempt", payload.orderId())).isEqualTo(3);
+    assertThat(count("inventory.allocation", payload.orderId())).isEqualTo(2);
+    assertThat(outcomeCount(payload.orderId(), InventoryReservationConfirmedV1.TYPE)).isEqualTo(1);
+    assertThat(reserved(first.lotIds().getFirst())).isEqualByComparingTo("2.000000");
+    assertThat(reserved(second.lotIds().getFirst())).isEqualByComparingTo("2.000000");
   }
 
   @Test
@@ -586,6 +638,21 @@ class TradeOrderCreatedReservationIntegrationTest extends PostgresIntegrationTes
   private static LineSpec line(
       UUID skuId, String quantity, String mode, UUID poolId, String supplyType) {
     return new LineSpec(skuId, quantity, mode, poolId, supplyType);
+  }
+
+  private static TenantContext exceptionOperator() {
+    return new TenantContext(
+        ACTOR,
+        "Inventory Recovery Operator",
+        new TenantId(TENANT),
+        "Synthetic Cellars",
+        "ACTIVE",
+        null,
+        java.util.Set.of("Trade Operator"),
+        java.util.Set.of("trade-operator"),
+        java.util.Set.of(PermissionCode.EXCEPTION_RECOVER),
+        "subject-inventory-recovery",
+        "tenant-inventory-recovery");
   }
 
   private static RuntimeException catchFailure(Runnable action) {

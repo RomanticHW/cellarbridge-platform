@@ -37,6 +37,7 @@ class ArchitectureRulesTest {
           "quotation",
           "trade_order",
           "fulfillment",
+          "exception_center",
           "platform_event");
   private static final ArchRule DOMAIN_ISOLATION =
       noClasses()

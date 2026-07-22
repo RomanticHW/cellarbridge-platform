@@ -706,7 +706,7 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
                 """
                 WITH application_schema(name) AS (VALUES
                   ('identity_access'),('partner'),('catalog'),('inventory'),('trade_planning'),
-                  ('quotation'),('trade_order'),('fulfillment'),('platform_event')
+                  ('quotation'),('trade_order'),('fulfillment'),('exception_center'),('platform_event')
                 ), global_registry(table_schema,table_name) AS (VALUES
                   ('identity_access','tenant'),
                   ('fulfillment','template_version'),('fulfillment','template_step'),
@@ -717,7 +717,8 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
                   ('inventory','warehouse'),('inventory','supply_pool'),('inventory','inventory_lot'),
                   ('trade_planning','evaluation'),('quotation','quotation'),
                   ('quotation','quotation_revision'),('trade_order','trade_order'),
-                  ('fulfillment','fulfillment_plan'),('fulfillment','fulfillment_step')
+                  ('fulfillment','fulfillment_plan'),('fulfillment','fulfillment_step'),
+                  ('exception_center','exception_case'),('exception_center','work_item')
                 ), owned AS (
                   SELECT table_schema, table_name FROM information_schema.tables
                    WHERE table_type = 'BASE TABLE'

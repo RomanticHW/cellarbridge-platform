@@ -275,6 +275,24 @@ class FulfillmentOrchestrationIntegrationTest extends PostgresIntegrationTestSup
     assertThat(sla.markOverdue(20)).isEqualTo(1);
     assertThat(sla.markOverdue(20)).isZero();
     assertThat(stepStatus(overdueStep)).isEqualTo("OVERDUE");
+    try (TenantContextHolder.Scope ignored = contexts.open(operator(TENANT))) {
+      ActionResult resumed =
+          service.resumeOverdue(
+              overduePlan,
+              overdueStep,
+              key("overdue", "resume"),
+              "Rebase the step window after operator review");
+      ActionResult replayed =
+          service.resumeOverdue(
+              overduePlan,
+              overdueStep,
+              key("overdue", "resume"),
+              "Rebase the step window after operator review");
+      assertThat(resumed.stepStatus()).isEqualTo(FulfillmentStepStatus.READY);
+      assertThat(replayed.replayed()).isTrue();
+    }
+    assertThat(stepStatus(overdueStep)).isEqualTo("READY");
+    assertThat(sla.markOverdue(20)).isZero();
   }
 
   @Test

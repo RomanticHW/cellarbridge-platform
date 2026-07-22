@@ -18,6 +18,8 @@ public interface InventoryReservationRepository {
 
   Optional<ReservationAggregate> findById(TenantId tenantId, UUID reservationId);
 
+  Optional<ReservationAggregate> findByIdForUpdate(TenantId tenantId, UUID reservationId);
+
   Optional<ReservationAggregate> findByRequestHash(TenantId tenantId, String requestHash);
 
   void updateState(TenantId tenantId, Reservation reservation, long expectedVersion);

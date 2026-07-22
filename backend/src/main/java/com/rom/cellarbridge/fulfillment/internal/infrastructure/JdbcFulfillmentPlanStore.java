@@ -444,6 +444,36 @@ public class JdbcFulfillmentPlanStore implements FulfillmentPlanStore {
   }
 
   @Override
+  public void resumeOverdueStep(
+      TenantId tenantId,
+      Step before,
+      FulfillmentStepStatus status,
+      Instant plannedStartAt,
+      Instant dueAt,
+      Instant startedAt) {
+    int updated =
+        jdbc.update(
+            """
+            UPDATE fulfillment.fulfillment_step
+               SET status = :status, overdue_from_status = NULL,
+                   planned_start_at = :plannedStartAt, due_at = :dueAt,
+                   started_at = :startedAt, completed_at = NULL,
+                   failure_code = NULL, safe_message = NULL,
+                   version = version + 1
+             WHERE tenant_id = :tenantId AND plan_id = :planId AND id = :stepId
+               AND status = 'OVERDUE' AND version = :version
+            """,
+            params(tenantId, before.planId())
+                .addValue("stepId", before.id())
+                .addValue("status", status.name())
+                .addValue("plannedStartAt", timestamp(plannedStartAt))
+                .addValue("dueAt", timestamp(dueAt))
+                .addValue("startedAt", nullableTimestamp(startedAt))
+                .addValue("version", before.version()));
+    if (updated != 1) throw new FulfillmentStorageConflict();
+  }
+
+  @Override
   public void updatePlan(
       TenantId tenantId, Plan before, FulfillmentStatus status, Instant completedAt, Instant at) {
     int updated =

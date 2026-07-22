@@ -25,6 +25,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.HexFormat;
@@ -249,6 +250,83 @@ public class FulfillmentPlanService {
     }
     ActionResult result =
         apply(context.tenantId(), plan, step, effectiveAction, effectiveReason, now);
+    store.completeCommand(context.tenantId(), command.id(), json(result), now);
+    return result;
+  }
+
+  @Transactional
+  ActionResult resumeOverdue(UUID planId, UUID stepId, String idempotencyKey, String reason) {
+    TenantContext context = operatingContext();
+    if (reason == null || reason.isBlank() || reason.length() > 500) {
+      throw new FulfillmentProblem("VALIDATION_FAILED", "A bounded recovery reason is required");
+    }
+    String keyHash = keyHash(idempotencyKey);
+    String action = "START";
+    String requestHash =
+        digest(
+            context.tenantId().value()
+                + "|"
+                + context.userId()
+                + "|"
+                + planId
+                + "|"
+                + stepId
+                + "|"
+                + action
+                + "|"
+                + reason);
+    Command existing = store.command(context.tenantId(), planId, keyHash).orElse(null);
+    if (existing != null) return replay(existing, stepId, action, requestHash);
+
+    Plan plan =
+        store.find(context.tenantId(), planId, true).orElseThrow(FulfillmentPlanService::notFound);
+    Step step =
+        store.steps(context.tenantId(), plan.id()).stream()
+            .filter(candidate -> candidate.id().equals(stepId))
+            .findFirst()
+            .orElseThrow(FulfillmentPlanService::notFound);
+    requireOwner(context, step);
+    if (step.status() != FulfillmentStepStatus.OVERDUE
+        || !Set.of(FulfillmentStepStatus.READY, FulfillmentStepStatus.IN_PROGRESS)
+            .contains(step.overdueFrom())) {
+      invalidState();
+    }
+    Instant now = max(clock.instant(), plan.updatedAt());
+    Command command =
+        store.claim(
+            context.tenantId(),
+            plan.id(),
+            step.id(),
+            action,
+            keyHash,
+            requestHash,
+            context.userId(),
+            now);
+    if (!command.created()) return replay(command, stepId, action, requestHash);
+
+    FulfillmentStepStatus recoveredStatus = step.overdueFrom();
+    Duration recoveryWindow = Duration.between(step.plannedStartAt(), step.dueAt());
+    if (recoveryWindow.isNegative() || recoveryWindow.isZero()) {
+      throw new IllegalStateException("Fulfillment step recovery window is invalid");
+    }
+    Instant plannedStartAt =
+        recoveredStatus == FulfillmentStepStatus.READY ? now : step.plannedStartAt();
+    store.resumeOverdueStep(
+        context.tenantId(),
+        step,
+        recoveredStatus,
+        plannedStartAt,
+        now.plus(recoveryWindow),
+        step.startedAt());
+    store.updatePlan(context.tenantId(), plan, FulfillmentStatus.IN_PROGRESS, null, now);
+    ActionResult result =
+        new ActionResult(
+            plan.id(),
+            step.id(),
+            recoveredStatus,
+            FulfillmentStatus.IN_PROGRESS,
+            plan.version() + 1,
+            false);
     store.completeCommand(context.tenantId(), command.id(), json(result), now);
     return result;
   }
@@ -495,8 +573,12 @@ public class FulfillmentPlanService {
   }
 
   private ActionResult replay(Command command, UUID stepId, Action action, String requestHash) {
+    return replay(command, stepId, action.name(), requestHash);
+  }
+
+  private ActionResult replay(Command command, UUID stepId, String action, String requestHash) {
     if (!command.stepId().equals(stepId)
-        || !command.action().equals(action.name())
+        || !command.action().equals(action)
         || !command.requestHash().equals(requestHash)) {
       throw new FulfillmentProblem(
           "IDEMPOTENCY_KEY_REUSED", "The idempotency key identifies a different request");
