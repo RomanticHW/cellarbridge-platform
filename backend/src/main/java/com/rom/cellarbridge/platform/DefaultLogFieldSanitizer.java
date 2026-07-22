@@ -10,7 +10,19 @@ public final class DefaultLogFieldSanitizer implements LogFieldSanitizer {
   private static final String REDACTED = "[redacted]";
   private static final int MAX_LENGTH = 256;
   private static final Set<String> SENSITIVE_FIELDS =
-      Set.of("authorization", "password", "secret", "token", "access_token", "refresh_token");
+      Set.of(
+          "authorization",
+          "password",
+          "secret",
+          "token",
+          "access_token",
+          "refresh_token",
+          "body",
+          "cost",
+          "margin",
+          "email",
+          "phone",
+          "personal");
 
   @Override
   public String sanitize(String fieldName, String value) {
