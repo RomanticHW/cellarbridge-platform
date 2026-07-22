@@ -13,7 +13,8 @@
 - quote → order：`(tenant_id, source_quotation_id)`；
 - order → reservation：`(tenant_id, order_id)`；
 - order → fulfillment plan：`(tenant_id, order_id, template_version)`；
-- receivable trigger：`(tenant_id, trigger_type, trigger_id)`；
+- receivable business identity：`(tenant_id, order_id, trigger_policy_code, trigger_policy_version)`；
+- receivable trigger delivery：`(tenant_id, trigger_type, trigger_id)`；
 - exception open：source + type + open scope。
 
 ### 客户端 Idempotency-Key
@@ -78,7 +79,12 @@ on unique conflict -> re-read -> validate hash -> return
 
 ## 7. 付款
 
-外部参考号 + payer/source scope 为业务幂等键；HTTP key 为传输幂等。两者都需要。相同参考号金额/币种不同返回冲突。
+当前付款业务幂等键为 `(tenant_id, external_reference)`；HTTP key 为同租户传输幂等键，
+两者都需要。服务在事务内对 key 与 reference 获取数据库 advisory lock，再读取既有事实，
+避免并发请求把唯一约束异常暴露为不稳定结果。相同 reference 与相同规范化 payload 返回当前
+应收投影并带 `Idempotency-Replayed: true`；金额、币种、日期、方式、备注或目标应收不同返回
+`PAYMENT_REFERENCE_REUSED`。冲正使用 `(tenant_id, Idempotency-Key hash)`，相同 payload 可重放，
+不同 payload 返回 `IDEMPOTENCY_KEY_REUSED`。
 
 ## 8. 保留
 

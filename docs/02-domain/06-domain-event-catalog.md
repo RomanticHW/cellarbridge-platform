@@ -76,7 +76,7 @@ subjectType, subjectId, payload, metadata
 
 | 事件 | 消费者 |
 |---|---|
-| `TradeOrderCreatedV1` | quotation（回写订单链接并最终转为 `CONVERTED`）, inventory, audit, reporting |
+| `TradeOrderCreatedV1` | quotation（回写订单链接并最终转为 `CONVERTED`）, inventory, settlement, audit, reporting |
 
 pre-1.0 Current V1 携带完整 Supply Decision 与 `allocationMode`；Legacy V1 同时省略 Root 与全部行模式，且只能形成 `LEGACY_UNVERIFIED` Order。
 | `TradeOrderReservationConfirmedV1` | reporting, notification |
@@ -119,6 +119,9 @@ pre-1.0 Current V1 携带完整 Supply Decision 与 `allocationMode`；Legacy V1
 | `ExceptionClosedV1` | reporting |
 
 ### Settlement
+
+Settlement 先消费 `TradeOrderCreatedV1` 保存不可变商业快照，再按版本化策略消费
+`FulfillmentCompletedV1` 创建应收；不反向读取 Trade Order 或 Fulfillment 表。
 
 | 事件 | 消费者 |
 |---|---|

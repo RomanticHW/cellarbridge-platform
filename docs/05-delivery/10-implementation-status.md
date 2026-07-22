@@ -40,7 +40,8 @@ Status date: **2026-07-22**
 | Inventory reservation | Available | B1/B2 原子预占与订单 outcome；C1 V17 command/audit、actor-scoped request hash、Reservation/Allocation 锁、NESTED savepoint 与条件 Lot SQL；C2 tenant-scoped Reservation API、warehouse-assignment exact 投影、React Order workbench、组件测试与真实 OIDC/PostgreSQL E2E |
 | Fulfillment orchestration | Available | V18 路线模板与冻结快照；依赖动作、版本并发、幂等与 SLA；模拟适配器；Trade Order 联动；OpenAPI/事件契约；React board/detail/customer milestones；PostgreSQL、组件和 Playwright 证据 |
 | Exception Center and recovery | Available | V19 去重 case/occurrence/history/recovery/work-item；库存失败、履约失败/逾期与技术投递检测；源状态验证的库存重试、履约重试/恢复和 publication 重放；权限/租户/掩码边界；OpenAPI 1.10/generated client；React queue/detail；PostgreSQL、组件与真实 Playwright 证据 |
-| Settlement/reporting | Designed | implementation not started |
+| Settlement receivables and payments | Available | V20 版本化触发策略、订单商业快照、唯一应收、`numeric(19,4)` 余额、不可变付款/多次部分冲正、逾期批锁、可靠事件；OpenAPI 1.11/AsyncAPI 1.4/generated client；Finance/Buyer/Auditor/System Operator 边界；React queue/detail/dialog；PostgreSQL、组件与真实 OIDC Playwright 证据 |
+| Audit/reporting dashboards | Designed | Task 12 尚未实现 |
 | Architecture fitness functions | Partially available | Modulith、domain/controller/public-contract、Catalog/Inventory 单位与 migration 核心规则已执行；shared-kernel、运行和性能门禁仍按 fitness status 分为 Partially available/Planned |
 | Kafka/Redis/OTel/Prometheus/Grafana full profile | Planned | no current runtime dependency or compose service |
 | ECharts dashboards | Planned | ECharts is not installed；dashboard slice remains Task 12 |
@@ -48,7 +49,7 @@ Status date: **2026-07-22**
 
 ## 3. 声明
 
-当前基线已在 Quotation、Current/Legacy Event 和 Trade Order 中保存一致决策证据；Task 08 Inventory reservation、Task 09 Fulfillment orchestration 与 Task 10 Exception Center 均已可运行。异常中心内部工作台展示去重案例、检测证据、责任人、恢复尝试和技术投递摘要；只有源模块返回可验证状态后才进入 `RESOLVED`，客户与 Buyer 边界不暴露内部异常证据。
+当前基线已在 Quotation、Current/Legacy Event 和 Trade Order 中保存一致决策证据；Task 08 Inventory reservation、Task 09 Fulfillment orchestration、Task 10 Exception Center 与 Task 11 Settlement 均已可运行。结算模块只记录经授权录入的外部付款事实：不发起真实支付，不写会计总账，不开票，也不计算税务；Buyer 只读自己组织摘要，Auditor 默认掩码金额，System Operator 无结算访问权。
 
 ## 4. 追踪模板
 

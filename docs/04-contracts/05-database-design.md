@@ -2,7 +2,8 @@
 
 ## 1. 设计原则
 
-状态边界：Task 07C 堆叠 review 分支由 V2～V14 实现；V13 只改 `quotation`，V14 只改 `trade_order` 并保存 FROZEN/Legacy 订单证据。Reservation、Allocation、Movement、release/consume 与订单 `RESERVED` 仍不可用。
+状态边界：V2～V20 已覆盖身份、交易、库存预占、履约、异常和结算纵向切片；历史迁移不可重写，
+当前结算能力只记录外部付款事实，不连接真实支付、总账、发票或税务系统。
 
 - PostgreSQL 18；
 - module schema ownership；
@@ -34,6 +35,8 @@ erDiagram
     FULFILLMENT_PLAN ||--o{ FULFILLMENT_MILESTONE : produces
     EXCEPTION_CASE ||--o{ RECOVERY_ATTEMPT : has
     RECEIVABLE ||--o{ PAYMENT_RECORD : records
+    PAYMENT_RECORD ||--o{ PAYMENT_REVERSAL : reverses
+    RECEIVABLE ||--o{ RECEIVABLE_HISTORY : traces
 ```
 
 图中跨模块关系为逻辑 ID，不等于 FK。
@@ -105,6 +108,22 @@ erDiagram
 
 - id；tenant；number；order_id；route_code；template_code/version；status；planned/actual times；version。
 - unique `(tenant, order_id)` P1。
+
+### Settlement-owned facts
+
+- `receivable_trigger_policy`：配置唯一 active 的触发策略，保存 code、version 和
+  `FULFILLMENT_COMPLETED` trigger type；新策略通过新版本演进，不重解释历史应收。
+- `order_snapshot`：从 `TradeOrderCreatedV1` 保存 tenant/order/customer/currency/amount/payment term、
+  source event/hash 和触发策略快照；不与 Trade Order 建跨 schema FK。
+- `receivable`：`(tenant_id, order_id, trigger_policy_code, trigger_policy_version)` 与
+  `(tenant_id, trigger_type, trigger_id)` 双唯一；金额统一 `numeric(19,4)`，余额由约束校验，
+  version 支持 `If-Match` 并发控制。
+- `payment_record`：`(tenant_id, external_reference)` 和幂等键摘要唯一；只追加，数据库 rewrite rule
+  将 update/delete 改写为空操作。
+- `payment_reversal`：引用同 tenant、同 receivable 的原付款，允许多次部分冲正；只追加且原因必填。
+- `receivable_history`：保存创建、付款、冲正和逾期状态证据；只追加。
+- 逾期扫描使用 `FOR UPDATE SKIP LOCKED` 的有界批次；付款和扫描都锁定应收行，最终状态由余额、
+  due date 与注入 Clock 统一推导。
 
 ### `platform_event.event_publication`
 
