@@ -1,0 +1,21 @@
+{
+  "id": "11000000-0000-4000-8000-000000000011",
+  "type": "cellarbridge.settlement.receivable-overdue.v1",
+  "specVersion": "1.0",
+  "occurredAt": "2026-09-14T00:00:01Z",
+  "tenantId": "10000000-0000-4000-8000-000000000001",
+  "producer": "settlement",
+  "subject": { "type": "RECEIVABLE", "id": "91000000-0000-4000-8000-000000000001", "number": "REC-202607-000001" },
+  "correlationId": "31000000-0000-4000-8000-000000000001",
+  "causationId": "11000000-0000-4000-8000-000000000008",
+  "payload": {
+    "receivableId": "91000000-0000-4000-8000-000000000001",
+    "receivableNumber": "REC-202607-000001",
+    "orderId": "51000000-0000-4000-8000-000000000001",
+    "orderNumber": "ORD-202607-000001",
+    "dueDate": "2026-09-13",
+    "outstandingAmount": "88400.0000",
+    "currency": "CNY",
+    "markedAt": "2026-09-14T00:00:01Z"
+  }
+}

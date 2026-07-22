@@ -1,7 +1,7 @@
 asyncapi: 3.0.0
 info:
   title: CellarBridge Integration Events
-  version: 1.3.0-design
+  version: 1.4.0
   description: |
     Versioned integration-event contract for the CellarBridge full profile.
     Delivery semantics are at-least-once; every consumer must deduplicate by event id.
@@ -95,6 +95,30 @@ channels:
     messages:
       receivableCreated:
         $ref: '#/components/messages/ReceivableCreatedV1'
+  paymentRecorded:
+    address: cellarbridge.settlement.payment-recorded.v1
+    description: An immutable external payment fact was recorded idempotently.
+    messages:
+      paymentRecorded:
+        $ref: '#/components/messages/PaymentRecordedV1'
+  paymentReversed:
+    address: cellarbridge.settlement.payment-reversed.v1
+    description: An immutable reversal corrected part or all of a payment without deleting history.
+    messages:
+      paymentReversed:
+        $ref: '#/components/messages/PaymentReversedV1'
+  receivableOverdue:
+    address: cellarbridge.settlement.receivable-overdue.v1
+    description: A due receivable with a remaining balance was marked overdue.
+    messages:
+      receivableOverdue:
+        $ref: '#/components/messages/ReceivableOverdueV1'
+  receivablePaid:
+    address: cellarbridge.settlement.receivable-paid.v1
+    description: Effective payments reduced the receivable balance to zero.
+    messages:
+      receivablePaid:
+        $ref: '#/components/messages/ReceivablePaidV1'
 operations:
   sendQuotationAccepted:
     action: send
@@ -246,6 +270,58 @@ operations:
     summary: Notification and reporting consume the event.
     messages:
       - $ref: '#/channels/receivableCreated/messages/receivableCreated'
+  sendPaymentRecorded:
+    action: send
+    channel:
+      $ref: '#/channels/paymentRecorded'
+    messages:
+      - $ref: '#/channels/paymentRecorded/messages/paymentRecorded'
+  receivePaymentRecorded:
+    action: receive
+    channel:
+      $ref: '#/channels/paymentRecorded'
+    summary: Reporting and audit consume the event.
+    messages:
+      - $ref: '#/channels/paymentRecorded/messages/paymentRecorded'
+  sendPaymentReversed:
+    action: send
+    channel:
+      $ref: '#/channels/paymentReversed'
+    messages:
+      - $ref: '#/channels/paymentReversed/messages/paymentReversed'
+  receivePaymentReversed:
+    action: receive
+    channel:
+      $ref: '#/channels/paymentReversed'
+    summary: Reporting and audit consume the event.
+    messages:
+      - $ref: '#/channels/paymentReversed/messages/paymentReversed'
+  sendReceivableOverdue:
+    action: send
+    channel:
+      $ref: '#/channels/receivableOverdue'
+    messages:
+      - $ref: '#/channels/receivableOverdue/messages/receivableOverdue'
+  receiveReceivableOverdue:
+    action: receive
+    channel:
+      $ref: '#/channels/receivableOverdue'
+    summary: Notification and reporting consume the event.
+    messages:
+      - $ref: '#/channels/receivableOverdue/messages/receivableOverdue'
+  sendReceivablePaid:
+    action: send
+    channel:
+      $ref: '#/channels/receivablePaid'
+    messages:
+      - $ref: '#/channels/receivablePaid/messages/receivablePaid'
+  receiveReceivablePaid:
+    action: receive
+    channel:
+      $ref: '#/channels/receivablePaid'
+    summary: Order and reporting consume the event.
+    messages:
+      - $ref: '#/channels/receivablePaid/messages/receivablePaid'
 components:
   messages:
     QuotationAcceptedV1:
@@ -494,6 +570,42 @@ components:
         $ref: '#/components/schemas/EventHeaders'
       payload:
         $ref: '../schemas/events/receivable-created-v1.schema.json'
+    PaymentRecordedV1:
+      name: PaymentRecordedV1
+      title: Payment recorded
+      correlationId:
+        location: $message.payload#/correlationId
+      headers:
+        $ref: '#/components/schemas/EventHeaders'
+      payload:
+        $ref: '../schemas/events/payment-recorded-v1.schema.json'
+    PaymentReversedV1:
+      name: PaymentReversedV1
+      title: Payment reversed
+      correlationId:
+        location: $message.payload#/correlationId
+      headers:
+        $ref: '#/components/schemas/EventHeaders'
+      payload:
+        $ref: '../schemas/events/payment-reversed-v1.schema.json'
+    ReceivableOverdueV1:
+      name: ReceivableOverdueV1
+      title: Receivable overdue
+      correlationId:
+        location: $message.payload#/correlationId
+      headers:
+        $ref: '#/components/schemas/EventHeaders'
+      payload:
+        $ref: '../schemas/events/receivable-overdue-v1.schema.json'
+    ReceivablePaidV1:
+      name: ReceivablePaidV1
+      title: Receivable paid
+      correlationId:
+        location: $message.payload#/correlationId
+      headers:
+        $ref: '#/components/schemas/EventHeaders'
+      payload:
+        $ref: '../schemas/events/receivable-paid-v1.schema.json'
   schemas:
     EventHeaders:
       type: object

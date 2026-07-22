@@ -42,6 +42,13 @@
             "orderNumber": {
               "type": "string"
             },
+            "partnerId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "partnerNumber": {
+              "type": "string"
+            },
             "originalAmount": {
               "type": "string"
             },
@@ -63,6 +70,13 @@
             "triggerId": {
               "type": "string",
               "format": "uuid"
+            },
+            "triggerPolicyCode": {
+              "type": "string"
+            },
+            "triggerPolicyVersion": {
+              "type": "integer",
+              "minimum": 1
             }
           }
         }

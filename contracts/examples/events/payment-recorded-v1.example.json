@@ -1,0 +1,27 @@
+{
+  "id": "11000000-0000-4000-8000-000000000009",
+  "type": "cellarbridge.settlement.payment-recorded.v1",
+  "specVersion": "1.0",
+  "occurredAt": "2026-08-20T09:00:00Z",
+  "tenantId": "10000000-0000-4000-8000-000000000001",
+  "producer": "settlement",
+  "subject": { "type": "RECEIVABLE", "id": "91000000-0000-4000-8000-000000000001", "number": "REC-202607-000001" },
+  "correlationId": "31000000-0000-4000-8000-000000000001",
+  "causationId": "92000000-0000-4000-8000-000000000001",
+  "payload": {
+    "receivableId": "91000000-0000-4000-8000-000000000001",
+    "receivableNumber": "REC-202607-000001",
+    "orderId": "51000000-0000-4000-8000-000000000001",
+    "orderNumber": "ORD-202607-000001",
+    "paymentId": "92000000-0000-4000-8000-000000000001",
+    "amount": "50000.0000",
+    "currency": "CNY",
+    "method": "BANK_TRANSFER",
+    "externalReference": "BANK-20260820-001",
+    "occurredOn": "2026-08-20",
+    "recordedAt": "2026-08-20T09:00:00Z",
+    "actorId": "11200000-0000-4000-8000-000000000008",
+    "outstandingAmount": "78400.0000",
+    "receivableStatus": "PARTIALLY_PAID"
+  }
+}

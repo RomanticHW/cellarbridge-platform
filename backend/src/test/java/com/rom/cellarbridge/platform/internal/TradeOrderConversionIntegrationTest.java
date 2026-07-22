@@ -706,11 +706,13 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
                 """
                 WITH application_schema(name) AS (VALUES
                   ('identity_access'),('partner'),('catalog'),('inventory'),('trade_planning'),
-                  ('quotation'),('trade_order'),('fulfillment'),('exception_center'),('platform_event')
+                  ('quotation'),('trade_order'),('fulfillment'),('exception_center'),('settlement'),
+                  ('platform_event')
                 ), global_registry(table_schema,table_name) AS (VALUES
                   ('identity_access','tenant'),
                   ('fulfillment','template_version'),('fulfillment','template_step'),
-                  ('fulfillment','template_step_dependency')
+                  ('fulfillment','template_step_dependency'),
+                  ('settlement','receivable_trigger_policy')
                 ), mutable(table_schema,table_name) AS (VALUES
                   ('identity_access','tenant'),('identity_access','user_mapping'),
                   ('partner','partner'),('catalog','wine_product'),('catalog','sku'),
@@ -718,7 +720,8 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
                   ('trade_planning','evaluation'),('quotation','quotation'),
                   ('quotation','quotation_revision'),('trade_order','trade_order'),
                   ('fulfillment','fulfillment_plan'),('fulfillment','fulfillment_step'),
-                  ('exception_center','exception_case'),('exception_center','work_item')
+                  ('exception_center','exception_case'),('exception_center','work_item'),
+                  ('settlement','receivable')
                 ), owned AS (
                   SELECT table_schema, table_name FROM information_schema.tables
                    WHERE table_type = 'BASE TABLE'

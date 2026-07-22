@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cellarbridge.dev/schemas/events/payment-reversed-v1.schema.json",
+  "title": "PaymentReversedV1",
+  "allOf": [
+    { "$ref": "event-envelope.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "type": { "const": "cellarbridge.settlement.payment-reversed.v1" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "receivableId", "receivableNumber", "orderId", "orderNumber", "paymentId",
+            "reversalId", "amount", "currency", "safeReason", "reversedAt", "actorId",
+            "outstandingAmount", "receivableStatus"
+          ],
+          "properties": {
+            "receivableId": { "type": "string", "format": "uuid" },
+            "receivableNumber": { "type": "string" },
+            "orderId": { "type": "string", "format": "uuid" },
+            "orderNumber": { "type": "string" },
+            "paymentId": { "type": "string", "format": "uuid" },
+            "reversalId": { "type": "string", "format": "uuid" },
+            "amount": { "type": "string", "pattern": "^[0-9]+(\\.[0-9]{1,4})?$" },
+            "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+            "safeReason": { "type": "string", "minLength": 5, "maxLength": 500 },
+            "reversedAt": { "type": "string", "format": "date-time" },
+            "actorId": { "type": "string", "format": "uuid" },
+            "outstandingAmount": { "type": "string", "pattern": "^[0-9]+(\\.[0-9]{1,4})?$" },
+            "receivableStatus": { "enum": ["OPEN", "PARTIALLY_PAID", "PAID", "OVERDUE"] }
+          }
+        }
+      }
+    }
+  ]
+}

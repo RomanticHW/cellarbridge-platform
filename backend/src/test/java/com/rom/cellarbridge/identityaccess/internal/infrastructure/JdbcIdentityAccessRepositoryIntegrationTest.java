@@ -32,16 +32,20 @@ class JdbcIdentityAccessRepositoryIntegrationTest extends PostgresIntegrationTes
     assertThat(repository.findPublicUserIds(TENANT_A, "north.", 2, 0))
         .containsExactly(
             UUID.fromString("11200000-0000-4000-8000-000000000004"),
-            UUID.fromString("11200000-0000-4000-8000-000000000002"));
+            UUID.fromString("11200000-0000-4000-8000-000000000009"));
     assertThat(repository.findPublicUserIds(TENANT_A, "north.", 2, 2))
+        .containsExactly(
+            UUID.fromString("11200000-0000-4000-8000-000000000002"),
+            UUID.fromString("11200000-0000-4000-8000-000000000008"));
+    assertThat(repository.findPublicUserIds(TENANT_A, "north.", 2, 4))
         .containsExactly(
             UUID.fromString("11200000-0000-4000-8000-000000000003"),
             UUID.fromString("11200000-0000-4000-8000-000000000007"));
-    assertThat(repository.findPublicUserIds(TENANT_A, "north.", 2, 4))
+    assertThat(repository.findPublicUserIds(TENANT_A, "north.", 2, 6))
         .containsExactly(
             UUID.fromString("11200000-0000-4000-8000-000000000001"),
             UUID.fromString("11200000-0000-4000-8000-000000000099"));
-    assertThat(repository.findPublicUserIds(TENANT_A, "north.", 2, 6))
+    assertThat(repository.findPublicUserIds(TENANT_A, "north.", 2, 8))
         .containsExactly(
             UUID.fromString("11200000-0000-4000-8000-000000000005"),
             UUID.fromString("11200000-0000-4000-8000-000000000006"));
