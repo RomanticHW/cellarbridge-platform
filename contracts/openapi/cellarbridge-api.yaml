@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: CellarBridge API
-  version: 1.11.0
+  version: 1.12.0
   summary: Contract baseline for B2B wine quotation, fulfillment, exception recovery and settlement
   description: |
     This contract remains the design-first integration baseline for CellarBridge. All examples are synthetic.
@@ -1308,6 +1308,9 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Dashboard' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
   /audit/entries:
     get:
       tags: [Audit]
@@ -1327,12 +1330,92 @@ paths:
         - name: correlationId
           in: query
           schema: { type: string, format: uuid }
+        - name: actorId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: action
+          in: query
+          schema: { type: string, maxLength: 120 }
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
       responses:
         '200':
           description: Audit page
           content:
             application/json:
               schema: { $ref: '#/components/schemas/AuditPage' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
+  /timeline:
+    get:
+      tags: [Audit]
+      operationId: getUnifiedTimeline
+      summary: Get an authorized, customer-safe business timeline
+      x-requirements: [FR-AUD-002]
+      parameters:
+        - name: subjectType
+          in: query
+          required: true
+          schema: { type: string, enum: [PARTNER, QUOTATION, TRADE_ORDER, ORDER] }
+        - name: subjectId
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Unified timeline projection
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TimelinePage' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
+  /work-items:
+    get:
+      tags: [Reporting]
+      operationId: listWorkItems
+      summary: List personal or authorized team work items
+      x-requirements: [FR-REP-002]
+      x-permissions: [reporting:read]
+      parameters:
+        - name: status
+          in: query
+          schema:
+            { type: array, items: { type: string, enum: [OPEN, CLAIMED, COMPLETED, CANCELLED] } }
+        - name: priority
+          in: query
+          schema: { type: array, items: { type: string, enum: [LOW, MEDIUM, HIGH, CRITICAL] } }
+        - name: type
+          in: query
+          schema: { type: array, items: { type: string } }
+        - name: dueFrom
+          in: query
+          schema: { type: string, format: date-time }
+        - name: dueTo
+          in: query
+          schema: { type: string, format: date-time }
+        - name: subjectNumber
+          in: query
+          schema: { type: string, maxLength: 80 }
+        - name: scope
+          in: query
+          schema: { type: string, enum: [personal, team], default: personal }
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Permission-filtered work queue
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WorkItemPage' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
 components:
   securitySchemes:
     bearerAuth:
@@ -1553,13 +1636,25 @@ components:
       enum: [SH_GENERAL_TRADE, NB_BONDED_B2B, HK_FREE_TRADE]
     SupplyType:
       type: string
-      enum: [DOMESTIC_ON_HAND, BONDED_ON_HAND, HONG_KONG_ON_HAND, IN_TRANSIT_PRESALE, OVERSEAS_SOURCING]
+      enum:
+        [DOMESTIC_ON_HAND, BONDED_ON_HAND, HONG_KONG_ON_HAND, IN_TRANSIT_PRESALE, OVERSEAS_SOURCING]
     AvailabilityClass:
       type: string
       enum: [AVAILABLE, LIMITED, UNAVAILABLE, REQUIRES_CONFIRMATION]
     PartnerSummary:
       type: object
-      required: [id, number, legalName, displayName, status, defaultCurrency, routeEligibility, version, updatedAt]
+      required:
+        [
+          id,
+          number,
+          legalName,
+          displayName,
+          status,
+          defaultCurrency,
+          routeEligibility,
+          version,
+          updatedAt,
+        ]
       properties:
         id: { type: string, format: uuid }
         number: { type: string }
@@ -1618,7 +1713,8 @@ components:
         legalName: { type: string, maxLength: 200 }
         displayName: { type: string, maxLength: 100 }
         registrationIdentifier: { type: string, maxLength: 100 }
-        type: { type: string, enum: [RESTAURANT_GROUP, DISTRIBUTOR, RETAILER, CORPORATE_BUYER, OTHER] }
+        type:
+          { type: string, enum: [RESTAURANT_GROUP, DISTRIBUTOR, RETAILER, CORPORATE_BUYER, OTHER] }
         defaultCurrency: { type: string, pattern: '^$|^[A-Z]{3}$' }
         requestedPaymentTermDays: { type: integer, minimum: 0, maximum: 180 }
         requestedRouteCodes:
@@ -1642,7 +1738,8 @@ components:
         legalName: { type: string, maxLength: 200 }
         displayName: { type: string, maxLength: 100 }
         registrationIdentifier: { type: string, maxLength: 100 }
-        type: { type: string, enum: [RESTAURANT_GROUP, DISTRIBUTOR, RETAILER, CORPORATE_BUYER, OTHER] }
+        type:
+          { type: string, enum: [RESTAURANT_GROUP, DISTRIBUTOR, RETAILER, CORPORATE_BUYER, OTHER] }
         defaultCurrency: { type: string, pattern: '^$|^[A-Z]{3}$' }
         requestedPaymentTermDays: { type: integer, minimum: 0, maximum: 180 }
         requestedRouteCodes:
@@ -1661,7 +1758,17 @@ components:
       allOf:
         - $ref: '#/components/schemas/PartnerSummary'
         - type: object
-          required: [type, contacts, billingAddress, allowedActions, requestedServiceRegions, requestedCurrencies, duplicateWarnings, timeline]
+          required:
+            [
+              type,
+              contacts,
+              billingAddress,
+              allowedActions,
+              requestedServiceRegions,
+              requestedCurrencies,
+              duplicateWarnings,
+              timeline,
+            ]
           properties:
             type:
               type: [string, 'null']
@@ -1783,7 +1890,18 @@ components:
         updatedAt: { type: string, format: date-time }
     ExactLotAvailability:
       type: object
-      required: [lotId, lotCode, warehouseLabel, onHandQuantity, reservedQuantity, availableQuantity, warehouseAllocationPriority, warehouseVersion, dataAsOf]
+      required:
+        [
+          lotId,
+          lotCode,
+          warehouseLabel,
+          onHandQuantity,
+          reservedQuantity,
+          availableQuantity,
+          warehouseAllocationPriority,
+          warehouseVersion,
+          dataAsOf,
+        ]
       properties:
         lotId: { type: string, format: uuid }
         lotCode: { type: string }
@@ -1797,7 +1915,18 @@ components:
         dataAsOf: { type: string, format: date-time }
     SupplySummary:
       type: object
-      required: [supplyPoolId, supplyType, quantityUnit, locationLabel, availabilityLevel, displayQuantityBand, automaticallyReservable, exactLots, updatedAt]
+      required:
+        [
+          supplyPoolId,
+          supplyType,
+          quantityUnit,
+          locationLabel,
+          availabilityLevel,
+          displayQuantityBand,
+          automaticallyReservable,
+          exactLots,
+          updatedAt,
+        ]
       properties:
         supplyPoolId: { type: string, format: uuid }
         supplyType: { $ref: '#/components/schemas/SupplyType' }
@@ -1838,7 +1967,21 @@ components:
         availabilityDisclaimer: { type: string }
     QuotationStatus:
       type: string
-      enum: [DRAFT, PENDING_APPROVAL, CHANGES_REQUESTED, APPROVED, SENT, ACCEPTED, REJECTED, REJECTED_BY_CUSTOMER, WITHDRAWN, EXPIRED, CONVERTED, CANCELLED]
+      enum:
+        [
+          DRAFT,
+          PENDING_APPROVAL,
+          CHANGES_REQUESTED,
+          APPROVED,
+          SENT,
+          ACCEPTED,
+          REJECTED,
+          REJECTED_BY_CUSTOMER,
+          WITHDRAWN,
+          EXPIRED,
+          CONVERTED,
+          CANCELLED,
+        ]
     QuotationSupplyDecisionStatus:
       type: string
       enum: [UNDECIDED, FROZEN, LEGACY_REEVALUATION_REQUIRED]
@@ -1903,7 +2046,16 @@ components:
           format: uuid
     LineSupplyDecision:
       type: object
-      required: [quotationLineId, skuId, requestedQuantity, quantityUnit, allocationMode, supplyPoolId, supplyType]
+      required:
+        [
+          quotationLineId,
+          skuId,
+          requestedQuantity,
+          quantityUnit,
+          allocationMode,
+          supplyPoolId,
+          supplyType,
+        ]
       properties:
         quotationLineId: { type: string, format: uuid }
         skuId: { type: string, format: uuid }
@@ -1914,7 +2066,18 @@ components:
         supplyType: { $ref: '#/components/schemas/SupplyType' }
     SupplyDecisionSummary:
       type: object
-      required: [schemaVersion, policyVersion, decidedAt, sourceRouteEvaluationId, sourceRouteInputHash, selectedRouteCode, inventoryDataAsOf, decisionHash, lineDecisions]
+      required:
+        [
+          schemaVersion,
+          policyVersion,
+          decidedAt,
+          sourceRouteEvaluationId,
+          sourceRouteInputHash,
+          selectedRouteCode,
+          inventoryDataAsOf,
+          decisionHash,
+          lineDecisions,
+        ]
       properties:
         schemaVersion: { type: integer, minimum: 1 }
         policyVersion: { type: string, minLength: 1, maxLength: 80 }
@@ -1959,7 +2122,8 @@ components:
           items: { $ref: '#/components/schemas/RouteRejection' }
     RouteEvaluation:
       type: object
-      required: [evaluationId, policyVersion, evaluatedAt, candidates, recommendedRouteCode, inputHash]
+      required:
+        [evaluationId, policyVersion, evaluatedAt, candidates, recommendedRouteCode, inputHash]
       properties:
         evaluationId: { type: string, format: uuid }
         policyVersion: { type: string }
@@ -1968,8 +2132,10 @@ components:
         candidates:
           type: array
           items: { $ref: '#/components/schemas/RouteCandidate' }
-        recommendedRouteCode: { oneOf: [{ $ref: '#/components/schemas/TradeRouteCode' }, { type: 'null' }] }
-        selectedRouteCode: { oneOf: [{ $ref: '#/components/schemas/TradeRouteCode' }, { type: 'null' }] }
+        recommendedRouteCode:
+          { oneOf: [{ $ref: '#/components/schemas/TradeRouteCode' }, { type: 'null' }] }
+        selectedRouteCode:
+          { oneOf: [{ $ref: '#/components/schemas/TradeRouteCode' }, { type: 'null' }] }
         override:
           type: [object, 'null']
           properties:
@@ -1990,7 +2156,20 @@ components:
         message: { type: string }
     QuotationSummary:
       type: object
-      required: [id, number, partnerId, partnerName, revision, status, total, expiresAt, ownerId, version, updatedAt]
+      required:
+        [
+          id,
+          number,
+          partnerId,
+          partnerName,
+          revision,
+          status,
+          total,
+          expiresAt,
+          ownerId,
+          version,
+          updatedAt,
+        ]
       properties:
         id: { type: string, format: uuid }
         number: { type: string }
@@ -1999,7 +2178,8 @@ components:
         revision: { type: integer, minimum: 1 }
         status: { $ref: '#/components/schemas/QuotationStatus' }
         total: { $ref: '#/components/schemas/Money' }
-        selectedRouteCode: { oneOf: [{ $ref: '#/components/schemas/TradeRouteCode' }, { type: 'null' }] }
+        selectedRouteCode:
+          { oneOf: [{ $ref: '#/components/schemas/TradeRouteCode' }, { type: 'null' }] }
         expiresAt: { type: string, format: date-time }
         ownerId: { type: string, format: uuid }
         version: { type: integer, format: int64 }
@@ -2016,7 +2196,20 @@ components:
       allOf:
         - $ref: '#/components/schemas/QuotationSummary'
         - type: object
-          required: [partnerSnapshot, requestedDeliveryDate, paymentTermDays, deliveryAddress, lines, subtotal, total, supplyDecisionStatus, approvalRequirements, allowedActions, timeline]
+          required:
+            [
+              partnerSnapshot,
+              requestedDeliveryDate,
+              paymentTermDays,
+              deliveryAddress,
+              lines,
+              subtotal,
+              total,
+              supplyDecisionStatus,
+              approvalRequirements,
+              allowedActions,
+              timeline,
+            ]
           properties:
             partnerSnapshot:
               type: object
@@ -2042,7 +2235,8 @@ components:
             supplyDecisionStatus: { $ref: '#/components/schemas/QuotationSupplyDecisionStatus' }
             supplyDecision:
               oneOf: [{ $ref: '#/components/schemas/SupplyDecisionSummary' }, { type: 'null' }]
-            routeEvaluation: { oneOf: [{ $ref: '#/components/schemas/RouteEvaluation' }, { type: 'null' }] }
+            routeEvaluation:
+              { oneOf: [{ $ref: '#/components/schemas/RouteEvaluation' }, { type: 'null' }] }
             approvalRequirements:
               type: array
               items: { $ref: '#/components/schemas/ApprovalRequirement' }
@@ -2091,7 +2285,25 @@ components:
     PublicQuotation:
       type: object
       additionalProperties: false
-      required: [number, revision, supplierDisplayName, customerDisplayName, status, expiresAt, lines, subtotal, fees, total, deliveryOption, paymentTermDays, termsVersion, termsSummary, allowedActions, decisionReceipt]
+      required:
+        [
+          number,
+          revision,
+          supplierDisplayName,
+          customerDisplayName,
+          status,
+          expiresAt,
+          lines,
+          subtotal,
+          fees,
+          total,
+          deliveryOption,
+          paymentTermDays,
+          termsVersion,
+          termsSummary,
+          allowedActions,
+          decisionReceipt,
+        ]
       properties:
         number: { type: string }
         revision: { type: integer, minimum: 1 }
@@ -2099,7 +2311,11 @@ components:
         supplierDisplayName: { type: string, maxLength: 160 }
         customerPublicId: { type: string, maxLength: 80 }
         customerDisplayName: { type: string, maxLength: 160 }
-        status: { type: string, enum: [SENT, ACCEPTED, REJECTED_BY_CUSTOMER, WITHDRAWN, EXPIRED, CONVERTED] }
+        status:
+          {
+            type: string,
+            enum: [SENT, ACCEPTED, REJECTED_BY_CUSTOMER, WITHDRAWN, EXPIRED, CONVERTED],
+          }
         expiresAt: { type: string, format: date-time }
         lines:
           type: array
@@ -2219,7 +2435,18 @@ components:
         replayed: { type: boolean }
     OrderStatus:
       type: string
-      enum: [PENDING_RESERVATION, RESERVED, RESERVATION_FAILED, READY_FOR_FULFILLMENT, IN_FULFILLMENT, FULFILLED, CANCELLATION_PENDING, CANCELLATION_FAILED, CANCELLED]
+      enum:
+        [
+          PENDING_RESERVATION,
+          RESERVED,
+          RESERVATION_FAILED,
+          READY_FOR_FULFILLMENT,
+          IN_FULFILLMENT,
+          FULFILLED,
+          CANCELLATION_PENDING,
+          CANCELLATION_FAILED,
+          CANCELLED,
+        ]
     OrderMoney:
       type: object
       additionalProperties: false
@@ -2245,7 +2472,19 @@ components:
     OrderSummary:
       type: object
       additionalProperties: false
-      required: [id, number, sourceQuotationNumber, partnerId, partnerName, status, total, routeCode, createdAt, version]
+      required:
+        [
+          id,
+          number,
+          sourceQuotationNumber,
+          partnerId,
+          partnerName,
+          status,
+          total,
+          routeCode,
+          createdAt,
+          version,
+        ]
       properties:
         id: { type: string, format: uuid }
         number: { type: string }
@@ -2306,7 +2545,20 @@ components:
     OrderLineSnapshot:
       type: object
       additionalProperties: false
-      required: [orderLineId, sourceQuotationLineId, skuId, skuCode, description, quantity, netUnitPrice, lineTotal, allocationMode, supplyPoolId, supplyType]
+      required:
+        [
+          orderLineId,
+          sourceQuotationLineId,
+          skuId,
+          skuCode,
+          description,
+          quantity,
+          netUnitPrice,
+          lineTotal,
+          allocationMode,
+          supplyPoolId,
+          supplyType,
+        ]
       properties:
         orderLineId: { type: string, format: uuid }
         sourceQuotationLineId: { type: string, format: uuid }
@@ -2325,7 +2577,18 @@ components:
     OrderCommercialSnapshot:
       type: object
       additionalProperties: false
-      required: [customer, lines, paymentTermDays, acceptedTermsVersion, requestedDeliveryDate, deliveryAddress, route, capturedAt, snapshotHash]
+      required:
+        [
+          customer,
+          lines,
+          paymentTermDays,
+          acceptedTermsVersion,
+          requestedDeliveryDate,
+          deliveryAddress,
+          route,
+          capturedAt,
+          snapshotHash,
+        ]
       properties:
         customer: { $ref: '#/components/schemas/OrderCustomerSnapshot' }
         lines:
@@ -2348,7 +2611,11 @@ components:
       additionalProperties: false
       required: [status, message]
       properties:
-        status: { type: string, enum: [PENDING, CONFIRMED, FAILED, BLOCKED, NOT_STARTED, READY, IN_PROGRESS, COMPLETED] }
+        status:
+          {
+            type: string,
+            enum: [PENDING, CONFIRMED, FAILED, BLOCKED, NOT_STARTED, READY, IN_PROGRESS, COMPLETED],
+          }
         message: { type: string, minLength: 1, maxLength: 240 }
     OrderTimelineEntry:
       type: object
@@ -2365,7 +2632,28 @@ components:
     OrderDetail:
       type: object
       additionalProperties: false
-      required: [id, number, sourceQuotationNumber, partnerId, partnerName, status, total, routeCode, createdAt, version, supplyDecisionStatus, supplyDecision, sourceQuotation, commercialSnapshot, reservation, fulfillment, settlement, timeline, allowedActions]
+      required:
+        [
+          id,
+          number,
+          sourceQuotationNumber,
+          partnerId,
+          partnerName,
+          status,
+          total,
+          routeCode,
+          createdAt,
+          version,
+          supplyDecisionStatus,
+          supplyDecision,
+          sourceQuotation,
+          commercialSnapshot,
+          reservation,
+          fulfillment,
+          settlement,
+          timeline,
+          allowedActions,
+        ]
       properties:
         id: { type: string, format: uuid }
         number: { type: string }
@@ -2396,7 +2684,8 @@ components:
     BuyerOrderSummary:
       type: object
       additionalProperties: false
-      required: [id, number, sourceQuotationNumber, partnerName, status, total, routeCode, createdAt]
+      required:
+        [id, number, sourceQuotationNumber, partnerName, status, total, routeCode, createdAt]
       properties:
         id: { type: string, format: uuid }
         number: { type: string }
@@ -2449,7 +2738,17 @@ components:
     BuyerOrderCommercialSnapshot:
       type: object
       additionalProperties: false
-      required: [customer, lines, paymentTermDays, acceptedTermsVersion, requestedDeliveryDate, deliveryAddress, route, capturedAt]
+      required:
+        [
+          customer,
+          lines,
+          paymentTermDays,
+          acceptedTermsVersion,
+          requestedDeliveryDate,
+          deliveryAddress,
+          route,
+          capturedAt,
+        ]
       properties:
         customer: { $ref: '#/components/schemas/BuyerOrderCustomerSnapshot' }
         lines:
@@ -2471,7 +2770,11 @@ components:
       additionalProperties: false
       required: [status, message]
       properties:
-        status: { type: string, enum: [PENDING, CONFIRMED, FAILED, BLOCKED, NOT_STARTED, READY, IN_PROGRESS, COMPLETED] }
+        status:
+          {
+            type: string,
+            enum: [PENDING, CONFIRMED, FAILED, BLOCKED, NOT_STARTED, READY, IN_PROGRESS, COMPLETED],
+          }
         message: { type: string, minLength: 1, maxLength: 240 }
     BuyerOrderTimelineEntry:
       type: object
@@ -2484,7 +2787,24 @@ components:
     BuyerOrderDetail:
       type: object
       additionalProperties: false
-      required: [id, number, sourceQuotationNumber, partnerName, status, total, routeCode, createdAt, sourceQuotation, commercialSnapshot, reservation, fulfillment, settlement, timeline, allowedActions]
+      required:
+        [
+          id,
+          number,
+          sourceQuotationNumber,
+          partnerName,
+          status,
+          total,
+          routeCode,
+          createdAt,
+          sourceQuotation,
+          commercialSnapshot,
+          reservation,
+          fulfillment,
+          settlement,
+          timeline,
+          allowedActions,
+        ]
       properties:
         id: { type: string, format: uuid }
         number: { type: string }
@@ -2530,7 +2850,23 @@ components:
     InventoryReservationAllocation:
       type: object
       additionalProperties: false
-      required: [id, orderLineId, skuId, allocatedQuantity, releasedQuantity, consumedQuantity, remainingReservedQuantity, quantityUnit, supplyType, supplyPoolId, lotId, warehouseLabel, warehousePriority, warehouseVersion]
+      required:
+        [
+          id,
+          orderLineId,
+          skuId,
+          allocatedQuantity,
+          releasedQuantity,
+          consumedQuantity,
+          remainingReservedQuantity,
+          quantityUnit,
+          supplyType,
+          supplyPoolId,
+          lotId,
+          warehouseLabel,
+          warehousePriority,
+          warehouseVersion,
+        ]
       properties:
         id: { type: string, format: uuid }
         orderLineId: { type: string, format: uuid }
@@ -2564,7 +2900,16 @@ components:
     InventoryReservationShortage:
       type: object
       additionalProperties: false
-      required: [orderLineId, skuId, requestedQuantity, availableQuantity, shortageQuantity, quantityUnit, failureCode]
+      required:
+        [
+          orderLineId,
+          skuId,
+          requestedQuantity,
+          availableQuantity,
+          shortageQuantity,
+          quantityUnit,
+          failureCode,
+        ]
       properties:
         orderLineId: { type: string, format: uuid }
         skuId: { type: string, format: uuid }
@@ -2598,7 +2943,22 @@ components:
     InventoryReservationDetail:
       type: object
       additionalProperties: false
-      required: [id, orderId, status, failureCode, version, createdAt, updatedAt, requestedLines, allocations, shortages, attempts, operations, allowedActions]
+      required:
+        [
+          id,
+          orderId,
+          status,
+          failureCode,
+          version,
+          createdAt,
+          updatedAt,
+          requestedLines,
+          allocations,
+          shortages,
+          attempts,
+          operations,
+          allowedActions,
+        ]
       properties:
         id: { type: string, format: uuid }
         orderId: { type: string, format: uuid }
@@ -2647,7 +3007,8 @@ components:
     InventoryReservationOperationBalance:
       type: object
       additionalProperties: false
-      required: [allocationId, releasedQuantity, consumedQuantity, remainingReservedQuantity, quantityUnit]
+      required:
+        [allocationId, releasedQuantity, consumedQuantity, remainingReservedQuantity, quantityUnit]
       properties:
         allocationId: { type: string, format: uuid }
         releasedQuantity: { type: string }
@@ -2657,7 +3018,20 @@ components:
     InventoryReservationOperationResult:
       type: object
       additionalProperties: false
-      required: [commandId, reservationId, action, replayed, completed, code, message, reservationStatus, reservationVersion, completedAt, allocations]
+      required:
+        [
+          commandId,
+          reservationId,
+          action,
+          replayed,
+          completed,
+          code,
+          message,
+          reservationStatus,
+          reservationVersion,
+          completedAt,
+          allocations,
+        ]
       properties:
         commandId: { type: string, format: uuid }
         reservationId: { type: string, format: uuid }
@@ -2674,7 +3048,17 @@ components:
           items: { $ref: '#/components/schemas/InventoryReservationOperationBalance' }
     FulfillmentStatus:
       type: string
-      enum: [PLANNED, READY, IN_PROGRESS, ON_HOLD, COMPLETED, CANCELLING, CANCELLATION_FAILED, CANCELLED]
+      enum:
+        [
+          PLANNED,
+          READY,
+          IN_PROGRESS,
+          ON_HOLD,
+          COMPLETED,
+          CANCELLING,
+          CANCELLATION_FAILED,
+          CANCELLED,
+        ]
     FulfillmentStepStatus:
       type: string
       enum: [BLOCKED, READY, IN_PROGRESS, COMPLETED, FAILED, OVERDUE, CANCELLED, SKIPPED]
@@ -2712,7 +3096,19 @@ components:
               type: array
               items:
                 type: object
-                required: [id, code, name, status, dependencies, customerVisible, optional, skippable, version, allowedActions]
+                required:
+                  [
+                    id,
+                    code,
+                    name,
+                    status,
+                    dependencies,
+                    customerVisible,
+                    optional,
+                    skippable,
+                    version,
+                    allowedActions,
+                  ]
                 properties:
                   id: { type: string, format: uuid }
                   code: { type: string }
@@ -2781,13 +3177,32 @@ components:
       enum: [OPEN, ASSIGNED, ACKNOWLEDGED, IN_PROGRESS, RECOVERY_PENDING, RESOLVED, CLOSED]
     ExceptionCategory:
       type: string
-      enum: [INVENTORY_SHORTAGE, FULFILLMENT_STEP_FAILED, FULFILLMENT_STEP_OVERDUE, EVENT_DELIVERY_FAILED]
+      enum:
+        [
+          INVENTORY_SHORTAGE,
+          FULFILLMENT_STEP_FAILED,
+          FULFILLMENT_STEP_OVERDUE,
+          EVENT_DELIVERY_FAILED,
+        ]
     ExceptionSeverity:
       type: string
       enum: [LOW, MEDIUM, HIGH, CRITICAL]
     ExceptionSummary:
       type: object
-      required: [id, number, category, severity, status, sourceType, sourceId, sourceNumber, summary, openedAt, version]
+      required:
+        [
+          id,
+          number,
+          category,
+          severity,
+          status,
+          sourceType,
+          sourceId,
+          sourceNumber,
+          summary,
+          openedAt,
+          version,
+        ]
       properties:
         id: { type: string, format: uuid }
         number: { type: string }
@@ -2815,7 +3230,16 @@ components:
         pageSize: { type: integer, minimum: 1, maximum: 100 }
     ExceptionDetail:
       type: object
-      required: [summary, safeDetails, occurrences, history, recoveries, allowedRecoveryActions, allowedActions]
+      required:
+        [
+          summary,
+          safeDetails,
+          occurrences,
+          history,
+          recoveries,
+          allowedRecoveryActions,
+          allowedActions,
+        ]
       properties:
         summary: { $ref: '#/components/schemas/ExceptionSummary' }
         safeDetails: { type: object, additionalProperties: true }
@@ -2860,7 +3284,14 @@ components:
         occurredAt: { type: string, format: date-time }
     RecoveryAction:
       type: string
-      enum: [RETRY_RESERVATION, RETRY_FULFILLMENT_STEP, RESUME_FULFILLMENT_PLAN, REPLAY_PUBLICATION, MANUAL_ACKNOWLEDGE]
+      enum:
+        [
+          RETRY_RESERVATION,
+          RETRY_FULFILLMENT_STEP,
+          RESUME_FULFILLMENT_PLAN,
+          REPLAY_PUBLICATION,
+          MANUAL_ACKNOWLEDGE,
+        ]
     RecoveryAttempt:
       type: object
       required: [id, action, requesterId, inputSummary, requestedAt]
@@ -2904,7 +3335,18 @@ components:
         parameters: { type: object, additionalProperties: true }
     RecoveryResult:
       type: object
-      required: [exceptionId, attemptId, status, resultCode, safeResult, caseStatus, version, completedAt, replayed]
+      required:
+        [
+          exceptionId,
+          attemptId,
+          status,
+          resultCode,
+          safeResult,
+          caseStatus,
+          version,
+          completedAt,
+          replayed,
+        ]
       properties:
         exceptionId: { type: string, format: uuid }
         attemptId: { type: string, format: uuid }
@@ -2927,7 +3369,8 @@ components:
         primaryCaseId: { type: [string, 'null'], format: uuid }
     FailedEventDelivery:
       type: object
-      required: [eventId, eventType, consumerName, status, attempts, errorCode, lastAttemptAt, version]
+      required:
+        [eventId, eventType, consumerName, status, attempts, errorCode, lastAttemptAt, version]
       properties:
         eventId: { type: string, format: uuid }
         eventType: { type: string }
@@ -2953,7 +3396,21 @@ components:
       enum: [OPEN, PARTIALLY_PAID, PAID, OVERDUE]
     ReceivableSummary:
       type: object
-      required: [id, number, orderId, orderNumber, partnerId, partnerNumber, partnerName, originalAmount, outstandingAmount, dueDate, status, version]
+      required:
+        [
+          id,
+          number,
+          orderId,
+          orderNumber,
+          partnerId,
+          partnerNumber,
+          partnerName,
+          originalAmount,
+          outstandingAmount,
+          dueDate,
+          status,
+          version,
+        ]
       properties:
         id: { type: string, format: uuid }
         number: { type: string }
@@ -3011,7 +3468,11 @@ components:
       required: [id, action, previousStatus, newStatus, amount, actorId, reason, occurredAt]
       properties:
         id: { type: string, format: uuid }
-        action: { type: string, enum: [RECEIVABLE_CREATED, PAYMENT_RECORDED, PAYMENT_REVERSED, MARKED_OVERDUE] }
+        action:
+          {
+            type: string,
+            enum: [RECEIVABLE_CREATED, PAYMENT_RECORDED, PAYMENT_REVERSED, MARKED_OVERDUE],
+          }
         previousStatus:
           oneOf:
             - $ref: '#/components/schemas/ReceivableStatus'
@@ -3057,12 +3518,15 @@ components:
         reason: { type: string, minLength: 5, maxLength: 500 }
     Dashboard:
       type: object
-      required: [from, to, generatedAt, projectionLagSeconds, metrics, charts]
+      required:
+        [from, to, generatedAt, dataAsOf, projectionLagSeconds, projectionStatus, metrics, charts]
       properties:
         from: { type: string, format: date }
         to: { type: string, format: date }
         generatedAt: { type: string, format: date-time }
+        dataAsOf: { type: [string, 'null'], format: date-time }
         projectionLagSeconds: { type: integer, minimum: 0 }
+        projectionStatus: { type: string, enum: [CURRENT, STALE, REBUILDING, EMPTY] }
         metrics:
           type: object
           additionalProperties:
@@ -3074,7 +3538,20 @@ components:
             items: { type: object, additionalProperties: true }
     AuditEntry:
       type: object
-      required: [id, occurredAt, module, action, outcome, subjectType, subjectId, actor, correlationId]
+      required:
+        [
+          id,
+          occurredAt,
+          module,
+          action,
+          outcome,
+          subjectType,
+          subjectId,
+          subjectNumber,
+          actorType,
+          correlationId,
+          causationId,
+        ]
       properties:
         id: { type: string, format: uuid }
         occurredAt: { type: string, format: date-time }
@@ -3084,18 +3561,14 @@ components:
         subjectType: { type: string }
         subjectId: { type: string, format: uuid }
         subjectNumber: { type: string }
-        actor:
-          type: object
-          properties:
-            type: { type: string }
-            id: { type: string, format: uuid }
-            displayName: { type: string }
+        actorType: { type: string, enum: [USER, SYSTEM, CUSTOMER] }
+        actorId: { type: [string, 'null'], format: uuid }
+        actorDisplay: { type: [string, 'null'] }
         previousState: { type: [string, 'null'] }
         newState: { type: [string, 'null'] }
         safeReason: { type: [string, 'null'] }
         correlationId: { type: string, format: uuid }
-        causationId: { type: [string, 'null'], format: uuid }
-        traceId: { type: [string, 'null'] }
+        causationId: { type: string, format: uuid }
     AuditPage:
       type: object
       required: [items, pageInfo]
@@ -3104,3 +3577,83 @@ components:
           type: array
           items: { $ref: '#/components/schemas/AuditEntry' }
         pageInfo: { $ref: '#/components/schemas/PageInfo' }
+    TimelineEntry:
+      type: object
+      required:
+        [
+          sourceEventId,
+          occurredAt,
+          eventType,
+          sourceModule,
+          subjectType,
+          subjectId,
+          subjectNumber,
+          safeSummary,
+          actorType,
+          correlationId,
+          causationId,
+          dataAsOf,
+        ]
+      properties:
+        sourceEventId: { type: string, format: uuid }
+        occurredAt: { type: string, format: date-time }
+        eventType: { type: string }
+        sourceModule: { type: string }
+        subjectType: { type: string }
+        subjectId: { type: string, format: uuid }
+        subjectNumber: { type: string }
+        safeSummary: { type: string }
+        actorType: { type: string, enum: [USER, SYSTEM, CUSTOMER] }
+        actorId: { type: [string, 'null'], format: uuid }
+        correlationId: { type: string, format: uuid }
+        causationId: { type: string, format: uuid }
+        dataAsOf: { type: [string, 'null'], format: date-time }
+    TimelinePage:
+      type: object
+      required: [items, dataAsOf, projectionStatus]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/TimelineEntry' }
+        dataAsOf: { type: [string, 'null'], format: date-time }
+        projectionStatus: { type: string, enum: [CURRENT, STALE, EMPTY] }
+    WorkItem:
+      type: object
+      required:
+        [
+          id,
+          type,
+          subjectType,
+          subjectId,
+          subjectNumber,
+          title,
+          priority,
+          status,
+          candidateRole,
+          createdAt,
+          version,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string }
+        subjectType: { type: string }
+        subjectId: { type: string, format: uuid }
+        subjectNumber: { type: string }
+        title: { type: string }
+        safeSummary: { type: [string, 'null'] }
+        priority: { type: string, enum: [LOW, MEDIUM, HIGH, CRITICAL] }
+        status: { type: string, enum: [OPEN, CLAIMED, COMPLETED, CANCELLED] }
+        candidateRole: { type: string }
+        assigneeUserId: { type: [string, 'null'], format: uuid }
+        dueAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+        completedAt: { type: [string, 'null'], format: date-time }
+        version: { type: integer, format: int64, minimum: 0 }
+    WorkItemPage:
+      type: object
+      required: [items, scope]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/WorkItem' }
+        scope: { type: string, enum: [PERSONAL, TEAM] }

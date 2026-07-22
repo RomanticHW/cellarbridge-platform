@@ -15,11 +15,11 @@ All notable changes to this project are documented in this file. The project fol
 - accepted decisions clarifying SQL-first persistence, reliable local event delivery, the designed Task 08 reservation protocol, and V10+ migration ownership;
 - public documentation that distinguishes the executable core from designed capabilities and planned full-profile infrastructure.
 - pre-1.0 accepted-quotation contract correction with canonical Snapshot Hash V1 validation.
-- Delivered ROUTE-2026-03 Planning evidence, Quotation-owned AUTO/FIXED freeze through V13, and additive Current/Legacy V1 propagation to FROZEN/LEGACY_UNVERIFIED Trade Orders through V14 and OpenAPI 1.7/AsyncAPI 1.1; historical ROUTE-2026-01/02 remains readable and inventory reservation remains unavailable.
+- ROUTE-2026-03 Planning evidence, Quotation-owned AUTO/FIXED freeze through V13, and additive Current/Legacy V1 propagation to FROZEN/LEGACY_UNVERIFIED Trade Orders through V14 and OpenAPI 1.7/AsyncAPI 1.1; historical ROUTE-2026-01/02 remains readable.
+- idempotent V21 audit/reporting projections, immutable audit evidence, unified business timelines, permission-filtered work queues, and accessible ECharts dashboards.
 
 ### Planned
 
-- Inventory reservation, fulfillment, exception, settlement, and reporting slices
 - Kafka/Redis/observability full profile, operational dashboards, and public demo release
 
 ## [0.1.0-design] - 2026-07-13

@@ -16,6 +16,9 @@ importers:
       antd:
         specifier: 6.5.1
         version: 6.5.1(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
+      echarts:
+        specifier: 6.1.0
+        version: 6.1.0
       oidc-client-ts:
         specifier: 3.5.0
         version: 3.5.0
@@ -1751,6 +1754,12 @@ packages:
         integrity: sha512-7ZgogeTnjuHbo+ct10G9Ffp0mif17idi0IyWNVA/wcwcm7NPOD/WEHVP3n7n3MhXqxoIYm8d6MuZohYWIZ4T3w==,
       }
 
+  echarts@6.1.0:
+    resolution:
+      {
+        integrity: sha512-q0yaFPggC9FUdsWH4blavRWFmxdrIodbkoKNAjJudAI6CA9gNPxHtV2RcZNEepZVlk4yvBYkOkbk6HIVpIyHZA==,
+      }
+
   electron-to-chromium@1.5.389:
     resolution:
       {
@@ -2843,6 +2852,12 @@ packages:
     peerDependencies:
       typescript: '>=4.8.4'
 
+  tslib@2.3.0:
+    resolution:
+      {
+        integrity: sha512-N82ooyxVNm6h1riLCoyS9e3fuJ3AMG2zIZs2Gd1ATcSFjSA23Q0fzjjZeh0jbJvWVDZ0cJT8yaNNaaXHzueNjg==,
+      }
+
   tslib@2.8.1:
     resolution:
       {
@@ -3108,6 +3123,12 @@ packages:
     resolution:
       {
         integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==,
+      }
+
+  zrender@6.1.0:
+    resolution:
+      {
+        integrity: sha512-oEGMDB6pOP2S6OwRR4PdVv610zrjnA3Bh+JnSG12fYJlBKjtNAoEb5fSUoCOOINlH96I2fU38/A2UpRKs67xYQ==,
       }
 
 snapshots:
@@ -4245,6 +4266,11 @@ snapshots:
 
   dom-accessibility-api@0.6.3: {}
 
+  echarts@6.1.0:
+    dependencies:
+      tslib: 2.3.0
+      zrender: 6.1.0
+
   electron-to-chromium@1.5.389: {}
 
   entities@8.0.0: {}
@@ -4816,6 +4842,8 @@ snapshots:
     dependencies:
       typescript: 5.9.3
 
+  tslib@2.3.0: {}
+
   tslib@2.8.1:
     optional: true
 
@@ -4938,3 +4966,7 @@ snapshots:
       zod: 4.4.3
 
   zod@4.4.3: {}
+
+  zrender@6.1.0:
+    dependencies:
+      tslib: 2.3.0

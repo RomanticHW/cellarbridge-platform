@@ -2,24 +2,24 @@
 
 ## 1. Schema 所有权
 
-下表是当前与目标模块共同遵守的 ownership map，不是现有物理表清单。V2～V20 已实现
+下表是当前与目标模块共同遵守的 ownership map，不是现有物理表清单。V2～V21 已实现
 Identity、Partner、Catalog、Inventory、Quotation/Trade Planning、Trade Order、Fulfillment、
-Exception Center、Settlement 与 `platform_event`；Audit/Reporting 的代表表仍为 Designed。
+Exception Center、Settlement、Audit/Reporting 与 `platform_event`。
 
-| Schema | 所有者 | 代表表 |
-|---|---|---|
-| `identity_access` | identity-access | tenant, user_access, role_binding |
-| `partner` | partner | partner, contact, route_eligibility, review_decision |
-| `catalog` | catalog | wine_product, sku, producer, region |
-| `inventory` | inventory | warehouse, supply_pool, inventory_lot；A2 reservation/attempt/allocation/movement/shortage persistence |
-| `quotation` | quotation | quotation, revision, line, approval, acceptance |
-| `trade_planning` | trade-planning | route_definition, policy_version, evaluation, candidate_result |
-| `trade_order` | trade-order | trade_order, order_line, cancellation |
-| `fulfillment` | fulfillment | template, plan, step, dependency, milestone, adapter_attempt |
-| `exception_center` | exception-center | exception_case, assignment, note, recovery_attempt |
-| `settlement` | settlement | trigger_policy, order_snapshot, receivable, payment_record, payment_reversal, receivable_history |
-| `audit_reporting` | audit-reporting | audit_entry, timeline_projection, metric_projection, checkpoint |
-| `platform_event` | platform event support | publication, inbox；external_outbox 为 Planned full profile |
+| Schema             | 所有者                 | 代表表                                                                                                        |
+| ------------------ | ---------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `identity_access`  | identity-access        | tenant, user_access, role_binding                                                                             |
+| `partner`          | partner                | partner, contact, route_eligibility, review_decision                                                          |
+| `catalog`          | catalog                | wine_product, sku, producer, region                                                                           |
+| `inventory`        | inventory              | warehouse, supply_pool, inventory_lot；A2 reservation/attempt/allocation/movement/shortage persistence        |
+| `quotation`        | quotation              | quotation, revision, line, approval, acceptance                                                               |
+| `trade_planning`   | trade-planning         | route_definition, policy_version, evaluation, candidate_result                                                |
+| `trade_order`      | trade-order            | trade_order, order_line, cancellation                                                                         |
+| `fulfillment`      | fulfillment            | template, plan, step, dependency, milestone, adapter_attempt                                                  |
+| `exception_center` | exception-center       | exception_case, assignment, note, recovery_attempt                                                            |
+| `settlement`       | settlement             | trigger_policy, order_snapshot, receivable, payment_record, payment_reversal, receivable_history              |
+| `audit_reporting`  | audit-reporting        | projection_generation, projector_inbox/checkpoint, audit_entry, timeline/subject/work-item/metric projections |
+| `platform_event`   | platform event support | publication, inbox；external_outbox 为 Planned full profile                                                   |
 
 模块数据库用户/权限在本地可简化为一个应用账号，但通过代码/测试/迁移路径执行所有权。full hardening 可为 schema 配置数据库权限。
 
@@ -94,7 +94,7 @@ WHERE tenant_id = :tenant_id
 
 ## 7. 迁移
 
-- 当前仓库 migration 从 V2 到 V20 使用简单递增版本；V8/V9 是冻结的多 owner 历史协调例外；
+- 当前仓库 migration 从 V2 到 V21 使用简单递增版本；V8/V9 是冻结的多 owner 历史协调例外；
 - 从 V10 起，一个文件只允许修改一个 owner Schema；跨模块任务拆为多个连续、前向兼容的 migration；
 - ownership manifest 已覆盖全部 V2+ 文件并记录 SHA-256；V10+ 另由高信号语句 scanner 和 PostgreSQL catalog test 验证，历史差异仍需 PR 基线门禁/评审；
 - 合并后不可修改；

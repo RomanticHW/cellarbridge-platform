@@ -1,0 +1,23 @@
+{
+  "id": "11000000-0000-4000-8000-000000000012",
+  "type": "cellarbridge.quotation.approval-requested.v1",
+  "specVersion": "1.0",
+  "occurredAt": "2026-07-22T10:10:00Z",
+  "tenantId": "10000000-0000-4000-8000-000000000001",
+  "producer": "quotation",
+  "subject": {
+    "type": "QUOTATION",
+    "id": "22000000-0000-4000-8000-000000000012",
+    "number": "QUO-202607-000012"
+  },
+  "correlationId": "22000000-0000-4000-8000-000000000012",
+  "causationId": "11200000-0000-4000-8000-000000000004",
+  "payload": {
+    "quotationId": "22000000-0000-4000-8000-000000000012",
+    "quotationNumber": "QUO-202607-000012",
+    "revision": 2,
+    "status": "PENDING_APPROVAL",
+    "actorId": "11200000-0000-4000-8000-000000000004",
+    "selectedRouteCode": "NB_BONDED_B2B"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "11000000-0000-4000-8000-000000000013",
+  "type": "cellarbridge.exception.closed.v1",
+  "specVersion": "1.0",
+  "occurredAt": "2026-07-22T11:00:00Z",
+  "tenantId": "10000000-0000-4000-8000-000000000001",
+  "producer": "exception-center",
+  "subject": {
+    "type": "EXCEPTION_CASE",
+    "id": "23000000-0000-4000-8000-000000000013",
+    "number": "EXC-202607-000013"
+  },
+  "correlationId": "31000000-0000-4000-8000-000000000013",
+  "causationId": "11200000-0000-4000-8000-000000000004",
+  "payload": {
+    "exceptionId": "23000000-0000-4000-8000-000000000013",
+    "exceptionNumber": "EXC-202607-000013",
+    "reasonCode": "RECOVERED",
+    "safeReason": "Carrier booking recovered after retry",
+    "actorId": "11200000-0000-4000-8000-000000000004",
+    "closedAt": "2026-07-22T11:00:00Z"
+  }
+}

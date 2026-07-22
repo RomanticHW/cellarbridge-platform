@@ -4,6 +4,8 @@ import com.rom.cellarbridge.identityaccess.TenantId;
 import com.rom.cellarbridge.partner.PartnerStatus;
 import com.rom.cellarbridge.partner.internal.application.PartnerRepository;
 import com.rom.cellarbridge.partner.internal.domain.Partner;
+import com.rom.cellarbridge.platform.PendingEvent;
+import com.rom.cellarbridge.platform.ReliableEventPublisher;
 import java.sql.Array;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -47,10 +49,15 @@ public class JdbcPartnerRepository implements PartnerRepository {
 
   private final NamedParameterJdbcTemplate jdbc;
   private final JsonMapper jsonMapper;
+  private final ReliableEventPublisher reliableEvents;
 
-  JdbcPartnerRepository(NamedParameterJdbcTemplate jdbc, JsonMapper jsonMapper) {
+  JdbcPartnerRepository(
+      NamedParameterJdbcTemplate jdbc,
+      JsonMapper jsonMapper,
+      ReliableEventPublisher reliableEvents) {
     this.jdbc = jdbc;
     this.jsonMapper = jsonMapper;
+    this.reliableEvents = reliableEvents;
   }
 
   @Override
@@ -456,6 +463,25 @@ public class JdbcPartnerRepository implements PartnerRepository {
             .addValue("payload", writeJson(payload))
             .addValue("occurredAt", timestamp(occurredAt))
             .addValue("actorId", actorId));
+    reliableEvents.publish(
+        new PendingEvent(
+            eventId,
+            tenantId.value(),
+            switch (eventType) {
+              case SUBMITTED -> "cellarbridge.partner.submitted-for-review.v1";
+              case ACTIVATED -> "cellarbridge.partner.activated.v1";
+              case CHANGES_REQUESTED -> "cellarbridge.partner.changes-requested.v1";
+              case REJECTED -> "cellarbridge.partner.rejected.v1";
+              case SUSPENDED -> "cellarbridge.partner.suspended.v1";
+            },
+            1,
+            occurredAt,
+            "partner",
+            new PendingEvent.Subject("PARTNER", partner.id(), partner.number()),
+            partner.id(),
+            actorId,
+            payload,
+            Map.of()));
     return eventId;
   }
 

@@ -2,7 +2,7 @@
 
 ## 1. 设计原则
 
-状态边界：V2～V20 已覆盖身份、交易、库存预占、履约、异常和结算纵向切片；历史迁移不可重写，
+状态边界：V2～V21 已覆盖身份、交易、库存预占、履约、异常、结算和审计报表纵向切片；历史迁移不可重写，
 当前结算能力只记录外部付款事实，不连接真实支付、总账、发票或税务系统。
 
 - PostgreSQL 18；
@@ -125,6 +125,18 @@ erDiagram
 - 逾期扫描使用 `FOR UPDATE SKIP LOCKED` 的有界批次；付款和扫描都锁定应收行，最终状态由余额、
   due date 与注入 Clock 统一推导。
 
+### Audit/Reporting-owned facts
+
+- `projection_generation` 保存同租户的 `ACTIVE/STAGING/RETIRED/FAILED` 代际；唯一 partial index
+  保证最多一个 active generation，重建在 staging 完成后原子切换。
+- `projector_inbox` 以 `(tenant, projector, event)` 去重，并用全局 projector/event 绑定约束拒绝
+  tenant 或 payload 重绑定；`projector_checkpoint` 记录 processed/duplicate/pending/dead-letter 和 lag。
+- `audit_entry` 是 allow-list 业务证据，数据库 trigger 拒绝 update/delete；不保存原始事件 payload、
+  token、地址或内部评论。
+- `timeline_projection`、`subject_state_projection`、`work_item_projection` 和
+  `metric_fact_projection` 都带 tenant/generation；业务版本、occurredAt、eventId 决定乱序覆盖规则。
+- timeline、work queue、metric date-range 的代表查询均有 tenant-first index；请求不跨模块写表联表。
+
 ### `platform_event.event_publication`
 
 - event_id；tenant；event_type/version；subject；payload JSONB；status；attempts；next_attempt_at；claim_owner/until；occurred_at/published_at；correlation/causation。
@@ -174,4 +186,5 @@ CHECK (version >= 0)
 
 ## 9. 详细 DDL
 
-Design Baseline 提供逻辑设计；Flyway/Testcontainers 可从空库执行到 V14，并验证 V12→V13 报价和 V13→V14 历史订单保留。V14 owner=`trade_order`，不创建跨 Schema FK 或库存写入。
+Design Baseline 提供逻辑设计；Flyway/Testcontainers 可从空库执行到 V21，并保留既有升级链与
+migration ownership/hash 证据。V21 owner=`audit_reporting`，不创建跨 Schema FK，也不修改任何源模块表。

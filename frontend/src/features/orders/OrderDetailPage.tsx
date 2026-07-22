@@ -13,6 +13,7 @@ import {
 import { ErrorState } from '../../components/ErrorState';
 import { LoadingState } from '../../components/LoadingState';
 import { useAuthSession } from '../identity-access/authSession';
+import { TimelinePanel } from '../reporting/TimelinePanel';
 import { ReservationOperationsPanel } from './ReservationOperationsPanel';
 
 type OrderLine =
@@ -333,6 +334,7 @@ export function OrderDetailPage() {
             </ul>
           )}
         </Card>
+        <TimelinePanel subjectType="TRADE_ORDER" subjectId={detail.id} />
       </Space>
     </article>
   );

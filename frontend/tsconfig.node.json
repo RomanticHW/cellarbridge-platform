@@ -19,6 +19,7 @@
     "playwright.fulfillment.config.ts",
     "playwright.exception.config.ts",
     "playwright.settlement.config.ts",
+    "playwright.reporting.config.ts",
     "eslint.config.js",
     "e2e/**/*.ts"
   ]

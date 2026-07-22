@@ -30,6 +30,7 @@ import {
 import { ErrorState } from '../../components/ErrorState';
 import { LoadingState } from '../../components/LoadingState';
 import { useAuthSession } from '../identity-access/authSession';
+import { TimelinePanel } from '../reporting/TimelinePanel';
 import { PartnerReviewPanel } from './PartnerReviewPanel';
 
 const reasonSchema = z.object({ reason: z.string().trim().min(5).max(500) });
@@ -399,6 +400,7 @@ export function PartnerDetailPage() {
             />
           )}
         </Card>
+        <TimelinePanel subjectType="PARTNER" subjectId={partner.id} />
       </Space>
     </section>
   );

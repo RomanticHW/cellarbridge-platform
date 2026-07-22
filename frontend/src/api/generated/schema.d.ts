@@ -749,6 +749,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get an authorized, customer-safe business timeline */
+        get: operations["getUnifiedTimeline"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/work-items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List personal or authorized team work items */
+        get: operations["listWorkItems"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2030,7 +2064,11 @@ export interface components {
             to: string;
             /** Format: date-time */
             generatedAt: string;
+            /** Format: date-time */
+            dataAsOf: string | null;
             projectionLagSeconds: number;
+            /** @enum {string} */
+            projectionStatus: "CURRENT" | "STALE" | "REBUILDING" | "EMPTY";
             metrics: {
                 [key: string]: number | string;
             };
@@ -2051,25 +2089,84 @@ export interface components {
             subjectType: string;
             /** Format: uuid */
             subjectId: string;
-            subjectNumber?: string;
-            actor: {
-                type?: string;
-                /** Format: uuid */
-                id?: string;
-                displayName?: string;
-            };
+            subjectNumber: string;
+            /** @enum {string} */
+            actorType: "USER" | "SYSTEM" | "CUSTOMER";
+            /** Format: uuid */
+            actorId?: string | null;
+            actorDisplay?: string | null;
             previousState?: string | null;
             newState?: string | null;
             safeReason?: string | null;
             /** Format: uuid */
             correlationId: string;
             /** Format: uuid */
-            causationId?: string | null;
-            traceId?: string | null;
+            causationId: string;
         };
         AuditPage: {
             items: components["schemas"]["AuditEntry"][];
             pageInfo: components["schemas"]["PageInfo"];
+        };
+        TimelineEntry: {
+            /** Format: uuid */
+            sourceEventId: string;
+            /** Format: date-time */
+            occurredAt: string;
+            eventType: string;
+            sourceModule: string;
+            subjectType: string;
+            /** Format: uuid */
+            subjectId: string;
+            subjectNumber: string;
+            safeSummary: string;
+            /** @enum {string} */
+            actorType: "USER" | "SYSTEM" | "CUSTOMER";
+            /** Format: uuid */
+            actorId?: string | null;
+            /** Format: uuid */
+            correlationId: string;
+            /** Format: uuid */
+            causationId: string;
+            /** Format: date-time */
+            dataAsOf: string | null;
+        };
+        TimelinePage: {
+            items: components["schemas"]["TimelineEntry"][];
+            /** Format: date-time */
+            dataAsOf: string | null;
+            /** @enum {string} */
+            projectionStatus: "CURRENT" | "STALE" | "EMPTY";
+        };
+        WorkItem: {
+            /** Format: uuid */
+            id: string;
+            type: string;
+            subjectType: string;
+            /** Format: uuid */
+            subjectId: string;
+            subjectNumber: string;
+            title: string;
+            safeSummary?: string | null;
+            /** @enum {string} */
+            priority: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+            /** @enum {string} */
+            status: "OPEN" | "CLAIMED" | "COMPLETED" | "CANCELLED";
+            candidateRole: string;
+            /** Format: uuid */
+            assigneeUserId?: string | null;
+            /** Format: date-time */
+            dueAt?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            completedAt?: string | null;
+            /** Format: int64 */
+            version: number;
+        };
+        WorkItemPage: {
+            items: components["schemas"]["WorkItem"][];
+            /** @enum {string} */
+            scope: "PERSONAL" | "TEAM";
         };
     };
     responses: {
@@ -3646,6 +3743,9 @@ export interface operations {
                     "application/json": components["schemas"]["Dashboard"];
                 };
             };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
         };
     };
     listAuditEntries: {
@@ -3656,6 +3756,10 @@ export interface operations {
                 subjectType?: string;
                 subjectId?: string;
                 correlationId?: string;
+                actorId?: string;
+                action?: string;
+                from?: string;
+                to?: string;
             };
             header?: never;
             path?: never;
@@ -3672,6 +3776,68 @@ export interface operations {
                     "application/json": components["schemas"]["AuditPage"];
                 };
             };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
+        };
+    };
+    getUnifiedTimeline: {
+        parameters: {
+            query: {
+                subjectType: "PARTNER" | "QUOTATION" | "TRADE_ORDER" | "ORDER";
+                subjectId: string;
+                pageSize?: components["parameters"]["PageSize"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unified timeline projection */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimelinePage"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
+        };
+    };
+    listWorkItems: {
+        parameters: {
+            query?: {
+                status?: ("OPEN" | "CLAIMED" | "COMPLETED" | "CANCELLED")[];
+                priority?: ("LOW" | "MEDIUM" | "HIGH" | "CRITICAL")[];
+                type?: string[];
+                dueFrom?: string;
+                dueTo?: string;
+                subjectNumber?: string;
+                scope?: "personal" | "team";
+                pageSize?: components["parameters"]["PageSize"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Permission-filtered work queue */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemPage"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
         };
     };
 }

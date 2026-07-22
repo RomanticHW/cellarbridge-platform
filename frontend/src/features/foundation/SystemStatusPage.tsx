@@ -22,8 +22,8 @@ export function SystemStatusPage() {
           <Typography.Paragraph type="secondary" className="page-introduction">
             Identity, partner onboarding, catalog supply visibility, quotations, immutable
             trade-order review, Inventory reservation, Fulfillment orchestration, Exception Center,
-            and Settlement workspace are available. Remaining workflows stay planned until their
-            complete vertical slices are verified.
+            Settlement workspace, and audit reporting are available. Remaining workflows stay
+            planned until their complete vertical slices are verified.
           </Typography.Paragraph>
         </div>
 
@@ -47,6 +47,7 @@ export function SystemStatusPage() {
                     <Tag color="green">Fulfillment orchestration available</Tag>
                     <Tag color="green">Exception Center available</Tag>
                     <Tag color="green">Settlement workspace available</Tag>
+                    <Tag color="green">Audit reporting available</Tag>
                   </Space>
                 </Descriptions.Item>
               </Descriptions>

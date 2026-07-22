@@ -76,6 +76,17 @@ retain old briefly then drop via migration
 
 P1 可使用简化清空重建，必须只操作 audit_reporting schema。
 
+当前 V21 实现采用 generation 切换：增量读取只查询 `ACTIVE` generation，重建把同租户可靠
+publication 按 `(occurredAt,eventId)` 重放到 `STAGING`，验证后在事务中将旧 generation 标为
+`RETIRED` 并激活新 generation。重建期间旧读模型继续服务，不 truncate 源业务或 active 投影。
+
+乱序状态更新按 business version、occurredAt、eventId 的稳定顺序比较；缺少先决 OPEN 的关闭事件
+进入 projector inbox `PENDING`，先决事件到达后同事务协调完成。相同 eventId/payload 无害去重，
+不同 tenant/type/payload 的绑定冲突拒绝覆盖可信结果。
+
+Dashboard 的日期按 UTC 边界解释，最大 367 天。API 返回 `dataAsOf`、`projectionLagSeconds` 和
+`CURRENT/STALE/REBUILDING/EMPTY`，前端原样展示，不把最终一致读模型表示为交易真相。
+
 ## 7. 验收
 
 - 重复事件不重复计数；
@@ -84,3 +95,6 @@ P1 可使用简化清空重建，必须只操作 audit_reporting schema。
 - 双租户隔离；
 - 客户视图不含内部字段；
 - lag 指标可见。
+
+实现证据位于 `AuditReportingIntegrationTest`、`ReportingWorkspace.test.tsx` 和
+`audit-reporting.live.spec.ts`；代表 SQL 使用 tenant-first index 的 `EXPLAIN` 断言。

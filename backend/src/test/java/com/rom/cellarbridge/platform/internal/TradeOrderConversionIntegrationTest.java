@@ -707,7 +707,7 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
                 WITH application_schema(name) AS (VALUES
                   ('identity_access'),('partner'),('catalog'),('inventory'),('trade_planning'),
                   ('quotation'),('trade_order'),('fulfillment'),('exception_center'),('settlement'),
-                  ('platform_event')
+                  ('platform_event'),('audit_reporting')
                 ), global_registry(table_schema,table_name) AS (VALUES
                   ('identity_access','tenant'),
                   ('fulfillment','template_version'),('fulfillment','template_step'),
