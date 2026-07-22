@@ -93,7 +93,7 @@ services:
     read_only: true
     tmpfs:
       - /tmp:size=16m,mode=1777
-      - /var/cache/nginx:size=32m,mode=1777
+      - /var/lib/nginx/tmp:size=32m,uid=65532,gid=65532,mode=0750
       - /var/run:size=4m,mode=1777
     depends_on:
       backend:
