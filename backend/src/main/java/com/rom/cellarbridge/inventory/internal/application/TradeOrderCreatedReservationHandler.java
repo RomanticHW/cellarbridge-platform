@@ -291,6 +291,7 @@ public final class TradeOrderCreatedReservationHandler implements LocalEventHand
             request.orderNumber(),
             confirmed.requestHash(),
             confirmed.supplyDecisionHash(),
+            confirmed.routeCode(),
             now,
             allocations));
   }

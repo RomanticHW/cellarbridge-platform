@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cellarbridge.dev/schemas/events/public-milestone-reached-v1.schema.json",
+  "title": "PublicMilestoneReachedV1",
+  "allOf": [
+    { "$ref": "event-envelope.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "type": { "const": "cellarbridge.fulfillment.public-milestone-reached.v1" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["planId", "planNumber", "orderId", "orderNumber", "code", "label", "occurredAt"],
+          "properties": {
+            "planId": { "type": "string", "format": "uuid" },
+            "planNumber": { "type": "string" },
+            "orderId": { "type": "string", "format": "uuid" },
+            "orderNumber": { "type": "string" },
+            "code": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{2,79}$" },
+            "label": { "type": "string", "maxLength": 160 },
+            "occurredAt": { "type": "string", "format": "date-time" }
+          }
+        }
+      }
+    }
+  ]
+}

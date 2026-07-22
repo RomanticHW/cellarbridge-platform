@@ -32,6 +32,14 @@ public interface TradeOrderRepository {
       ReservationOutcomeEvidence outcome,
       UUID actorId);
 
+  boolean hasTimelineEvent(TenantId tenantId, UUID orderId, UUID eventId);
+
+  void saveFulfillmentTransition(
+      TenantId tenantId, TradeOrder before, TradeOrder after, FulfillmentFact fact, UUID actorId);
+
+  void appendFulfillmentMilestone(
+      TenantId tenantId, TradeOrder order, FulfillmentFact fact, UUID actorId);
+
   OrderPage list(
       TenantId tenantId,
       Set<TradeOrderStatus> statuses,
@@ -65,5 +73,13 @@ public interface TradeOrderRepository {
       TradeOrderStatus status,
       String reasonCode,
       String evidenceHash,
+      Instant occurredAt) {}
+
+  record FulfillmentFact(
+      UUID eventId,
+      String eventType,
+      String code,
+      String safeMessage,
+      String visibility,
       Instant occurredAt) {}
 }

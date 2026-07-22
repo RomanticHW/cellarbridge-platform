@@ -302,6 +302,9 @@ export function OrderDetailPage() {
                 <Typography.Paragraph className="order-process-message" type="secondary">
                   {projection.message}
                 </Typography.Paragraph>
+                {key === 'fulfillment' && internal && projection.status !== 'NOT_STARTED' ? (
+                  <Link to={`/app/fulfillment?orderId=${detail.id}`}>Open fulfillment plan →</Link>
+                ) : null}
               </Card>
             ))}
           </div>

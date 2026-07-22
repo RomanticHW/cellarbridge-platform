@@ -117,7 +117,7 @@ flowchart TD
 
 ## 10. Task 08 — Inventory
 
-**Status: Implemented in review.** A1/A2/A2C、B1/B2、C1/C2 已按依赖顺序形成完整实现；合并与 CI 全绿前不标记 Available。
+**Status: Available.** A1/A2/A2C、B1/B2、C1/C2 已按依赖顺序完成并通过合并门禁。
 
 ### Task 07A gate evidence
 
@@ -132,6 +132,8 @@ flowchart TD
 - 真实 PostgreSQL 并发、API、组件与 OIDC 浏览器证据。
 
 ## 11. Task 09 — Fulfillment
+
+**Status: Implemented in review.** 完整纵向切片已实现；合并与 CI 全绿前不标记 Available，Task 10 保持阻塞。
 
 - templates and seed versions；
 - plan/step/dependency aggregate；

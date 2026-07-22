@@ -45,7 +45,9 @@ Design Baseline
 
 每个任务的可执行 Prompt 位于私有控制仓库，公共仓库只保存可长期维护的设计与实现证据。
 
-Task 08 当前为 **Implemented in review**：A1/A2/A2C、B1/B2、C1/C2 已按顺序实现原子预占、订单结果、幂等 release/consume、内部 API、Order workbench 与真实后端 E2E；合并及 CI 全绿前不标记 Available。
+Task 08 已为 **Available**：A1/A2/A2C、B1/B2、C1/C2 已按顺序完成原子预占、订单结果、幂等 release/consume、内部 API、Order workbench 与真实后端 E2E。
+
+Task 09 当前为 **Implemented in review**：V18 路线模板、不可变计划快照、依赖动作、SLA、模拟适配器、Trade Order 联动、Fulfillment 工作台、客户安全里程碑和契约已形成完整切片；合并及 CI 全绿前不标记 Available。Task 10 未获单独启动授权，保持阻塞。
 
 ## 3. 纵向切片定义
 

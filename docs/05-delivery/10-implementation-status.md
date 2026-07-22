@@ -37,8 +37,9 @@ Status date: **2026-07-18**
 | Supply Decision propagation | Available | Current/Legacy V1、FROZEN/LEGACY_UNVERIFIED Order、V14、OpenAPI 1.7/AsyncAPI 1.2 |
 | Customer quotation decision | Available | controlled portal context, strict customer DTO, accept/reject idempotency, immutable decision, leased expiry work, durable `QuotationAcceptedV1`, React receipt and refresh-safe E2E |
 | Quote-to-order conversion | Available | transactional Inbox consumer, immutable Trade Order snapshot, unique quotation conversion, reliable `TradeOrderCreatedV1`, eventual Quotation link, tenant/Buyer-scoped query UI and real OIDC E2E |
-| Inventory reservation | Implemented in review | B1/B2 原子预占与订单 outcome；C1 V17 command/audit、actor-scoped request hash、Reservation/Allocation 锁、NESTED savepoint 与条件 Lot SQL；C2 tenant-scoped Reservation API、warehouse-assignment exact 投影、React Order workbench、组件测试与真实 OIDC/PostgreSQL E2E |
-| Fulfillment/exception/settlement/reporting | Designed | implementation not started |
+| Inventory reservation | Available | B1/B2 原子预占与订单 outcome；C1 V17 command/audit、actor-scoped request hash、Reservation/Allocation 锁、NESTED savepoint 与条件 Lot SQL；C2 tenant-scoped Reservation API、warehouse-assignment exact 投影、React Order workbench、组件测试与真实 OIDC/PostgreSQL E2E |
+| Fulfillment orchestration | Implemented in review | V18 路线模板与冻结快照；依赖动作、版本并发、幂等与 SLA；模拟适配器；Trade Order 联动；OpenAPI/事件契约；React board/detail/customer milestones；PostgreSQL、组件和 Playwright 证据 |
+| Exception/settlement/reporting | Designed | implementation not started；Task 10 未获单独启动授权 |
 | Architecture fitness functions | Partially available | Modulith、domain/controller/public-contract、Catalog/Inventory 单位与 migration 核心规则已执行；shared-kernel、运行和性能门禁仍按 fitness status 分为 Partially available/Planned |
 | Kafka/Redis/OTel/Prometheus/Grafana full profile | Planned | no current runtime dependency or compose service |
 | ECharts dashboards | Planned | ECharts is not installed；dashboard slice remains Task 12 |
@@ -46,7 +47,7 @@ Status date: **2026-07-18**
 
 ## 3. 声明
 
-当前基线已在 Quotation、Current/Legacy Event 和 Trade Order 中保存一致决策证据；Task 08 A/B/C 均已形成可执行实现并处于 review。内部 API 与 Order workbench 展示授权范围的 Reservation、Allocation、Shortage、Attempt 和 release/consume 审计；客户与 Buyer DTO 继续隐藏内部证据。合并与 CI 全绿前仍不标记 Available。
+当前基线已在 Quotation、Current/Legacy Event 和 Trade Order 中保存一致决策证据；Task 08 Inventory reservation 已可运行。Task 09 Fulfillment orchestration 已形成完整纵向实现并处于 review：内部工作台展示计划、依赖、责任角色、SLA 和模拟适配器证据，客户与 Buyer DTO 只展示明确公开的里程碑。Task 09 合并与 CI 全绿前仍不标记 Available。
 
 ## 4. 追踪模板
 

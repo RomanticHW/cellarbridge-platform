@@ -6,6 +6,7 @@ import com.rom.cellarbridge.tradeorder.TradeOrderStatus;
 import com.rom.cellarbridge.tradeorder.TradeOrderSupplyDecisionStatus;
 import com.rom.cellarbridge.tradeorder.internal.application.TradeOrderRepository;
 import com.rom.cellarbridge.tradeorder.internal.application.TradeOrderRepository.CursorPosition;
+import com.rom.cellarbridge.tradeorder.internal.application.TradeOrderRepository.FulfillmentFact;
 import com.rom.cellarbridge.tradeorder.internal.application.TradeOrderRepository.OrderPage;
 import com.rom.cellarbridge.tradeorder.internal.application.TradeOrderRepository.ReservationOutcomeEvidence;
 import com.rom.cellarbridge.tradeorder.internal.application.TradeOrderRepository.TimelineEntry;
@@ -267,6 +268,90 @@ public class JdbcTradeOrderRepository implements TradeOrderRepository {
             .addValue(
                 "message", "Inventory reservation outcome evidence: " + outcome.evidenceHash())
             .addValue("occurredAt", timestamp(outcome.occurredAt()))
+            .addValue("actorId", actorId));
+  }
+
+  @Override
+  public boolean hasTimelineEvent(TenantId tenantId, UUID orderId, UUID eventId) {
+    Integer count =
+        jdbc.queryForObject(
+            """
+            SELECT count(*)
+              FROM trade_order.timeline_entry
+             WHERE tenant_id = :tenantId AND order_id = :orderId AND event_id = :eventId
+            """,
+            new MapSqlParameterSource()
+                .addValue("tenantId", tenantId.value())
+                .addValue("orderId", orderId)
+                .addValue("eventId", eventId),
+            Integer.class);
+    return count != null && count > 0;
+  }
+
+  @Override
+  public void saveFulfillmentTransition(
+      TenantId tenantId, TradeOrder before, TradeOrder after, FulfillmentFact fact, UUID actorId) {
+    requireTenant(tenantId, before.tenantId());
+    requireTenant(tenantId, after.tenantId());
+    if (!before.id().equals(after.id())
+        || before.version() + 1 != after.version()
+        || !fact.occurredAt().equals(after.updatedAt())) {
+      throw new IllegalArgumentException("Fulfillment fact does not match the order transition");
+    }
+    int updated =
+        jdbc.update(
+            """
+            UPDATE trade_order.trade_order
+               SET status = :status, updated_at = :at, updated_by = :actorId,
+                   version = :newVersion
+             WHERE tenant_id = :tenantId AND id = :orderId
+               AND status = :previousStatus AND version = :previousVersion
+            """,
+            new MapSqlParameterSource()
+                .addValue("status", after.status().name())
+                .addValue("at", timestamp(after.updatedAt()))
+                .addValue("actorId", actorId)
+                .addValue("newVersion", after.version())
+                .addValue("tenantId", tenantId.value())
+                .addValue("orderId", before.id())
+                .addValue("previousStatus", before.status().name())
+                .addValue("previousVersion", before.version()));
+    if (updated != 1)
+      throw new IllegalStateException("Trade Order Fulfillment transition lost its row lock");
+    insertFulfillmentTimeline(tenantId, after, fact, actorId);
+  }
+
+  @Override
+  public void appendFulfillmentMilestone(
+      TenantId tenantId, TradeOrder order, FulfillmentFact fact, UUID actorId) {
+    requireTenant(tenantId, order.tenantId());
+    insertFulfillmentTimeline(tenantId, order, fact, actorId);
+  }
+
+  private void insertFulfillmentTimeline(
+      TenantId tenantId, TradeOrder order, FulfillmentFact fact, UUID actorId) {
+    jdbc.update(
+        """
+        INSERT INTO trade_order.timeline_entry
+          (id, tenant_id, order_id, event_id, event_type, status, code,
+           message, visibility, occurred_at, created_at, created_by,
+           updated_at, updated_by, version)
+        VALUES
+          (:id, :tenantId, :orderId, :eventId, :eventType, :status, :code,
+           :message, :visibility, :at, :at, :actorId, :at, :actorId, 0)
+        ON CONFLICT (tenant_id, order_id, event_id) DO NOTHING
+        """,
+        new MapSqlParameterSource()
+            .addValue("id", UUID.randomUUID())
+            .addValue("tenantId", tenantId.value())
+            .addValue("orderId", order.id())
+            .addValue("eventId", fact.eventId())
+            .addValue("eventType", fact.eventType())
+            .addValue("status", order.status().name())
+            .addValue("code", fact.code())
+            .addValue("message", fact.safeMessage())
+            .addValue("visibility", fact.visibility())
+            .addValue("at", timestamp(fact.occurredAt()))
             .addValue("actorId", actorId));
   }
 

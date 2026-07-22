@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cellarbridge.dev/schemas/events/fulfillment-plan-created-v1.schema.json",
+  "title": "FulfillmentPlanCreatedV1",
+  "allOf": [
+    { "$ref": "event-envelope.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "type": { "const": "cellarbridge.fulfillment.plan-created.v1" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["planId", "planNumber", "orderId", "orderNumber", "routeCode", "templateCode", "templateVersion", "createdAt"],
+          "properties": {
+            "planId": { "type": "string", "format": "uuid" },
+            "planNumber": { "type": "string" },
+            "orderId": { "type": "string", "format": "uuid" },
+            "orderNumber": { "type": "string" },
+            "routeCode": { "type": "string", "enum": ["SH_GENERAL_TRADE", "NB_BONDED_B2B", "HK_FREE_TRADE"] },
+            "templateCode": { "type": "string" },
+            "templateVersion": { "type": "string" },
+            "createdAt": { "type": "string", "format": "date-time" }
+          }
+        }
+      }
+    }
+  ]
+}

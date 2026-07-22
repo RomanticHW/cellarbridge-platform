@@ -19,6 +19,7 @@
     "orderNumber": "ORD-202607-000001",
     "requestHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "supplyDecisionHash": "02254fa78a2ff6eefd019f100a894d7ba76c2ce07d3f3283a75e214781ffe56c",
+    "routeCode": "NB_BONDED_B2B",
     "confirmedAt": "2026-07-20T10:16:10Z",
     "allocations": [
       {
