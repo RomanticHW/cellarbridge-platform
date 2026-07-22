@@ -1,5 +1,6 @@
 package com.rom.cellarbridge.fulfillment.internal.application;
 
+import com.rom.cellarbridge.platform.SchedulerTelemetry;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -16,15 +17,17 @@ import org.springframework.scheduling.annotation.Scheduled;
     matchIfMissing = true)
 class FulfillmentSlaScheduler {
   private final FulfillmentSlaService service;
+  private final SchedulerTelemetry telemetry;
 
-  FulfillmentSlaScheduler(FulfillmentSlaService service) {
+  FulfillmentSlaScheduler(FulfillmentSlaService service, SchedulerTelemetry telemetry) {
     this.service = service;
+    this.telemetry = telemetry;
   }
 
   @Scheduled(
       initialDelayString = "${cellarbridge.fulfillment.sla.initial-delay:PT30S}",
       fixedDelayString = "${cellarbridge.fulfillment.sla.fixed-delay:PT30S}")
   void scan() {
-    service.markOverdue(100);
+    telemetry.run("fulfillment-sla", () -> service.markOverdue(100));
   }
 }

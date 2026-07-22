@@ -16,7 +16,9 @@ public record EventDelivery(
     Subject subject,
     UUID correlationId,
     UUID causationId,
-    String payloadJson) {
+    String payloadJson,
+    String traceParent,
+    String traceState) {
 
   private static final Pattern EVENT_TYPE_PATTERN =
       Pattern.compile("^cellarbridge\\.[a-z0-9.-]+\\.v[0-9]+$");
@@ -38,6 +40,32 @@ public record EventDelivery(
     if (payloadJson == null || payloadJson.isBlank()) {
       throw new IllegalArgumentException("payloadJson must not be blank");
     }
+  }
+
+  public EventDelivery(
+      UUID eventId,
+      UUID tenantId,
+      String eventType,
+      int eventVersion,
+      Instant occurredAt,
+      String producer,
+      Subject subject,
+      UUID correlationId,
+      UUID causationId,
+      String payloadJson) {
+    this(
+        eventId,
+        tenantId,
+        eventType,
+        eventVersion,
+        occurredAt,
+        producer,
+        subject,
+        correlationId,
+        causationId,
+        payloadJson,
+        null,
+        null);
   }
 
   private static void requireText(String value, String name, int maxLength) {

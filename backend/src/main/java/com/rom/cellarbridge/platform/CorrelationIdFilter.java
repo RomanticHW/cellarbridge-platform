@@ -1,5 +1,7 @@
 package com.rom.cellarbridge.platform;
 
+import io.micrometer.tracing.Span;
+import io.micrometer.tracing.Tracer;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -8,6 +10,7 @@ import java.io.IOException;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import org.slf4j.MDC;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -20,6 +23,16 @@ public final class CorrelationIdFilter extends OncePerRequestFilter {
   public static final String HEADER_NAME = "X-Correlation-ID";
   public static final String MDC_KEY = "correlationId";
   private static final Pattern SAFE_VALUE = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]{0,63}");
+  private final Tracer tracer;
+
+  public CorrelationIdFilter() {
+    this(Tracer.NOOP);
+  }
+
+  @Autowired
+  CorrelationIdFilter(Tracer tracer) {
+    this.tracer = tracer;
+  }
 
   @Override
   protected void doFilterInternal(
@@ -27,9 +40,28 @@ public final class CorrelationIdFilter extends OncePerRequestFilter {
       throws ServletException, IOException {
     String correlationId = normalize(request.getHeader(HEADER_NAME));
     response.setHeader(HEADER_NAME, correlationId);
+    Span current = tracer.currentSpan();
+    boolean ownsSpan = current == null || current.isNoop();
+    Span requestSpan =
+        ownsSpan
+            ? tracer
+                .nextSpan()
+                .name("cellarbridge.http.request")
+                .tag("http.request.method", request.getMethod())
+                .tag("cellarbridge.correlation_id", correlationId)
+                .start()
+            : current;
 
-    try (MDC.MDCCloseable ignored = MDC.putCloseable(MDC_KEY, correlationId)) {
+    try (MDC.MDCCloseable ignored = MDC.putCloseable(MDC_KEY, correlationId);
+        Tracer.SpanInScope spanScope = tracer.withSpan(requestSpan)) {
       filterChain.doFilter(request, response);
+    } catch (ServletException | IOException | RuntimeException failure) {
+      requestSpan.error(failure);
+      throw failure;
+    } finally {
+      if (ownsSpan) {
+        requestSpan.end();
+      }
     }
   }
 

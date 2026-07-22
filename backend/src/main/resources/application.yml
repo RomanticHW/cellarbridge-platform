@@ -15,6 +15,29 @@ server:
   shutdown: graceful
 
 management:
+  tracing:
+    sampling:
+      probability: ${CELLARBRIDGE_TRACE_SAMPLE_PROBABILITY:1.0}
+  opentelemetry:
+    resource-attributes:
+      service.name: ${spring.application.name}
+      service.version: ${cellarbridge.build.commit}
+    tracing:
+      limits:
+        max-attributes: 64
+        max-attribute-value-length: 256
+        max-links: 32
+      export:
+        otlp:
+          endpoint: ${CELLARBRIDGE_OTLP_TRACES_ENDPOINT:http://localhost:4318/v1/traces}
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+  otlp:
+    metrics:
+      export:
+        enabled: false
   endpoint:
     health:
       probes:
@@ -23,7 +46,22 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,prometheus
+
+logging:
+  structured:
+    format:
+      console: ${CELLARBRIDGE_LOG_FORMAT:ecs}
+    ecs:
+      service:
+        name: ${spring.application.name}
+        version: ${cellarbridge.build.commit}
+    json:
+      add:
+        module: application
+        errorCode: none
+  level:
+    root: INFO
 
 cellarbridge:
   build:
