@@ -93,6 +93,7 @@
 | `FULFILLMENT_ACTION_NOT_ALLOWED` | 409 | 模板不允许动作 |
 | `EXCEPTION_ALREADY_OPEN` | 409/200 | 已有相同开放异常 |
 | `EXCEPTION_RECOVERY_NOT_ALLOWED` | 409 | 当前类型/状态不允许恢复 |
+| `EXCEPTION_RECOVERY_IN_PROGRESS` | 409 | 同幂等键的恢复仍在执行，稍后读取原结果 |
 | `EXCEPTION_SOURCE_NOT_RECOVERED` | 409 | 源对象未恢复不能关闭 |
 
 ## 7. Settlement

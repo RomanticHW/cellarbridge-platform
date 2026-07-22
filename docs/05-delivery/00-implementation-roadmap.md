@@ -47,7 +47,9 @@ Design Baseline
 
 Task 08 已为 **Available**：A1/A2/A2C、B1/B2、C1/C2 已按顺序完成原子预占、订单结果、幂等 release/consume、内部 API、Order workbench 与真实后端 E2E。
 
-Task 09 当前为 **Implemented in review**：V18 路线模板、不可变计划快照、依赖动作、SLA、模拟适配器、Trade Order 联动、Fulfillment 工作台、客户安全里程碑和契约已形成完整切片；合并及 CI 全绿前不标记 Available。Task 10 未获单独启动授权，保持阻塞。
+Task 09 已为 **Available**：V18 路线模板、不可变计划快照、依赖动作、SLA、模拟适配器、Trade Order 联动、Fulfillment 工作台、客户安全里程碑和契约已完成合并门禁。
+
+Task 10 当前为 **Implemented in review**：去重异常、分派与状态流转、源状态验证恢复、失败 publication 掩码视图与受控重放、React 工作台和自动验证已形成完整切片；合并及 CI 全绿前不标记 Available。
 
 ## 3. 纵向切片定义
 

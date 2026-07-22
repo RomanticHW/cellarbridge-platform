@@ -8,9 +8,9 @@ baseline:
   status: approved-for-implementation
   approved_on: 2026-07-13
   implementation_present: true
-  current_openapi_contract: "1.9.0"
+  current_openapi_contract: "1.10.0"
   current_asyncapi_contract: "1.3.0-design"
-  current_database_migration: 18
+  current_database_migration: 19
   current_route_policy: ROUTE-2026-03
   route_input_summary_schema: 3
   planning_supply_decision_evidence: available
@@ -18,7 +18,8 @@ baseline:
   supply_decision_propagation: available
   inventory_unit_readiness: available
   inventory_reservation: available
-  fulfillment_orchestration: implemented-in-review
+  fulfillment_orchestration: available
+  exception_center: implemented-in-review
   architecture_style: domain-oriented-modular-monolith
   primary_scenario: b2b-quotation-to-order-to-fulfillment
   data_policy: synthetic-only
