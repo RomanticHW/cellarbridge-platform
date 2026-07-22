@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cellarbridge.dev/schemas/events/exception-closed-v1.schema.json",
+  "title": "ExceptionClosedV1",
+  "allOf": [
+    { "$ref": "event-envelope.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "type": { "const": "cellarbridge.exception.closed.v1" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "exceptionId",
+            "exceptionNumber",
+            "reasonCode",
+            "safeReason",
+            "actorId",
+            "closedAt"
+          ],
+          "properties": {
+            "exceptionId": { "type": "string", "format": "uuid" },
+            "exceptionNumber": { "type": "string", "minLength": 1 },
+            "reasonCode": { "type": "string", "minLength": 1 },
+            "safeReason": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "actorId": { "type": "string", "format": "uuid" },
+            "closedAt": { "type": "string", "format": "date-time" }
+          }
+        }
+      }
+    }
+  ]
+}

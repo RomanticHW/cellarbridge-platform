@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cellarbridge.dev/schemas/events/quotation-lifecycle-v1.schema.json",
+  "title": "QuotationLifecycleV1",
+  "allOf": [
+    { "$ref": "event-envelope.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "enum": [
+            "cellarbridge.quotation.draft-created.v1",
+            "cellarbridge.trade-planning.route-evaluated.v1",
+            "cellarbridge.quotation.approval-requested.v1",
+            "cellarbridge.quotation.approved.v1",
+            "cellarbridge.quotation.changes-requested.v1",
+            "cellarbridge.quotation.rejected.v1",
+            "cellarbridge.quotation.issued.v1"
+          ]
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "quotationId",
+            "quotationNumber",
+            "revision",
+            "status",
+            "actorId"
+          ],
+          "properties": {
+            "quotationId": { "type": "string", "format": "uuid" },
+            "quotationNumber": { "type": "string", "minLength": 1 },
+            "revision": { "type": "integer", "minimum": 1 },
+            "status": { "type": "string" },
+            "actorId": { "type": "string", "format": "uuid" },
+            "selectedRouteCode": {
+              "type": "string",
+              "enum": ["SH_GENERAL_TRADE", "NB_BONDED_B2B", "HK_FREE_TRADE"]
+            },
+            "reason": { "type": "string", "maxLength": 500 }
+          }
+        }
+      }
+    }
+  ]
+}

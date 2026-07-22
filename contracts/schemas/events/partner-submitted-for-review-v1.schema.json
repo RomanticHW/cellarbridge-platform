@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cellarbridge.dev/schemas/events/partner-submitted-for-review-v1.schema.json",
+  "title": "PartnerSubmittedForReviewV1",
+  "allOf": [
+    { "$ref": "partner-lifecycle-v1.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "type": { "const": "cellarbridge.partner.submitted-for-review.v1" }
+      }
+    }
+  ]
+}

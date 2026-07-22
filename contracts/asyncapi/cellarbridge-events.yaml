@@ -1,7 +1,7 @@
 asyncapi: 3.0.0
 info:
   title: CellarBridge Integration Events
-  version: 1.4.0
+  version: 1.5.0
   description: |
     Versioned integration-event contract for the CellarBridge full profile.
     Delivery semantics are at-least-once; every consumer must deduplicate by event id.
@@ -10,6 +10,7 @@ info:
     name: Apache-2.0
     url: https://www.apache.org/licenses/LICENSE-2.0
   tags:
+    - name: partner
     - name: quotation
     - name: order
     - name: inventory
@@ -23,6 +24,36 @@ servers:
     protocol: kafka
     description: Local full-profile Kafka broker
 channels:
+  partnerLifecycle:
+    address: cellarbridge.partner.{transition}.v1
+    description: Partner review and eligibility state transitions consumed by audit, work-queue and reporting projectors.
+    parameters:
+      transition:
+        enum: [submitted-for-review, activated, changes-requested, rejected, suspended]
+    messages:
+      partnerLifecycle:
+        $ref: '#/components/messages/PartnerLifecycleV1'
+  quotationLifecycle:
+    address: cellarbridge.quotation.{transition}.v1
+    description: Quotation authoring, approval and issue transitions consumed by audit, work-queue and reporting projectors.
+    parameters:
+      transition:
+        enum: [draft-created, approval-requested, approved, changes-requested, rejected, issued]
+    messages:
+      quotationLifecycle:
+        $ref: '#/components/messages/QuotationLifecycleV1'
+  tradePlanningRouteEvaluated:
+    address: cellarbridge.trade-planning.route-evaluated.v1
+    description: A route evaluation or override was persisted with the quotation revision.
+    messages:
+      tradePlanningRouteEvaluated:
+        $ref: '#/components/messages/QuotationLifecycleV1'
+  exceptionClosed:
+    address: cellarbridge.exception.closed.v1
+    description: An authorized user closed an exception after recording a safe resolution reason.
+    messages:
+      exceptionClosed:
+        $ref: '#/components/messages/ExceptionClosedV1'
   quotationAccepted:
     address: cellarbridge.quotation.accepted.v1
     description: A customer has accepted a quotation revision. Current events carry complete frozen Supply Decision evidence; pre-1.0 Legacy events omit the root and every line allocationMode.
@@ -120,6 +151,58 @@ channels:
       receivablePaid:
         $ref: '#/components/messages/ReceivablePaidV1'
 operations:
+  sendPartnerLifecycle:
+    action: send
+    channel:
+      $ref: '#/channels/partnerLifecycle'
+    messages:
+      - $ref: '#/channels/partnerLifecycle/messages/partnerLifecycle'
+  receivePartnerLifecycle:
+    action: receive
+    channel:
+      $ref: '#/channels/partnerLifecycle'
+    summary: Audit and reporting consume partner transitions idempotently.
+    messages:
+      - $ref: '#/channels/partnerLifecycle/messages/partnerLifecycle'
+  sendQuotationLifecycle:
+    action: send
+    channel:
+      $ref: '#/channels/quotationLifecycle'
+    messages:
+      - $ref: '#/channels/quotationLifecycle/messages/quotationLifecycle'
+  receiveQuotationLifecycle:
+    action: receive
+    channel:
+      $ref: '#/channels/quotationLifecycle'
+    summary: Audit and reporting consume quotation transitions idempotently.
+    messages:
+      - $ref: '#/channels/quotationLifecycle/messages/quotationLifecycle'
+  sendTradePlanningRouteEvaluated:
+    action: send
+    channel:
+      $ref: '#/channels/tradePlanningRouteEvaluated'
+    messages:
+      - $ref: '#/channels/tradePlanningRouteEvaluated/messages/tradePlanningRouteEvaluated'
+  receiveTradePlanningRouteEvaluated:
+    action: receive
+    channel:
+      $ref: '#/channels/tradePlanningRouteEvaluated'
+    summary: Reporting consumes route distribution facts idempotently.
+    messages:
+      - $ref: '#/channels/tradePlanningRouteEvaluated/messages/tradePlanningRouteEvaluated'
+  sendExceptionClosed:
+    action: send
+    channel:
+      $ref: '#/channels/exceptionClosed'
+    messages:
+      - $ref: '#/channels/exceptionClosed/messages/exceptionClosed'
+  receiveExceptionClosed:
+    action: receive
+    channel:
+      $ref: '#/channels/exceptionClosed'
+    summary: Audit and reporting close exception work items idempotently.
+    messages:
+      - $ref: '#/channels/exceptionClosed/messages/exceptionClosed'
   sendQuotationAccepted:
     action: send
     channel:
@@ -324,6 +407,33 @@ operations:
       - $ref: '#/channels/receivablePaid/messages/receivablePaid'
 components:
   messages:
+    PartnerLifecycleV1:
+      name: PartnerLifecycleV1
+      title: Partner lifecycle transition
+      correlationId:
+        location: $message.payload#/correlationId
+      headers:
+        $ref: '#/components/schemas/EventHeaders'
+      payload:
+        $ref: '../schemas/events/partner-lifecycle-v1.schema.json'
+    QuotationLifecycleV1:
+      name: QuotationLifecycleV1
+      title: Quotation lifecycle transition
+      correlationId:
+        location: $message.payload#/correlationId
+      headers:
+        $ref: '#/components/schemas/EventHeaders'
+      payload:
+        $ref: '../schemas/events/quotation-lifecycle-v1.schema.json'
+    ExceptionClosedV1:
+      name: ExceptionClosedV1
+      title: Exception closed
+      correlationId:
+        location: $message.payload#/correlationId
+      headers:
+        $ref: '#/components/schemas/EventHeaders'
+      payload:
+        $ref: '../schemas/events/exception-closed-v1.schema.json'
     QuotationAcceptedV1:
       name: QuotationAcceptedV1
       title: Quotation accepted
@@ -415,8 +525,8 @@ components:
           payload:
             id: 11000000-0000-4000-8000-000000000002
             type: cellarbridge.order.created.v1
-            specVersion: "1.0"
-            occurredAt: "2026-07-20T10:16:00Z"
+            specVersion: '1.0'
+            occurredAt: '2026-07-20T10:16:00Z'
             tenantId: 10000000-0000-4000-8000-000000000001
             producer: trade-order
             subject:
@@ -434,37 +544,37 @@ components:
               sourceRevision: 1
               sourceEventId: 11000000-0000-4000-8000-000000000001
               acceptanceId: 23000000-0000-4000-8000-000000000001
-              acceptedAt: "2026-07-20T10:15:30Z"
+              acceptedAt: '2026-07-20T10:15:30Z'
               customer:
                 partnerId: 24000000-0000-4000-8000-000000000001
                 partnerNumber: PAR-202607-000001
                 displayName: Jincheng Hospitality Group (synthetic)
                 sourceVersion: 3
               currency: CNY
-              totalAmount: "128400.00"
+              totalAmount: '128400.00'
               paymentTermDays: 30
               route:
                 code: NB_BONDED_B2B
                 policyVersion: ROUTE-2026-03
-                estimatedDeliveryDate: "2026-08-15"
+                estimatedDeliveryDate: '2026-08-15'
               acceptedTermsVersion: TERMS-2026-01
-              requestedDeliveryDate: "2026-08-15"
+              requestedDeliveryDate: '2026-08-15'
               deliveryAddress:
                 countryCode: CN
                 province: Shanghai
                 city: Shanghai
                 district: Pudong
                 line1: 88 Harbor Avenue
-                postalCode: "200120"
+                postalCode: '200120'
               snapshotHash: c2d9de573e494036e90e77b836956600a9054e0f890c602572fd1e278a1badde
               supplyDecision:
                 schemaVersion: 1
                 policyVersion: SUPPLY-DECISION-2026-01
-                decidedAt: "2026-07-20T10:14:00Z"
+                decidedAt: '2026-07-20T10:14:00Z'
                 sourceRouteEvaluationId: 28000000-0000-4000-8000-000000000001
                 sourceRouteInputHash: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
                 selectedRouteCode: NB_BONDED_B2B
-                inventoryDataAsOf: "2026-07-20T10:13:00Z"
+                inventoryDataAsOf: '2026-07-20T10:13:00Z'
                 decisionHash: 02254fa78a2ff6eefd019f100a894d7ba76c2ce07d3f3283a75e214781ffe56c
               lines:
                 - orderLineId: 52000000-0000-4000-8000-000000000001
@@ -472,14 +582,14 @@ components:
                   skuId: 26000000-0000-4000-8000-000000000001
                   skuCode: CB-BDX-2019-750X6
                   description: Bordeaux Blend 2019 750ml x 6 (synthetic)
-                  quantity: "20"
+                  quantity: '20'
                   unit: CASE
-                  netUnitPrice: "6420.00"
-                  lineTotal: "128400.00"
+                  netUnitPrice: '6420.00'
+                  lineTotal: '128400.00'
                   supplyPoolId: 27000000-0000-4000-8000-000000000001
                   allocationMode: FIXED_POOL
                   supplyType: BONDED_ON_HAND
-              createdAt: "2026-07-20T10:16:00Z"
+              createdAt: '2026-07-20T10:16:00Z'
     InventoryReservationConfirmedV1:
       name: InventoryReservationConfirmedV1
       title: Inventory reservation confirmed

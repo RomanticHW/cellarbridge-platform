@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cellarbridge.dev/schemas/events/quotation-approval-requested-v1.schema.json",
+  "title": "QuotationApprovalRequestedV1",
+  "allOf": [
+    { "$ref": "quotation-lifecycle-v1.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "type": { "const": "cellarbridge.quotation.approval-requested.v1" }
+      }
+    }
+  ]
+}

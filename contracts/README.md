@@ -35,3 +35,11 @@ It does not change module boundaries, event delivery semantics or the approved a
 `TradeOrderCreatedV1` remains v1: Task 07 adds only optional frozen-snapshot properties, so
 existing v1 producers and consumers remain valid. Technical event identifiers remain persisted
 for audit and operations, but the ordinary internal order response does not expose them.
+
+### HTTP API 1.12.0 and AsyncAPI 1.5.0 — audit/reporting projections
+
+Task 12 adds tenant-scoped `/dashboard`, `/audit/entries`, `/timeline`, and `/work-items` reads.
+Responses expose projection status and `dataAsOf` where eventual consistency matters; audit cursors
+are opaque and tenant-bound. AsyncAPI 1.5 adds the already-persisted Partner and Quotation lifecycle,
+route-evaluation, and Exception-closure facts consumed by reporting. These are additive pre-1.0
+contracts; existing event types and HTTP response shapes are not removed or reinterpreted.
