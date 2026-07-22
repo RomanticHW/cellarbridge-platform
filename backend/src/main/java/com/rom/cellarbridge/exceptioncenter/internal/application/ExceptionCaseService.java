@@ -1,6 +1,7 @@
 package com.rom.cellarbridge.exceptioncenter.internal.application;
 
 import com.rom.cellarbridge.exceptioncenter.ExceptionCategory;
+import com.rom.cellarbridge.exceptioncenter.ExceptionClosedV1;
 import com.rom.cellarbridge.exceptioncenter.ExceptionOpenedV1;
 import com.rom.cellarbridge.exceptioncenter.ExceptionSeverity;
 import com.rom.cellarbridge.exceptioncenter.ExceptionStatus;
@@ -292,6 +293,20 @@ public class ExceptionCaseService {
         current.correlationId(),
         now);
     store.completeWorkItem(context.tenantId(), current.id(), now);
+    events.publish(
+        new PendingEvent(
+            UUID.randomUUID(),
+            context.tenantId().value(),
+            ExceptionClosedV1.TYPE,
+            1,
+            now,
+            "exception-center",
+            new PendingEvent.Subject("EXCEPTION_CASE", current.id(), current.number()),
+            current.correlationId(),
+            context.userId(),
+            new ExceptionClosedV1.Payload(
+                current.id(), current.number(), reasonCode, reason, context.userId(), now),
+            Map.of()));
     return detail(find(context.tenantId(), caseId, false));
   }
 

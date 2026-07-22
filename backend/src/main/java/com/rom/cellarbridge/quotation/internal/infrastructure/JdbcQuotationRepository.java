@@ -2,6 +2,8 @@ package com.rom.cellarbridge.quotation.internal.infrastructure;
 
 import com.rom.cellarbridge.identityaccess.GlobalRegistryAccess;
 import com.rom.cellarbridge.identityaccess.TenantId;
+import com.rom.cellarbridge.platform.PendingEvent;
+import com.rom.cellarbridge.platform.ReliableEventPublisher;
 import com.rom.cellarbridge.quotation.QuotationSnapshotHashV1;
 import com.rom.cellarbridge.quotation.QuotationStatus;
 import com.rom.cellarbridge.quotation.QuotationSupplyDecisionStatus;
@@ -84,10 +86,15 @@ public class JdbcQuotationRepository implements QuotationRepository {
 
   private final NamedParameterJdbcTemplate jdbc;
   private final JsonMapper jsonMapper;
+  private final ReliableEventPublisher reliableEvents;
 
-  public JdbcQuotationRepository(NamedParameterJdbcTemplate jdbc, JsonMapper jsonMapper) {
+  public JdbcQuotationRepository(
+      NamedParameterJdbcTemplate jdbc,
+      JsonMapper jsonMapper,
+      ReliableEventPublisher reliableEvents) {
     this.jdbc = jdbc;
     this.jsonMapper = jsonMapper;
+    this.reliableEvents = reliableEvents;
   }
 
   @Override
@@ -1198,12 +1205,16 @@ public class JdbcQuotationRepository implements QuotationRepository {
 
   private void insertPublication(
       QuotationAggregate quotation, UUID actorId, String eventType, String safeReason) {
+    UUID eventId = UUID.randomUUID();
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("quotationId", quotation.id());
     payload.put("quotationNumber", quotation.number());
     payload.put("revision", quotation.currentRevision());
     payload.put("status", quotation.status().name());
     payload.put("actorId", actorId);
+    if (quotation.revision().selectedRouteCode() != null) {
+      payload.put("selectedRouteCode", quotation.revision().selectedRouteCode().name());
+    }
     if (safeReason != null) {
       payload.put("reason", safeReason);
     }
@@ -1220,9 +1231,22 @@ public class JdbcQuotationRepository implements QuotationRepository {
              :occurredAt, :actorId, :occurredAt, :actorId, 0)
           """,
           actionParameters(quotation, actorId)
-              .addValue("eventId", UUID.randomUUID())
+              .addValue("eventId", eventId)
               .addValue("eventType", eventType)
               .addValue("payload", jsonMapper.writeValueAsString(payload)));
+      reliableEvents.publish(
+          new PendingEvent(
+              eventId,
+              quotation.tenantId().value(),
+              eventType,
+              1,
+              quotation.updatedAt(),
+              eventType.startsWith("cellarbridge.trade-planning") ? "trade-planning" : "quotation",
+              new PendingEvent.Subject("QUOTATION", quotation.id(), quotation.number()),
+              quotation.id(),
+              actorId,
+              payload,
+              Map.of()));
     } catch (JacksonException exception) {
       throw new IllegalStateException("Could not serialize quotation publication", exception);
     }

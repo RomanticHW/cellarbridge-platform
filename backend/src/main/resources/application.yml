@@ -41,6 +41,8 @@ cellarbridge:
     cursor-secret: ${CELLARBRIDGE_ORDER_CURSOR_SECRET:local-demo-order-cursor-key-change-me}
   settlement:
     cursor-secret: ${CELLARBRIDGE_SETTLEMENT_CURSOR_SECRET:local-demo-settlement-cursor-key-change-me}
+  audit-reporting:
+    cursor-secret: ${CELLARBRIDGE_AUDIT_CURSOR_SECRET:local-demo-audit-cursor-key-change-me}
   platform:
     local-events:
       enabled: ${CELLARBRIDGE_LOCAL_EVENTS_ENABLED:false}

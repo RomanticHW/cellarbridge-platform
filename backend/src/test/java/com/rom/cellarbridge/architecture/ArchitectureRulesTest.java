@@ -27,6 +27,18 @@ import org.junit.jupiter.api.Test;
 class ArchitectureRulesTest {
 
   private static final String ROOT_PACKAGE = "com.rom.cellarbridge";
+  private static final String AUDIT_IMMUTABILITY_FUNCTION =
+      """
+      CREATE FUNCTION audit_reporting.prevent_audit_entry_mutation()
+      RETURNS trigger
+      LANGUAGE plpgsql
+      AS $$
+      BEGIN
+          RAISE EXCEPTION 'audit entries are immutable' USING ERRCODE = '55000';
+      END;
+      $$;
+
+      """;
   private static final List<String> OWNED_SCHEMAS =
       List.of(
           "identity_access",
@@ -39,7 +51,8 @@ class ArchitectureRulesTest {
           "fulfillment",
           "exception_center",
           "settlement",
-          "platform_event");
+          "platform_event",
+          "audit_reporting");
   private static final ArchRule DOMAIN_ISOLATION =
       noClasses()
           .that()
@@ -221,7 +234,7 @@ class ArchitectureRulesTest {
             "9:V9__trade_order_conversion.sql:identity_access;trade_order;quotation;platform_event");
     rows.forEach(row -> verifyMigration(migrations.resolve(row.file()), row));
     assertThat(rows.stream().filter(row -> !row.exception().isEmpty()).map(MigrationOwner::version))
-        .containsExactly(8, 9);
+        .containsExactly(8, 9, 21);
 
     assertThatCode(
             () ->
@@ -307,12 +320,20 @@ class ArchitectureRulesTest {
         assertThat(row.owners())
             .containsExactlyInAnyOrder(
                 "identity_access", "trade_order", "quotation", "platform_event");
+      } else if (row.version() == 21) {
+        assertThat(row.exception()).isEqualTo("ADR-024");
+        assertThat(row.owners()).containsExactly("audit_reporting");
       } else {
         assertThat(row.exception()).isEmpty();
         assertThat(row.owners()).hasSize(1).allMatch(owner -> !owner.isBlank());
       }
       if (row.version() >= 10) {
-        verifyOwnedSql(Files.readString(file), row.owners().getFirst());
+        String sql = Files.readString(file);
+        if (row.version() == 21) {
+          assertThat(sql).containsOnlyOnce(AUDIT_IMMUTABILITY_FUNCTION);
+          sql = sql.replace(AUDIT_IMMUTABILITY_FUNCTION, "");
+        }
+        verifyOwnedSql(sql, row.owners().getFirst());
       }
     } catch (Exception exception) {
       throw new IllegalStateException("Cannot verify migration " + file, exception);
