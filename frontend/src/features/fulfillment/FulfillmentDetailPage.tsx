@@ -62,7 +62,7 @@ export function FulfillmentDetailPage() {
   const queryClient = useQueryClient();
   const [dialog, setDialog] = useState<{ step: Step; action: FulfillmentAction }>();
   const [reason, setReason] = useState('');
-  const [scenario, setScenario] = useState<'SUCCESS' | 'FAILURE' | 'DELAY'>('SUCCESS');
+  const [scenario, setScenario] = useState<'SUCCESS' | 'FAILURE' | 'DELAY' | 'TIMEOUT'>('SUCCESS');
   const plan = useQuery({
     queryKey: ['fulfillment', 'plan', planId],
     queryFn: ({ signal }) => getFulfillmentPlan(accessToken, planId, signal),
@@ -257,6 +257,7 @@ export function FulfillmentDetailPage() {
                   { value: 'SUCCESS', label: 'Success' },
                   { value: 'FAILURE', label: 'Failure' },
                   { value: 'DELAY', label: 'Delay' },
+                  { value: 'TIMEOUT', label: 'Timeout' },
                 ]}
               />
             </label>

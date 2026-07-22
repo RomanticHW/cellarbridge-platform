@@ -53,7 +53,7 @@ performance/k6-or-gatling/
 scripts/failure-tests/
 ```
 
-性能工具在 Task 14 评估 k6/Gatling/JMH：JMH 只测纯算法，不用于端到端数据库吞吐。
+Task 14 采用 Python 标准库编排现有 Maven/Testcontainers 测试与 PostgreSQL `EXPLAIN`，避免为两类窄基准引入 k6/Gatling/JMH 运行时。纯路径策略在同一 JUnit 中记录分位数并逐次断言确定性；数据库与并发场景复用生产 SQL/事务路径。若以后需要长时间 HTTP 用户模型，再以真实流量形状评估 k6/Gatling；JMH 仍只适合纯算法，不用于端到端数据库吞吐。
 
 ## 4. 验收映射
 

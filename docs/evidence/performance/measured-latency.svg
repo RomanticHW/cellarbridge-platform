@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="480" viewBox="0 0 760 480" role="img" aria-labelledby="title description">
+<title id="title">Measured latency percentiles</title>
+<desc id="description">full profile latency summary rendered from result.json</desc>
+<style>
+  .background { fill: #f7f4ed; }
+  .title { fill: #17211b; font: 700 22px system-ui, sans-serif; }
+  .subtitle { fill: #526056; font: 13px system-ui, sans-serif; }
+  .panel-title { fill: #17211b; font: 600 16px system-ui, sans-serif; }
+  .label, .value { fill: #334039; font: 12px ui-monospace, monospace; }
+  .bar { fill: #39755a; }
+</style>
+<rect width="760" height="480" rx="16" class="background"/>
+<text x="40" y="48" class="title">Measured latency percentiles</text>
+<text x="40" y="72" class="subtitle">Profile: full · duration: 184.512s · correctness errors: 0</text>
+<text x="40" y="112" class="panel-title">Catalog mixed search</text>
+<text x="40" y="159" class="label">p50</text>
+<rect x="85" y="144" width="404.33" height="20" rx="4" class="bar"/>
+<text x="499.33" y="159" class="value">8.914 ms</text>
+<text x="40" y="193" class="label">p95</text>
+<rect x="85" y="178" width="425.06" height="20" rx="4" class="bar"/>
+<text x="520.06" y="193" class="value">9.371 ms</text>
+<text x="40" y="227" class="label">p99</text>
+<rect x="85" y="212" width="430.0" height="20" rx="4" class="bar"/>
+<text x="525.0" y="227" class="value">9.480 ms</text>
+<text x="40" y="248" class="subtitle">Throughput: 112.484 queries/s</text>
+<text x="40" y="292" class="panel-title">Deterministic route evaluation</text>
+<text x="40" y="339" class="label">p50</text>
+<rect x="85" y="324" width="119.78" height="20" rx="4" class="bar"/>
+<text x="214.78" y="339" class="value">3.459 μs</text>
+<text x="40" y="373" class="label">p95</text>
+<rect x="85" y="358" width="222.19" height="20" rx="4" class="bar"/>
+<text x="317.19" y="373" class="value">6.416 μs</text>
+<text x="40" y="407" class="label">p99</text>
+<rect x="85" y="392" width="430.0" height="20" rx="4" class="bar"/>
+<text x="525.0" y="407" class="value">12.417 μs</text>
+<text x="40" y="428" class="subtitle">Throughput: 211139.101 operations/s</text>
+</svg>

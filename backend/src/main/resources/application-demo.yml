@@ -3,6 +3,8 @@ spring:
     locations: classpath:db/migration,classpath:db/demo
 
 cellarbridge:
+  fulfillment:
+    failure-simulation-enabled: true
   platform:
     local-events:
       enabled: true

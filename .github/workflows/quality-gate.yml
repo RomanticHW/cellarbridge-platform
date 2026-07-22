@@ -45,6 +45,9 @@ jobs:
   audit-reporting:
     uses: ./.github/workflows/audit-reporting.yml
 
+  performance-resilience:
+    uses: ./.github/workflows/performance-resilience.yml
+
   migration-history:
     uses: ./.github/workflows/migration-history.yml
     with:
@@ -68,6 +71,7 @@ jobs:
         customer-quotation-acceptance,
         trade-order-conversion,
         audit-reporting,
+        performance-resilience,
         migration-history,
       ]
     steps:
@@ -84,6 +88,7 @@ jobs:
           ACCEPTANCE_RESULT: ${{ needs['customer-quotation-acceptance'].result }}
           ORDER_RESULT: ${{ needs['trade-order-conversion'].result }}
           REPORTING_RESULT: ${{ needs['audit-reporting'].result }}
+          PERFORMANCE_RESULT: ${{ needs['performance-resilience'].result }}
           MIGRATION_RESULT: ${{ needs['migration-history'].result }}
         run: |
           test "${DOCS_RESULT}" = "success"
@@ -97,4 +102,5 @@ jobs:
           test "${ACCEPTANCE_RESULT}" = "success"
           test "${ORDER_RESULT}" = "success"
           test "${REPORTING_RESULT}" = "success"
+          test "${PERFORMANCE_RESULT}" = "success"
           test "${MIGRATION_RESULT}" = "success"

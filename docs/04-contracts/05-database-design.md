@@ -2,7 +2,7 @@
 
 ## 1. 设计原则
 
-状态边界：V2～V21 已覆盖身份、交易、库存预占、履约、异常、结算和审计报表纵向切片；历史迁移不可重写，
+状态边界：V2～V22 已覆盖身份、交易、库存预占、履约、异常、结算和审计报表纵向切片；历史迁移不可重写，
 当前结算能力只记录外部付款事实，不连接真实支付、总账、发票或税务系统。
 
 - PostgreSQL 18；
@@ -186,5 +186,5 @@ CHECK (version >= 0)
 
 ## 9. 详细 DDL
 
-Design Baseline 提供逻辑设计；Flyway/Testcontainers 可从空库执行到 V21，并保留既有升级链与
-migration ownership/hash 证据。V21 owner=`audit_reporting`，不创建跨 Schema FK，也不修改任何源模块表。
+Design Baseline 提供逻辑设计；Flyway/Testcontainers 可从空库执行到 V22，并保留既有升级链与
+migration ownership/hash 证据。V21 owner=`audit_reporting`；V22 owner=`fulfillment`，只扩展 demo adapter 的受控 `TIMEOUT` 场景约束。两者均不创建跨 Schema FK。

@@ -24,6 +24,8 @@ target/
 *.class
 hs_err_pid*
 *.tsbuildinfo
+__pycache__/
+*.py[cod]
 
 # Node and frontend
 node_modules/

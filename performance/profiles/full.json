@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "cellarbridge.performance-profile.v1",
+  "name": "full",
+  "seed": 140726,
+  "durationBudgetMinutes": 30,
+  "counts": {
+    "products": 5000,
+    "skus": 15000,
+    "inventoryLots": 100000,
+    "partners": 1000,
+    "quotations": 100000,
+    "orders": 60000,
+    "events": 1000000
+  },
+  "benchmark": {
+    "catalogProducts": 5000,
+    "catalogWarmups": 10,
+    "catalogRuns": 100,
+    "routeWarmups": 10000,
+    "routeIterations": 100000,
+    "eventBacklog": 1000
+  },
+  "faults": {
+    "identityOutage": true
+  }
+}

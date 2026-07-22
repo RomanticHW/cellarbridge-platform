@@ -13,6 +13,9 @@ import com.rom.cellarbridge.test.PostgresIntegrationTestSupport;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -58,6 +61,61 @@ class LocalEventDeliveryIntegrationTest extends PostgresIntegrationTestSupport {
     assertThat(inboxValue(handler, delivery, "status")).isEqualTo("PROCESSED");
     assertThat(inboxNumber(handler, delivery, "duplicate_count")).isEqualTo(1);
     assertThat(publicationCount(handler.nextEventId(delivery))).isEqualTo(1);
+  }
+
+  @Test
+  void drainsDeterministicBacklogWithDuplicateDeliveryAndOneSideEffectEach() {
+    int eventCount = Integer.getInteger("cellarbridge.performance.event-count", 100);
+    Instant occurredAt = Instant.parse("2026-07-22T12:00:00Z");
+    RecordingHandler handler = new RecordingHandler("test.performance.backlog", eventPublisher);
+    List<EventDelivery> backlog = new ArrayList<>();
+    for (int index = 0; index < eventCount; index++) {
+      backlog.add(
+          delivery(
+              UUID.nameUUIDFromBytes(
+                  ("performance-event-" + index).getBytes(StandardCharsets.UTF_8)),
+              occurredAt.plusMillis(index)));
+    }
+    Collections.reverse(backlog);
+
+    long started = System.nanoTime();
+    backlog.forEach(
+        event ->
+            assertThat(deliveryService.deliver(handler, event))
+                .isEqualTo(LocalEventDeliveryService.DeliveryOutcome.PROCESSED));
+    backlog.forEach(
+        event ->
+            assertThat(deliveryService.deliver(handler, event))
+                .isEqualTo(LocalEventDeliveryService.DeliveryOutcome.ALREADY_PROCESSED));
+    long elapsedNanos = System.nanoTime() - started;
+
+    assertThat(handler.invocations()).isEqualTo(eventCount);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM platform_event.event_inbox WHERE consumer_name = ? AND status = 'PROCESSED'",
+                Integer.class,
+                handler.consumerName()))
+        .isEqualTo(eventCount);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT sum(duplicate_count) FROM platform_event.event_inbox WHERE consumer_name = ?",
+                Integer.class,
+                handler.consumerName()))
+        .isEqualTo(eventCount);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM platform_event.event_publication publication JOIN platform_event.event_inbox inbox ON inbox.event_id = publication.causation_id WHERE inbox.consumer_name = ? AND publication.producer = 'trade-order'",
+                Integer.class,
+                handler.consumerName()))
+        .isEqualTo(eventCount);
+    System.out.printf(
+        "event-backlog seed=140013 events=%d deliveries=%d elapsed-ms=%.3f throughput-per-second=%.3f duplicates=%d side-effects=%d%n",
+        eventCount,
+        eventCount * 2,
+        elapsedNanos / 1_000_000.0,
+        (eventCount * 2) / (elapsedNanos / 1_000_000_000.0),
+        eventCount,
+        eventCount);
   }
 
   @Test
