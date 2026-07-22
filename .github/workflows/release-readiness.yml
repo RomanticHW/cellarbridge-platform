@@ -1,0 +1,51 @@
+name: Release readiness
+
+on:
+  workflow_call:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out release candidate
+        uses: actions/checkout@v6
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.12.0
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24.18.0'
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+      - name: Install Chromium
+        working-directory: frontend
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Validate release scripts and asset assembly
+        run: |
+          shellcheck scripts/demo.sh scripts/demo_reset.sh scripts/demo_e2e.sh scripts/smoke_full.sh
+          python3 -m unittest -v scripts/test_prepare_release_assets.py
+      - name: Verify core profile
+        run: make smoke-core
+      - name: Verify full profile
+        run: make smoke-full
+      - name: Run the complete reviewer journey
+        run: make demo-e2e
+      - name: Upload browser evidence
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-browser-evidence
+          path: target/release-evidence/
+          if-no-files-found: error
+          retention-days: 30

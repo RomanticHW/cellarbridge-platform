@@ -4,23 +4,39 @@ All notable changes to this project are documented in this file. The project fol
 
 ## [Unreleased]
 
+No unreleased changes.
+
+## [1.0.0] - 2026-07-22
+
 ### Added
 
-- runnable identity/access and partner-onboarding vertical slices;
-- tenant-scoped wine/SKU and five-mode supply model with PostgreSQL FTS/trigram search;
-- permission-aware catalog workspace, local quote selection, OIDC browser verification, and reproducible query benchmark;
-- CASE/BOTTLE-aware inventory and Catalog projections, ROUTE-2026-02 exact-unit coverage, versioned warehouse-priority corrections, preservation tests, and true dual-unit benchmark fixtures;
-- revisioned quotation, explainable trade-planning, approval, and secure customer-decision slices;
-- idempotent accepted-quotation conversion into one immutable Trade Order, backed by reliable local publication and Consumer Inbox handling;
-- accepted decisions clarifying SQL-first persistence, reliable local event delivery, the designed Task 08 reservation protocol, and V10+ migration ownership;
-- public documentation that distinguishes the executable core from designed capabilities and planned full-profile infrastructure.
-- pre-1.0 accepted-quotation contract correction with canonical Snapshot Hash V1 validation.
-- ROUTE-2026-03 Planning evidence, Quotation-owned AUTO/FIXED freeze through V13, and additive Current/Legacy V1 propagation to FROZEN/LEGACY_UNVERIFIED Trade Orders through V14 and OpenAPI 1.7/AsyncAPI 1.1; historical ROUTE-2026-01/02 remains readable.
-- idempotent V21 audit/reporting projections, immutable audit evidence, unified business timelines, permission-filtered work queues, and accessible ECharts dashboards.
+- complete tenant-scoped partner, catalog, quotation, customer-decision, order, inventory,
+  fulfillment, exception, settlement, audit and reporting vertical slices;
+- explainable route evaluation and immutable supply-decision evidence from quotation to order;
+- PostgreSQL-backed idempotency, local reliable publication, Consumer Inbox handling, atomic
+  reservation, concurrency and recovery proofs;
+- React operations and customer workflows with generated OpenAPI types, accessible ECharts views
+  and a complete Playwright reviewer journey;
+- core and observable full Compose profiles, deterministic demo/reset commands and synthetic-only
+  role accounts;
+- OpenTelemetry, Prometheus, Grafana, structured logging, threat-model, SBOM, dependency, secret and
+  container gates;
+- versioned performance/resilience profiles, release evidence manifest, checksums and public review
+  paths.
 
-### Planned
+### Security
 
-- Kafka/Redis/observability full profile, operational dashboards, and public demo release
+- runtime containers use non-root identities and read-only filesystems;
+- production configuration has no default database or cursor-signing secret;
+- capability-token URLs are excluded from service logs and raw trace URLs.
+
+### Known limitations
+
+- the runtime uses PostgreSQL local publication and does not deploy Kafka or Redis;
+- payment, carrier and warehouse integrations are deterministic simulations, not live providers;
+- performance evidence is single-host, warm-cache component evidence rather than a production SLA;
+- production operation still requires managed secrets, TLS/WAF, backup/PITR, capacity planning and
+  an external security assessment.
 
 ## [0.1.0-design] - 2026-07-13
 

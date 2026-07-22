@@ -59,7 +59,7 @@ make acceptance-e2e
 ## 6. 已知限制
 
 - Customer portal 仍使用可撤销高熵 capability token；Task 07 另行增加 Buyer OIDC/Partner mapping，只用于受保护订单资源，不能替代或扩权 portal capability。
-- 应用 capability 限流是单实例内存窗口，nginx 来源限流是当前可运行边缘控制；多副本生产环境需要 Task 14 的共享限流/WAF 与受限 backend ingress，不能把本地诊断端口作为公开入口。
+- 应用 capability 限流是单实例内存窗口，nginx 来源限流是当前可运行边缘控制；多副本生产环境仍需要共享限流/WAF 与受限 backend ingress，不能把本地诊断端口作为公开入口。
 - `PENDING` publication 已与接受事务原子持久化；Task 07 已实现本地订单消费、Inbox、有界失败重试和唯一订单。`PENDING` 继续表示外部 broker 尚未确认，本地消费不会把它改成 `PUBLISHED`。
 - 本任务按范围只可靠发布 `QuotationAcceptedV1`；拒绝和到期保存终态与安全审计，不创建订单或外部通知。
 - 公开路线日期是签发修订冻结的请求交付日期，不代表承运商实时承诺。

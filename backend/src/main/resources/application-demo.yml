@@ -1,8 +1,20 @@
 spring:
+  datasource:
+    password: ${CELLARBRIDGE_DB_PASSWORD:cellarbridge_local}
   flyway:
     locations: classpath:db/migration,classpath:db/demo
 
 cellarbridge:
+  partner:
+    cursor-secret: ${CELLARBRIDGE_PARTNER_CURSOR_SECRET:local-demo-partner-cursor-key-change-me}
+  catalog:
+    cursor-secret: ${CELLARBRIDGE_CATALOG_CURSOR_SECRET:local-demo-catalog-cursor-key-change-me}
+  order:
+    cursor-secret: ${CELLARBRIDGE_ORDER_CURSOR_SECRET:local-demo-order-cursor-key-change-me}
+  settlement:
+    cursor-secret: ${CELLARBRIDGE_SETTLEMENT_CURSOR_SECRET:local-demo-settlement-cursor-key-change-me}
+  audit-reporting:
+    cursor-secret: ${CELLARBRIDGE_AUDIT_CURSOR_SECRET:local-demo-audit-cursor-key-change-me}
   fulfillment:
     failure-simulation-enabled: true
   platform:

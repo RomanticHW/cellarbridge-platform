@@ -1,6 +1,7 @@
 import { expect, test, type APIResponse, type Browser, type Page } from '@playwright/test';
 
 const password = 'CellarBridge-Demo-2026!';
+const evidenceDirectory = process.env.CELLARBRIDGE_E2E_EVIDENCE_DIR;
 const forbiddenBuyerFields = new Set([
   'cost',
   'totalCost',
@@ -52,6 +53,15 @@ interface CreatedOrder {
   number: string;
   path: string;
   browserErrors: string[];
+}
+
+async function captureEvidence(page: Page, name: string) {
+  if (evidenceDirectory === undefined) return;
+  await page.screenshot({
+    path: `${evidenceDirectory}/${name}.png`,
+    fullPage: true,
+    animations: 'disabled',
+  });
 }
 
 function sanitizeBrowserError(message: string): string {
@@ -176,6 +186,7 @@ async function createIssuedQuotation(
     name: 'Open the customer-safe quotation preview',
   });
   await expect(publicLink).toBeVisible();
+  await captureEvidence(manager, '01-quotation-route-approval');
   const publicPath = await publicLink.getAttribute('href');
   if (publicPath === null || !/^\/portal\/quotations\/[A-Za-z0-9_-]{40,100}$/.test(publicPath)) {
     throw new Error('A valid customer portal path was not issued');
@@ -350,6 +361,24 @@ async function awaitReceivable(page: Page, orderId: string): Promise<ReceivableD
   const response = await authenticatedGet(page, `/api/v1/receivables/${receivableId}`);
   expect(response.status()).toBe(200);
   return (await response.json()) as ReceivableDetail;
+}
+
+async function awaitDashboardProjection(page: Page) {
+  const today = new Date().toISOString().slice(0, 10);
+  await expect
+    .poll(
+      async () => {
+        const response = await authenticatedGet(
+          page,
+          `/api/v1/dashboard?from=${today}&to=${today}`,
+        );
+        if (response.status() !== 200) return -1;
+        const body = (await response.json()) as { metrics?: { quotationCount?: number } };
+        return Number(body.metrics?.quotationCount ?? 0);
+      },
+      { timeout: 45_000 },
+    )
+    .toBeGreaterThan(0);
 }
 
 async function confirmExceptionAction(
@@ -530,6 +559,7 @@ test('converts accepted quotations once, operates Reservation, and enforces orde
   ]);
   await administrator.page.goto(`/app/fulfillment/${fulfillment.id}`);
   await expect(administrator.page.getByRole('heading', { name: fulfillment.number })).toBeVisible();
+  await captureEvidence(administrator.page, '02-reserved-fulfillment-plan');
 
   for (let index = 0; index < fulfillment.steps.length; index += 1) {
     const step = fulfillment.steps[index];
@@ -572,6 +602,7 @@ test('converts accepted quotations once, operates Reservation, and enforces orde
         'Recovered source state and attempt evidence reviewed',
       );
       await expect(administrator.page.getByText('CLOSED', { exact: true })).toBeVisible();
+      await captureEvidence(administrator.page, '03-exception-recovery');
 
       await administrator.page.goto(`/app/fulfillment/${fulfillment.id}`);
       await expect(
@@ -675,6 +706,23 @@ test('converts accepted quotations once, operates Reservation, and enforces orde
   const reversed = (await reversalResponse.json()) as ReceivableDetail;
   expect(reversed.status).toBe('PARTIALLY_PAID');
   expect(reversed.payments.filter((payment) => payment.type === 'REVERSAL')).toHaveLength(1);
+  await captureEvidence(finance.page, '04-receivable-payment-evidence');
+
+  await awaitDashboardProjection(manager.page);
+  await manager.page.goto('/app/dashboard');
+  await expect(manager.page.getByRole('heading', { name: 'Business dashboard' })).toBeVisible();
+  await expect(
+    manager.page
+      .locator('.ant-statistic')
+      .filter({ hasText: 'Quotations' })
+      .locator('.ant-statistic-content-value'),
+  ).not.toHaveText('0');
+  await captureEvidence(manager.page, '05-business-dashboard');
+
+  await manager.page.goto('/app/audit');
+  await expect(manager.page.getByRole('heading', { name: 'Audit search' })).toBeVisible();
+  await expect(manager.page.locator('.ant-table-row').first()).toBeVisible();
+  await captureEvidence(manager.page, '06-audit-evidence');
 
   const buyerReceivable = await authenticatedGet(
     buyer.page,

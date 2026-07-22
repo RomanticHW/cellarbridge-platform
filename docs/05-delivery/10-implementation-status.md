@@ -45,12 +45,13 @@ Status date: **2026-07-22**
 | Architecture fitness functions                   | Partially available         | Modulith、domain/controller/public-contract、Catalog/Inventory 单位、migration 与性能 smoke 门禁已执行；shared-kernel 和更广运行门禁仍按 fitness status 分为 Partially available/Planned                                                                                     |
 | OTel/Tempo/Prometheus/Grafana full profile       | Available                   | ADR-025、Micrometer/OTLP、event span links、scheduler/adapter observations、ECS JSON、versioned provisioning/dashboard/alerts 与 full compose；Kafka/Redis 未引入                                                                                                            |
 | ECharts dashboards                               | Available                   | ECharts 6 模块化加载、ARIA/decal、tooltip、可访问名称与表格 fallback；loading/empty/error/stale 状态                                                                                                                                                                          |
-| Security and supply-chain evidence               | Available                   | threat model、authorization matrix、CycloneDX、secret/dependency/Grype gates、non-root/read-only runtime evidence；生产安全认证与签名发布仍属 Task 15                                                                                                                        |
+| Security and supply-chain evidence               | Available                   | threat model、authorization matrix、CycloneDX、secret/dependency/Grype gates、non-root/read-only runtime evidence、annotated release tag 与 checksums；不宣称密码学签名 provenance 或生产安全认证                                                                        |
 | Performance and resilience evidence              | Available                   | versioned seeded datasets、10/30-minute profiles、catalog/route p50/p95/p99、quotation/order/inventory concurrency、publication backlog、real PostgreSQL deadlock、projector rebuild、demo-gated fulfillment timeout、Keycloak/JWK outage 与 CI artifact                            |
+| Public v1.0.0 release path                        | Available                   | `make demo` / `make demo-reset`、完整 `demo.spec.ts` 评审旅程、core/full smoke、双语 README、发布说明、SBOM/scan/checksum workflow、10/30/60 分钟评审路径                                                     |
 
 ## 3. 声明
 
-当前基线已在 Quotation、Current/Legacy Event 和 Trade Order 中保存一致决策证据；Task 08～12 的 Inventory、Fulfillment、Exception、Settlement 与 Audit/Reporting 均已可运行。Task 13 增加不参与业务正确性的 trace/metric/log 与安全供应链门禁；Task 14 增加带环境、seed、分位数和不变量断言的性能/故障证据。结算模块仍只记录经授权录入的外部付款事实；报表最终一致，页面显示 `dataAsOf` 与 projection status。当前实现不引入 Kafka、Redis、独立仓库、搜索引擎或 BI 平台。
+当前 v1.0.0 基线已在 Quotation、Current/Legacy Event 和 Trade Order 中保存一致决策证据；Inventory、Fulfillment、Exception、Settlement 与 Audit/Reporting 均可运行。trace/metric/log、安全供应链门禁以及带环境、seed、分位数和不变量断言的性能/故障证据可复验。结算模块仍只记录经授权录入的外部付款事实；报表最终一致，页面显示 `dataAsOf` 与 projection status。当前实现不引入 Kafka、Redis、独立仓库、搜索引擎或 BI 平台。
 
 ## 4. 追踪模板
 
