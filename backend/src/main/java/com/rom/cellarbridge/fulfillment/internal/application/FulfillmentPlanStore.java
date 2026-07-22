@@ -71,6 +71,14 @@ public interface FulfillmentPlanStore {
       String safeMessage,
       int attempt);
 
+  void resumeOverdueStep(
+      TenantId tenantId,
+      Step before,
+      FulfillmentStepStatus status,
+      Instant plannedStartAt,
+      Instant dueAt,
+      Instant startedAt);
+
   void updatePlan(
       TenantId tenantId, Plan before, FulfillmentStatus status, Instant completedAt, Instant at);
 

@@ -44,6 +44,8 @@ class SecurityConfiguration {
                     .authenticated()
                     .requestMatchers("/api/v1/fulfillment/plans/**")
                     .authenticated()
+                    .requestMatchers("/api/v1/exceptions/**", "/api/v1/event-publications/**")
+                    .authenticated()
                     .requestMatchers("/api/v1/orders/**", "/api/v1/buyer/orders/**")
                     .authenticated()
                     .requestMatchers(HttpMethod.GET, "/api/v1/portal/quotations/*")

@@ -99,6 +99,17 @@ public class JdbcInventoryReservationRepository implements InventoryReservationR
   }
 
   @Override
+  public Optional<ReservationAggregate> findByIdForUpdate(TenantId tenantId, UUID reservationId) {
+    Objects.requireNonNull(reservationId, "reservationId");
+    return queryReservation(
+            RESERVATION_SELECT + " WHERE tenant_id = :tenantId AND id = :reservationId FOR UPDATE",
+            new MapSqlParameterSource()
+                .addValue("tenantId", tenantId.value())
+                .addValue("reservationId", reservationId))
+        .map(this::hydrate);
+  }
+
+  @Override
   public Optional<ReservationAggregate> findByRequestHash(TenantId tenantId, String requestHash) {
     if (requestHash == null || !HASH.matcher(requestHash).matches()) {
       throw new IllegalArgumentException("requestHash must be lowercase SHA-256 hex");
@@ -372,7 +383,10 @@ public class JdbcInventoryReservationRepository implements InventoryReservationR
     requireFacts(
         lastAttempt.outcome() == ReservationAttempt.Outcome.CONFIRMED
             && !allocations.isEmpty()
-            && shortages.isEmpty());
+            && (shortages.isEmpty()
+                || attempts.subList(0, attempts.size() - 1).stream()
+                    .anyMatch(attempt -> attempt.outcome() == ReservationAttempt.Outcome.FAILED)));
+    validateShortages(reservation, shortages);
     validateSuccessfulFacts(reservation, allocations, movements);
   }
 

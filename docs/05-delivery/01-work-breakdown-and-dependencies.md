@@ -133,7 +133,7 @@ flowchart TD
 
 ## 11. Task 09 — Fulfillment
 
-**Status: Implemented in review.** 完整纵向切片已实现；合并与 CI 全绿前不标记 Available，Task 10 保持阻塞。
+**Status: Available.** 完整纵向切片已通过合并门禁。
 
 - templates and seed versions；
 - plan/step/dependency aggregate；
@@ -144,6 +144,8 @@ flowchart TD
 - dependency and restart tests。
 
 ## 12. Task 10 — Exception
+
+**Status: Implemented in review.** 完整纵向切片已实现；合并与 CI 全绿前不标记 Available。
 
 - exception aggregate/schema；
 - source failure consumers；

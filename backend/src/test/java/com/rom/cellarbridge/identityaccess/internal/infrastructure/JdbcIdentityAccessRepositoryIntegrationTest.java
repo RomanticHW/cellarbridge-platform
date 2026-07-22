@@ -36,13 +36,15 @@ class JdbcIdentityAccessRepositoryIntegrationTest extends PostgresIntegrationTes
     assertThat(repository.findPublicUserIds(TENANT_A, "north.", 2, 2))
         .containsExactly(
             UUID.fromString("11200000-0000-4000-8000-000000000003"),
-            UUID.fromString("11200000-0000-4000-8000-000000000001"));
+            UUID.fromString("11200000-0000-4000-8000-000000000007"));
     assertThat(repository.findPublicUserIds(TENANT_A, "north.", 2, 4))
         .containsExactly(
-            UUID.fromString("11200000-0000-4000-8000-000000000099"),
-            UUID.fromString("11200000-0000-4000-8000-000000000005"));
+            UUID.fromString("11200000-0000-4000-8000-000000000001"),
+            UUID.fromString("11200000-0000-4000-8000-000000000099"));
     assertThat(repository.findPublicUserIds(TENANT_A, "north.", 2, 6))
-        .containsExactly(UUID.fromString("11200000-0000-4000-8000-000000000006"));
+        .containsExactly(
+            UUID.fromString("11200000-0000-4000-8000-000000000005"),
+            UUID.fromString("11200000-0000-4000-8000-000000000006"));
     assertThat(repository.findPublicUserIds(TENANT_B, "north.", 100, 0)).isEmpty();
   }
 

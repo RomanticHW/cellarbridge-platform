@@ -4,7 +4,7 @@
 
 Task 09 将已确认的 Inventory Reservation 转换为路线专属 Fulfillment Plan，并把履约进度可靠地同步到 Trade Order。当前实现属于可重复验证的合成业务演示，不调用真实仓储、报关、承运商或签收系统，也不对法规、时效或承运价格作生产承诺。
 
-Task 09 处于 **Implemented in review**。Task 10 Exception Center 未获单独启动授权；步骤失败和超时只保留履约事实及事件，不创建异常工单。
+Task 09 处于 **Available**。步骤失败和超时会发布不可变事实，并由 Exception Center 按稳定源键去重建单；源履约状态仍由 Fulfillment 独占。
 
 ## 2. 可观察行为
 
@@ -13,6 +13,7 @@ Task 09 处于 **Implemented in review**。Task 10 Exception Center 未获单独
 - 步骤只有在依赖满足后才进入 `READY`；`START / COMPLETE / FAIL / RETRY / SKIP` 由责任角色、计划版本和 `Idempotency-Key` 共同约束。
 - `COMPLETE` 通过确定性模拟适配器执行 `SUCCESS / FAILURE / DELAY` 场景，并保存可查询的尝试证据。重复命令重放既不重复适配器调用，也不重复事件。
 - SLA 扫描将到期的活动步骤一次性标记为 `OVERDUE` 并发布事件；重复扫描不产生第二次状态变化。
+- Exception Center 的受控恢复可将 `FAILED` 步骤重置为依赖校验后的 `READY/BLOCKED`，或为 `OVERDUE` 步骤重建同长度 SLA 窗口；恢复命令按幂等键执行，异常只在回读到活动源状态后解决。
 - 仅 `customerVisible` 步骤生成客户里程碑。内部失败代码、责任角色、依赖和适配器证据不会进入 Buyer 时间线。
 - Trade Order 通过可靠事件依次从 `RESERVED` 进入 `READY_FOR_FULFILLMENT`、`IN_FULFILLMENT` 和 `FULFILLED`。
 

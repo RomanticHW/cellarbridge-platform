@@ -562,6 +562,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/exceptions/{exceptionId}/assignment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Assign an open exception case */
+        post: operations["assignException"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/exceptions/{exceptionId}/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Acknowledge an exception or begin its investigation */
+        post: operations["transitionException"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/exceptions/{exceptionId}/recovery-attempts": {
         parameters: {
             query?: never;
@@ -573,6 +607,40 @@ export interface paths {
         put?: never;
         /** Execute an allowed, auditable recovery action */
         post: operations["requestExceptionRecovery"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/exceptions/{exceptionId}/closure": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close a verified, false-positive or duplicate exception */
+        post: operations["closeException"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/event-publications/failed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List masked failed local deliveries for controlled replay */
+        get: operations["listFailedEventPublications"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1719,21 +1787,26 @@ export interface components {
         };
         /** @enum {string} */
         ExceptionStatus: "OPEN" | "ASSIGNED" | "ACKNOWLEDGED" | "IN_PROGRESS" | "RECOVERY_PENDING" | "RESOLVED" | "CLOSED";
+        /** @enum {string} */
+        ExceptionCategory: "INVENTORY_SHORTAGE" | "FULFILLMENT_STEP_FAILED" | "FULFILLMENT_STEP_OVERDUE" | "EVENT_DELIVERY_FAILED";
+        /** @enum {string} */
+        ExceptionSeverity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
         ExceptionSummary: {
             /** Format: uuid */
             id: string;
             number: string;
-            type: string;
-            /** @enum {string} */
-            severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+            category: components["schemas"]["ExceptionCategory"];
+            severity: components["schemas"]["ExceptionSeverity"];
             status: components["schemas"]["ExceptionStatus"];
             sourceType: string;
             /** Format: uuid */
             sourceId: string;
-            sourceNumber?: string;
-            title: string;
+            sourceNumber: string;
+            summary: string;
             /** Format: uuid */
             assigneeId?: string | null;
+            /** Format: uuid */
+            primaryCaseId?: string | null;
             /** Format: date-time */
             openedAt: string;
             /** Format: date-time */
@@ -1743,20 +1816,82 @@ export interface components {
         };
         ExceptionPage: {
             items: components["schemas"]["ExceptionSummary"][];
-            pageInfo: components["schemas"]["PageInfo"];
+            nextCursor?: string | null;
+            hasNext: boolean;
+            pageSize: number;
         };
-        ExceptionDetail: components["schemas"]["ExceptionSummary"] & {
-            detectionFact: {
+        ExceptionDetail: {
+            summary: components["schemas"]["ExceptionSummary"];
+            safeDetails: {
                 [key: string]: unknown;
             };
-            history: {
-                [key: string]: unknown;
-            }[];
-            allowedRecoveryActions: string[];
+            occurrences: components["schemas"]["ExceptionOccurrence"][];
+            history: components["schemas"]["ExceptionHistory"][];
+            recoveries: components["schemas"]["RecoveryAttempt"][];
+            allowedRecoveryActions: components["schemas"]["RecoveryAction"][];
             allowedActions: string[];
         };
-        RecoveryRequest: {
+        ExceptionOccurrence: {
+            /** Format: uuid */
+            sourceEventId: string;
+            eventType: string;
+            /** Format: date-time */
+            detectedAt: string;
+            evidence: {
+                [key: string]: unknown;
+            };
+        };
+        ExceptionHistory: {
             action: string;
+            /** @enum {string} */
+            actorType: "SYSTEM" | "INTERNAL_USER";
+            /** Format: uuid */
+            actorId?: string | null;
+            previousStatus?: components["schemas"]["ExceptionStatus"] | null;
+            newStatus: components["schemas"]["ExceptionStatus"];
+            reasonCode?: string | null;
+            safeReason?: string | null;
+            /** Format: uuid */
+            correlationId: string;
+            /** Format: date-time */
+            occurredAt: string;
+        };
+        /** @enum {string} */
+        RecoveryAction: "RETRY_RESERVATION" | "RETRY_FULFILLMENT_STEP" | "RESUME_FULFILLMENT_PLAN" | "REPLAY_PUBLICATION" | "MANUAL_ACKNOWLEDGE";
+        RecoveryAttempt: {
+            /** Format: uuid */
+            id: string;
+            action: components["schemas"]["RecoveryAction"];
+            /** Format: uuid */
+            requesterId: string;
+            inputSummary: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            requestedAt: string;
+            outcome?: components["schemas"]["RecoveryOutcome"] | null;
+        };
+        RecoveryOutcome: {
+            /** @enum {string} */
+            status: "SUCCEEDED" | "FAILED";
+            resultCode: string;
+            safeResult: string;
+            sourceState?: string | null;
+            /** Format: date-time */
+            completedAt: string;
+        };
+        ExceptionAssignmentRequest: {
+            /** Format: uuid */
+            assigneeId: string;
+            reason: string;
+        };
+        ExceptionLifecycleRequest: {
+            /** @enum {string} */
+            action: "ACKNOWLEDGE" | "BEGIN_INVESTIGATION";
+            reason: string;
+        };
+        RecoveryRequest: {
+            action: components["schemas"]["RecoveryAction"];
             reason: string;
             parameters?: {
                 [key: string]: unknown;
@@ -1768,10 +1903,45 @@ export interface components {
             /** Format: uuid */
             attemptId: string;
             /** @enum {string} */
-            status: "ACCEPTED" | "IN_PROGRESS" | "SUCCEEDED" | "FAILED";
+            status: "SUCCEEDED" | "FAILED";
+            resultCode: string;
+            safeResult: string;
+            sourceState?: string | null;
+            caseStatus: components["schemas"]["ExceptionStatus"];
+            /** Format: int64 */
+            version: number;
             /** Format: date-time */
-            acceptedAt: string;
+            completedAt: string;
             replayed: boolean;
+        };
+        ExceptionClosureRequest: {
+            /** @enum {string} */
+            reasonCode: "RECOVERY_VERIFIED" | "FALSE_POSITIVE" | "DUPLICATE";
+            reason: string;
+            /** Format: uuid */
+            primaryCaseId?: string | null;
+        };
+        FailedEventDelivery: {
+            /** Format: uuid */
+            eventId: string;
+            eventType: string;
+            consumerName: string;
+            /** @enum {string} */
+            status: "FAILED_RETRYABLE" | "FAILED_FINAL";
+            attempts: number;
+            /** Format: date-time */
+            nextRetryAt?: string | null;
+            errorCode: string;
+            /** Format: date-time */
+            lastAttemptAt: string;
+            /** Format: int64 */
+            version: number;
+        };
+        FailedEventDeliveryPage: {
+            items: components["schemas"]["FailedEventDelivery"][];
+            nextCursor?: string | null;
+            hasNext: boolean;
+            pageSize: number;
         };
         /** @enum {string} */
         ReceivableStatus: "OPEN" | "PARTIALLY_PAID" | "PAID" | "OVERDUE";
@@ -3066,6 +3236,8 @@ export interface operations {
                 status?: components["schemas"]["ExceptionStatus"][];
                 severity?: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
                 assigneeId?: string;
+                sourceType?: string;
+                overdue?: boolean;
             };
             header?: never;
             path?: never;
@@ -3082,6 +3254,9 @@ export interface operations {
                     "application/json": components["schemas"]["ExceptionPage"];
                 };
             };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
         };
     };
     getException: {
@@ -3105,7 +3280,81 @@ export interface operations {
                     "application/json": components["schemas"]["ExceptionDetail"];
                 };
             };
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    assignException: {
+        parameters: {
+            query?: never;
+            header: {
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                exceptionId: components["parameters"]["ExceptionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExceptionAssignmentRequest"];
+            };
+        };
+        responses: {
+            /** @description Assigned exception detail */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExceptionDetail"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["VersionConflict"];
+            428: components["responses"]["PreconditionRequired"];
+        };
+    };
+    transitionException: {
+        parameters: {
+            query?: never;
+            header: {
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                exceptionId: components["parameters"]["ExceptionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExceptionLifecycleRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated exception detail */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExceptionDetail"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["VersionConflict"];
+            428: components["responses"]["PreconditionRequired"];
         };
     };
     requestExceptionRecovery: {
@@ -3129,14 +3378,83 @@ export interface operations {
             /** @description Recovery attempt accepted */
             202: {
                 headers: {
+                    ETag: components["headers"]["ETag"];
+                    "Idempotency-Replayed": components["headers"]["IdempotencyReplayed"];
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["RecoveryResult"];
                 };
             };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
+            404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             412: components["responses"]["VersionConflict"];
+            428: components["responses"]["PreconditionRequired"];
+        };
+    };
+    closeException: {
+        parameters: {
+            query?: never;
+            header: {
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                exceptionId: components["parameters"]["ExceptionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExceptionClosureRequest"];
+            };
+        };
+        responses: {
+            /** @description Closed exception detail */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExceptionDetail"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["VersionConflict"];
+            428: components["responses"]["PreconditionRequired"];
+        };
+    };
+    listFailedEventPublications: {
+        parameters: {
+            query?: {
+                pageSize?: components["parameters"]["PageSize"];
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Failed delivery page without commercial payload */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FailedEventDeliveryPage"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
         };
     };
     listReceivables: {

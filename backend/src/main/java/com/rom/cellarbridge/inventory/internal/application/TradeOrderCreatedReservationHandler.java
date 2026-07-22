@@ -358,7 +358,7 @@ public final class TradeOrderCreatedReservationHandler implements LocalEventHand
             failureCode,
             shortages,
             lines,
-            false));
+            retryable(failureCode)));
   }
 
   private void publish(
@@ -445,6 +445,12 @@ public final class TradeOrderCreatedReservationHandler implements LocalEventHand
                 + reservation.status()
                 + "|"
                 + (reservation.failureCode() == null ? "" : reservation.failureCode())));
+  }
+
+  private static boolean retryable(String failureCode) {
+    return InventoryAllocationService.INSUFFICIENT.equals(failureCode)
+        || InventoryAllocationService.ALLOCATION_CONFLICT.equals(failureCode)
+        || InventoryAllocationService.FIXED_POOL_INELIGIBLE.equals(failureCode);
   }
 
   private static String number(Reservation reservation) {

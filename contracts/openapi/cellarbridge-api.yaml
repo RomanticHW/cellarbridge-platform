@@ -1,12 +1,12 @@
 openapi: 3.1.0
 info:
   title: CellarBridge API
-  version: 1.9.0
-  summary: Contract baseline for B2B wine quotation, order, inventory and fulfillment
+  version: 1.10.0
+  summary: Contract baseline for B2B wine quotation, order, inventory, fulfillment and exception recovery
   description: |
     This contract remains the design-first integration baseline for CellarBridge. All examples are synthetic.
     The authenticated `/me`, partner-onboarding, catalog supply-search, quotation and trade-order
-    endpoints, Inventory Reservation operations, and Fulfillment Plan operations are delivered as vertical slices; remaining business endpoints retain their approved contracts.
+    endpoints, Inventory Reservation operations, Fulfillment Plan operations, and Exception Center recovery are delivered as vertical slices; remaining business endpoints retain their approved contracts.
     Internal commercial fields and customer-portal fields intentionally use separate schemas.
   license:
     name: Apache-2.0
@@ -995,12 +995,21 @@ paths:
         - name: assigneeId
           in: query
           schema: { type: string, format: uuid }
+        - name: sourceType
+          in: query
+          schema: { type: string, pattern: '^[A-Z][A-Z0-9_]{1,79}$' }
+        - name: overdue
+          in: query
+          schema: { type: boolean }
       responses:
         '200':
           description: Exception page
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ExceptionPage' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
   /exceptions/{exceptionId}:
     get:
       tags: [Exceptions]
@@ -1018,6 +1027,68 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ExceptionDetail' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
+  /exceptions/{exceptionId}/assignment:
+    post:
+      tags: [Exceptions]
+      operationId: assignException
+      summary: Assign an open exception case
+      x-requirements: [FR-EXC-002]
+      x-permissions: [exception:assign]
+      parameters:
+        - $ref: '#/components/parameters/ExceptionId'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExceptionAssignmentRequest' }
+      responses:
+        '200':
+          description: Assigned exception detail
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExceptionDetail' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/VersionConflict' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+  /exceptions/{exceptionId}/actions:
+    post:
+      tags: [Exceptions]
+      operationId: transitionException
+      summary: Acknowledge an exception or begin its investigation
+      x-requirements: [FR-EXC-002]
+      x-permissions: [exception:recover]
+      parameters:
+        - $ref: '#/components/parameters/ExceptionId'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExceptionLifecycleRequest' }
+      responses:
+        '200':
+          description: Updated exception detail
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExceptionDetail' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/VersionConflict' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
   /exceptions/{exceptionId}/recovery-attempts:
     post:
       tags: [Exceptions]
@@ -1037,11 +1108,68 @@ paths:
       responses:
         '202':
           description: Recovery attempt accepted
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+            Idempotency-Replayed: { $ref: '#/components/headers/IdempotencyReplayed' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/RecoveryResult' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '412': { $ref: '#/components/responses/VersionConflict' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+  /exceptions/{exceptionId}/closure:
+    post:
+      tags: [Exceptions]
+      operationId: closeException
+      summary: Close a verified, false-positive or duplicate exception
+      x-requirements: [FR-EXC-004]
+      x-permissions: [exception:recover]
+      parameters:
+        - $ref: '#/components/parameters/ExceptionId'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExceptionClosureRequest' }
+      responses:
+        '200':
+          description: Closed exception detail
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExceptionDetail' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/VersionConflict' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+  /event-publications/failed:
+    get:
+      tags: [Exceptions]
+      operationId: listFailedEventPublications
+      summary: List masked failed local deliveries for controlled replay
+      x-requirements: [FR-EXC-004]
+      x-permissions: [event-publication:read]
+      parameters:
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Failed delivery page without commercial payload
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FailedEventDeliveryPage' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
   /receivables:
     get:
       tags: [Settlement]
@@ -2635,63 +2763,175 @@ components:
     ExceptionStatus:
       type: string
       enum: [OPEN, ASSIGNED, ACKNOWLEDGED, IN_PROGRESS, RECOVERY_PENDING, RESOLVED, CLOSED]
+    ExceptionCategory:
+      type: string
+      enum: [INVENTORY_SHORTAGE, FULFILLMENT_STEP_FAILED, FULFILLMENT_STEP_OVERDUE, EVENT_DELIVERY_FAILED]
+    ExceptionSeverity:
+      type: string
+      enum: [LOW, MEDIUM, HIGH, CRITICAL]
     ExceptionSummary:
       type: object
-      required: [id, number, type, severity, status, sourceType, sourceId, title, openedAt, version]
+      required: [id, number, category, severity, status, sourceType, sourceId, sourceNumber, summary, openedAt, version]
       properties:
         id: { type: string, format: uuid }
         number: { type: string }
-        type: { type: string }
-        severity: { type: string, enum: [LOW, MEDIUM, HIGH, CRITICAL] }
+        category: { $ref: '#/components/schemas/ExceptionCategory' }
+        severity: { $ref: '#/components/schemas/ExceptionSeverity' }
         status: { $ref: '#/components/schemas/ExceptionStatus' }
         sourceType: { type: string }
         sourceId: { type: string, format: uuid }
         sourceNumber: { type: string }
-        title: { type: string }
+        summary: { type: string }
         assigneeId: { type: [string, 'null'], format: uuid }
+        primaryCaseId: { type: [string, 'null'], format: uuid }
         openedAt: { type: string, format: date-time }
         dueAt: { type: [string, 'null'], format: date-time }
         version: { type: integer, format: int64 }
     ExceptionPage:
       type: object
-      required: [items, pageInfo]
+      required: [items, hasNext, pageSize]
       properties:
         items:
           type: array
           items: { $ref: '#/components/schemas/ExceptionSummary' }
-        pageInfo: { $ref: '#/components/schemas/PageInfo' }
+        nextCursor: { type: [string, 'null'] }
+        hasNext: { type: boolean }
+        pageSize: { type: integer, minimum: 1, maximum: 100 }
     ExceptionDetail:
-      allOf:
-        - $ref: '#/components/schemas/ExceptionSummary'
-        - type: object
-          required: [detectionFact, history, allowedRecoveryActions, allowedActions]
-          properties:
-            detectionFact: { type: object, additionalProperties: true }
-            history:
-              type: array
-              items: { type: object, additionalProperties: true }
-            allowedRecoveryActions:
-              type: array
-              items: { type: string }
-            allowedActions:
-              type: array
-              items: { type: string }
+      type: object
+      required: [summary, safeDetails, occurrences, history, recoveries, allowedRecoveryActions, allowedActions]
+      properties:
+        summary: { $ref: '#/components/schemas/ExceptionSummary' }
+        safeDetails: { type: object, additionalProperties: true }
+        occurrences:
+          type: array
+          items: { $ref: '#/components/schemas/ExceptionOccurrence' }
+        history:
+          type: array
+          items: { $ref: '#/components/schemas/ExceptionHistory' }
+        recoveries:
+          type: array
+          items: { $ref: '#/components/schemas/RecoveryAttempt' }
+        allowedRecoveryActions:
+          type: array
+          items: { $ref: '#/components/schemas/RecoveryAction' }
+        allowedActions:
+          type: array
+          items: { type: string }
+    ExceptionOccurrence:
+      type: object
+      required: [sourceEventId, eventType, detectedAt, evidence]
+      properties:
+        sourceEventId: { type: string, format: uuid }
+        eventType: { type: string }
+        detectedAt: { type: string, format: date-time }
+        evidence: { type: object, additionalProperties: true }
+    ExceptionHistory:
+      type: object
+      required: [action, actorType, newStatus, correlationId, occurredAt]
+      properties:
+        action: { type: string }
+        actorType: { type: string, enum: [SYSTEM, INTERNAL_USER] }
+        actorId: { type: [string, 'null'], format: uuid }
+        previousStatus:
+          oneOf:
+            - $ref: '#/components/schemas/ExceptionStatus'
+            - type: 'null'
+        newStatus: { $ref: '#/components/schemas/ExceptionStatus' }
+        reasonCode: { type: [string, 'null'] }
+        safeReason: { type: [string, 'null'] }
+        correlationId: { type: string, format: uuid }
+        occurredAt: { type: string, format: date-time }
+    RecoveryAction:
+      type: string
+      enum: [RETRY_RESERVATION, RETRY_FULFILLMENT_STEP, RESUME_FULFILLMENT_PLAN, REPLAY_PUBLICATION, MANUAL_ACKNOWLEDGE]
+    RecoveryAttempt:
+      type: object
+      required: [id, action, requesterId, inputSummary, requestedAt]
+      properties:
+        id: { type: string, format: uuid }
+        action: { $ref: '#/components/schemas/RecoveryAction' }
+        requesterId: { type: string, format: uuid }
+        inputSummary: { type: object, additionalProperties: true }
+        requestedAt: { type: string, format: date-time }
+        outcome:
+          oneOf:
+            - $ref: '#/components/schemas/RecoveryOutcome'
+            - type: 'null'
+    RecoveryOutcome:
+      type: object
+      required: [status, resultCode, safeResult, completedAt]
+      properties:
+        status: { type: string, enum: [SUCCEEDED, FAILED] }
+        resultCode: { type: string }
+        safeResult: { type: string }
+        sourceState: { type: [string, 'null'] }
+        completedAt: { type: string, format: date-time }
+    ExceptionAssignmentRequest:
+      type: object
+      required: [assigneeId, reason]
+      properties:
+        assigneeId: { type: string, format: uuid }
+        reason: { type: string, minLength: 5, maxLength: 500 }
+    ExceptionLifecycleRequest:
+      type: object
+      required: [action, reason]
+      properties:
+        action: { type: string, enum: [ACKNOWLEDGE, BEGIN_INVESTIGATION] }
+        reason: { type: string, minLength: 5, maxLength: 500 }
     RecoveryRequest:
       type: object
       required: [action, reason]
       properties:
-        action: { type: string, minLength: 2, maxLength: 100 }
+        action: { $ref: '#/components/schemas/RecoveryAction' }
         reason: { type: string, minLength: 5, maxLength: 500 }
         parameters: { type: object, additionalProperties: true }
     RecoveryResult:
       type: object
-      required: [exceptionId, attemptId, status, acceptedAt, replayed]
+      required: [exceptionId, attemptId, status, resultCode, safeResult, caseStatus, version, completedAt, replayed]
       properties:
         exceptionId: { type: string, format: uuid }
         attemptId: { type: string, format: uuid }
-        status: { type: string, enum: [ACCEPTED, IN_PROGRESS, SUCCEEDED, FAILED] }
-        acceptedAt: { type: string, format: date-time }
+        status: { type: string, enum: [SUCCEEDED, FAILED] }
+        resultCode: { type: string }
+        safeResult: { type: string }
+        sourceState: { type: [string, 'null'] }
+        caseStatus: { $ref: '#/components/schemas/ExceptionStatus' }
+        version: { type: integer, format: int64 }
+        completedAt: { type: string, format: date-time }
         replayed: { type: boolean }
+    ExceptionClosureRequest:
+      type: object
+      required: [reasonCode, reason]
+      properties:
+        reasonCode:
+          type: string
+          enum: [RECOVERY_VERIFIED, FALSE_POSITIVE, DUPLICATE]
+        reason: { type: string, minLength: 5, maxLength: 500 }
+        primaryCaseId: { type: [string, 'null'], format: uuid }
+    FailedEventDelivery:
+      type: object
+      required: [eventId, eventType, consumerName, status, attempts, errorCode, lastAttemptAt, version]
+      properties:
+        eventId: { type: string, format: uuid }
+        eventType: { type: string }
+        consumerName: { type: string }
+        status: { type: string, enum: [FAILED_RETRYABLE, FAILED_FINAL] }
+        attempts: { type: integer, minimum: 1 }
+        nextRetryAt: { type: [string, 'null'], format: date-time }
+        errorCode: { type: string }
+        lastAttemptAt: { type: string, format: date-time }
+        version: { type: integer, format: int64 }
+    FailedEventDeliveryPage:
+      type: object
+      required: [items, hasNext, pageSize]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/FailedEventDelivery' }
+        nextCursor: { type: [string, 'null'] }
+        hasNext: { type: boolean }
+        pageSize: { type: integer, minimum: 1, maximum: 100 }
     ReceivableStatus:
       type: string
       enum: [OPEN, PARTIALLY_PAID, PAID, OVERDUE]

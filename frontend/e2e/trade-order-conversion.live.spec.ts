@@ -271,6 +271,14 @@ interface FulfillmentPlan {
   steps: { id: string; name: string; status: string }[];
 }
 
+interface ExceptionCaseSummary {
+  id: string;
+  number: string;
+  sourceId: string;
+  status: string;
+  version: number;
+}
+
 async function awaitFulfillmentPlan(page: Page, orderId: string): Promise<FulfillmentPlan> {
   let planId: string | undefined;
   await expect
@@ -289,6 +297,50 @@ async function awaitFulfillmentPlan(page: Page, orderId: string): Promise<Fulfil
   const response = await authenticatedGet(page, `/api/v1/fulfillment/plans/${planId}`);
   expect(response.status()).toBe(200);
   return (await response.json()) as FulfillmentPlan;
+}
+
+async function awaitExceptionCase(page: Page, sourceId: string): Promise<ExceptionCaseSummary> {
+  let exceptionCase: ExceptionCaseSummary | undefined;
+  await expect
+    .poll(
+      async () => {
+        const response = await authenticatedGet(
+          page,
+          '/api/v1/exceptions?sourceType=FULFILLMENT_STEP&pageSize=100',
+        );
+        if (response.status() !== 200) return `HTTP_${response.status()}`;
+        const body = (await response.json()) as { items?: ExceptionCaseSummary[] };
+        exceptionCase = body.items?.find((item) => item.sourceId === sourceId);
+        return exceptionCase?.status ?? 'MISSING';
+      },
+      { timeout: 45_000 },
+    )
+    .toBe('OPEN');
+  if (exceptionCase === undefined) throw new Error('Exception Case was not created');
+  return exceptionCase;
+}
+
+async function confirmExceptionAction(
+  page: Page,
+  button: 'Acknowledge' | 'Begin investigation' | 'Choose recovery' | 'Close case',
+  reason: string,
+) {
+  await page.getByRole('button', { name: button, exact: true }).click();
+  await page.getByRole('textbox', { name: 'Operational reason' }).fill(reason);
+  const responsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      /\/api\/v1\/exceptions\/[0-9a-f-]{36}\/(actions|recovery-attempts|closure)$/.test(
+        new URL(response.url()).pathname,
+      ),
+  );
+  await page.getByRole('button', { name: 'Confirm', exact: true }).click();
+  const response = await responsePromise;
+  expect(response.status()).toBe(button === 'Choose recovery' ? 202 : 200);
+  expect(response.request().headers()['if-match']).toMatch(/^"\d+"$/);
+  if (button === 'Choose recovery') {
+    expect(response.request().headers()['idempotency-key']).toMatch(/^exception-ui-[0-9a-f-]{36}$/);
+  }
 }
 
 async function confirmFulfillmentAction(
@@ -459,7 +511,43 @@ test('converts accepted quotations once, operates Reservation, and enforces orde
           .filter({ hasText: step.name })
           .getByText('FAILED', { exact: true }),
       ).toBeVisible();
-      await confirmFulfillmentAction(administrator.page, step.name, 'Retry');
+
+      const exceptionCase = await awaitExceptionCase(administrator.page, step.id);
+      await administrator.page.goto(`/app/exceptions/${exceptionCase.id}`);
+      await expect(
+        administrator.page.getByRole('heading', { name: exceptionCase.number }),
+      ).toBeVisible();
+      await expect(administrator.page.getByText(/SIMULATED_ADAPTER_FAILURE/).first()).toBeVisible();
+      await confirmExceptionAction(
+        administrator.page,
+        'Acknowledge',
+        'Failure evidence reviewed by the fulfillment owner',
+      );
+      await confirmExceptionAction(
+        administrator.page,
+        'Begin investigation',
+        'Route dependency and retry prerequisites confirmed',
+      );
+      await confirmExceptionAction(
+        administrator.page,
+        'Choose recovery',
+        'Retry the failed source step with verified prerequisites',
+      );
+      await expect(administrator.page.getByText('RESOLVED', { exact: true })).toBeVisible();
+      await confirmExceptionAction(
+        administrator.page,
+        'Close case',
+        'Recovered source state and attempt evidence reviewed',
+      );
+      await expect(administrator.page.getByText('CLOSED', { exact: true })).toBeVisible();
+
+      await administrator.page.goto(`/app/fulfillment/${fulfillment.id}`);
+      await expect(
+        administrator.page
+          .locator('.fulfillment-step-node')
+          .filter({ hasText: step.name })
+          .getByText('READY', { exact: true }),
+      ).toBeVisible();
       await confirmFulfillmentAction(administrator.page, step.name, 'Start');
     }
     await confirmFulfillmentAction(administrator.page, step.name, 'Complete');
