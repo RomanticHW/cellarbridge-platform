@@ -34,6 +34,7 @@ import { useCurrentUser } from '../../api/currentUser';
 import { ErrorState } from '../../components/ErrorState';
 import { LoadingState } from '../../components/LoadingState';
 import { useAuthSession } from '../identity-access/authSession';
+import { TimelinePanel } from '../reporting/TimelinePanel';
 
 const statusColors: Record<string, string> = {
   DRAFT: 'default',
@@ -514,6 +515,7 @@ export function QuotationDetailPage() {
             }))}
           />
         </Card>
+        <TimelinePanel subjectType="QUOTATION" subjectId={quotation.id} />
       </Space>
       <Modal
         open={overrideOpen}

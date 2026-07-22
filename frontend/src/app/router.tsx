@@ -97,6 +97,21 @@ const ReceivableDetailPage = lazy(() =>
     default: module.ReceivableDetailPage,
   })),
 );
+const DashboardPage = lazy(() =>
+  import('../features/reporting/DashboardPage').then((module) => ({
+    default: module.DashboardPage,
+  })),
+);
+const AuditPage = lazy(() =>
+  import('../features/reporting/AuditPage').then((module) => ({
+    default: module.AuditPage,
+  })),
+);
+const WorkItemsPage = lazy(() =>
+  import('../features/reporting/WorkItemsPage').then((module) => ({
+    default: module.WorkItemsPage,
+  })),
+);
 
 function FoundationRoute() {
   return (
@@ -250,6 +265,21 @@ function SettlementRoute({ page }: { page: 'list' | 'detail' }) {
   );
 }
 
+function ReportingRoute({ page }: { page: 'dashboard' | 'audit' | 'work-items' }) {
+  const Page = page === 'dashboard' ? DashboardPage : page === 'audit' ? AuditPage : WorkItemsPage;
+  return (
+    <Suspense
+      fallback={
+        <Flex role="status" aria-label="Loading reporting workspace" justify="center">
+          <Spin size="large" />
+        </Flex>
+      }
+    >
+      <Page />
+    </Suspense>
+  );
+}
+
 export const router = createBrowserRouter([
   { path: '/', element: <Navigate to="/app" replace /> },
   { path: '/login', element: <LoginPage /> },
@@ -282,6 +312,9 @@ export const router = createBrowserRouter([
           { path: 'exceptions/:exceptionId', element: <ExceptionRoute page="detail" /> },
           { path: 'receivables', element: <SettlementRoute page="list" /> },
           { path: 'receivables/:receivableId', element: <SettlementRoute page="detail" /> },
+          { path: 'dashboard', element: <ReportingRoute page="dashboard" /> },
+          { path: 'audit', element: <ReportingRoute page="audit" /> },
+          { path: 'work-items', element: <ReportingRoute page="work-items" /> },
         ],
       },
     ],

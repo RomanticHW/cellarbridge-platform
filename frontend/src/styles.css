@@ -5,6 +5,98 @@
   text-rendering: optimizeLegibility;
 }
 
+.reporting-page {
+  width: 100%;
+}
+
+.reporting-page-stack {
+  width: 100%;
+}
+
+.reporting-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.reporting-heading h2 {
+  margin: 4px 0 2px;
+}
+
+.reporting-kicker {
+  color: #315c45;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.reporting-filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(150px, 1fr)) auto;
+  align-items: end;
+  gap: 12px;
+}
+
+.reporting-filters label {
+  display: grid;
+  gap: 6px;
+  color: #425149;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.reporting-filters input[type='date'] {
+  min-height: 32px;
+  padding: 4px 11px;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  background: #fff;
+  color: #1f2a24;
+  font: inherit;
+}
+
+.reporting-chart {
+  width: 100%;
+  min-height: 320px;
+}
+
+.reporting-chart-empty {
+  display: grid;
+  min-height: 220px;
+  place-items: center;
+  color: #6d7771;
+}
+
+.reporting-chart-fallback {
+  margin-top: 12px;
+  color: #425149;
+}
+
+.reporting-chart-fallback table {
+  width: 100%;
+  margin-top: 10px;
+  border-collapse: collapse;
+}
+
+.reporting-chart-fallback th,
+.reporting-chart-fallback td {
+  padding: 8px;
+  border-bottom: 1px solid #e8ece9;
+  text-align: left;
+}
+
+@media (max-width: 760px) {
+  .reporting-heading {
+    flex-direction: column;
+  }
+
+  .reporting-filters {
+    grid-template-columns: 1fr;
+  }
+}
+
 * {
   box-sizing: border-box;
 }

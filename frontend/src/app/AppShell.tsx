@@ -44,6 +44,13 @@ function createMenuItems(permissions: ReadonlyArray<string>): MenuProps['items']
     ...(permissions.includes('settlement:read')
       ? [{ key: '/app/receivables', label: 'Receivables' }]
       : []),
+    ...(permissions.includes('reporting:read')
+      ? [
+          { key: '/app/dashboard', label: 'Business dashboard' },
+          { key: '/app/work-items', label: 'Work queue' },
+        ]
+      : []),
+    ...(permissions.includes('audit:read') ? [{ key: '/app/audit', label: 'Audit search' }] : []),
     ...(plannedItems.length === 0
       ? []
       : [
@@ -111,7 +118,13 @@ export function AppShell() {
               ? '/app/exceptions'
               : location.pathname.startsWith('/app/receivables')
                 ? '/app/receivables'
-                : location.pathname;
+                : location.pathname.startsWith('/app/dashboard')
+                  ? '/app/dashboard'
+                  : location.pathname.startsWith('/app/work-items')
+                    ? '/app/work-items'
+                    : location.pathname.startsWith('/app/audit')
+                      ? '/app/audit'
+                      : location.pathname;
 
   return (
     <Layout className="app-shell">
