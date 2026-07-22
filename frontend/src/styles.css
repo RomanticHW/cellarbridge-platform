@@ -556,3 +556,90 @@ body {
     flex-direction: column;
   }
 }
+
+.exception-page,
+.exception-page-stack {
+  width: 100%;
+}
+
+.exception-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.exception-heading h2 {
+  margin-top: 8px;
+  margin-bottom: 4px;
+}
+
+.exception-metrics {
+  display: flex;
+  gap: 28px;
+  padding-top: 8px;
+}
+
+.exception-stat {
+  min-width: 118px;
+  color: #263e34;
+  text-align: center;
+  background: #f4f7f2;
+  border-color: #cdd9d0;
+}
+
+.exception-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: #f7f5ef;
+  border: 1px solid #ddd7c8;
+  border-radius: 10px;
+}
+
+.exception-filters .ant-select {
+  min-width: 210px;
+}
+
+.exception-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.exception-actions {
+  margin-top: 20px;
+}
+
+.safe-evidence {
+  max-width: min(560px, 68vw);
+  max-height: 240px;
+  padding: 12px;
+  overflow: auto;
+  color: #314238;
+  font-size: 12px;
+  background: #f4f6f2;
+  border: 1px solid #dbe2da;
+  border-radius: 8px;
+}
+
+.exception-dialog-fields,
+.exception-dialog-fields label,
+.exception-dialog-fields .ant-select {
+  width: 100%;
+}
+
+@media (max-width: 800px) {
+  .exception-heading,
+  .exception-filters,
+  .exception-metrics {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .exception-detail-grid {
+    grid-template-columns: 1fr;
+  }
+}

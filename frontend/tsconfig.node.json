@@ -17,6 +17,7 @@
     "playwright.acceptance.config.ts",
     "playwright.order.config.ts",
     "playwright.fulfillment.config.ts",
+    "playwright.exception.config.ts",
     "eslint.config.js",
     "e2e/**/*.ts"
   ]

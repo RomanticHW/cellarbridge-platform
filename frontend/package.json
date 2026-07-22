@@ -22,7 +22,8 @@
     "test:e2e:quotation": "playwright test --config playwright.quotation.config.ts",
     "test:e2e:acceptance": "playwright test --config playwright.acceptance.config.ts",
     "test:e2e:order": "playwright test --config playwright.order.config.ts",
-    "test:e2e:fulfillment": "playwright test --config playwright.fulfillment.config.ts"
+    "test:e2e:fulfillment": "playwright test --config playwright.fulfillment.config.ts",
+    "test:e2e:exception": "playwright test --config playwright.exception.config.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "5.4.0",

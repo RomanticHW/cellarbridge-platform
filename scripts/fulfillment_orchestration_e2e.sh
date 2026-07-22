@@ -4,7 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="${ROOT_DIR}/deploy/compose/core.compose.yaml"
 ENV_FILE="${ROOT_DIR}/.env.example"
-PROJECT_NAME="cellarbridge-fulfillment-e2e"
+PROJECT_NAME="${CELLARBRIDGE_E2E_PROJECT_NAME:-cellarbridge-fulfillment-e2e}"
+E2E_COMMAND="${CELLARBRIDGE_E2E_COMMAND:-test:e2e:fulfillment}"
 
 compose() {
   docker compose --project-name "${PROJECT_NAME}" --env-file "${ENV_FILE}" --file "${COMPOSE_FILE}" "$@"
@@ -64,10 +65,10 @@ cd "${ROOT_DIR}/frontend"
 # The dedicated Playwright configuration disables screenshots and traces. Redaction keeps a
 # capability-bearing portal URL out of local and CI output even when Playwright reports a failure.
 if command -v corepack >/dev/null 2>&1; then
-  corepack pnpm test:e2e:fulfillment 2>&1 | redact_capabilities
+  corepack pnpm "${E2E_COMMAND}" 2>&1 | redact_capabilities
 elif command -v pnpm >/dev/null 2>&1; then
-  pnpm test:e2e:fulfillment 2>&1 | redact_capabilities
+  pnpm "${E2E_COMMAND}" 2>&1 | redact_capabilities
 else
-  printf 'corepack or pnpm is required to run the Fulfillment E2E suite.\n' >&2
+  printf 'corepack or pnpm is required to run the business E2E suite.\n' >&2
   exit 1
 fi
