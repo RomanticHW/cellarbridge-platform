@@ -21,6 +21,7 @@
     "playwright.settlement.config.ts",
     "playwright.reporting.config.ts",
     "playwright.keycloak-outage.config.ts",
+    "playwright.demo.config.ts",
     "eslint.config.js",
     "e2e/**/*.ts"
   ]

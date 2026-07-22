@@ -4,7 +4,7 @@ spring:
   datasource:
     url: ${CELLARBRIDGE_DB_URL:jdbc:postgresql://localhost:5432/cellarbridge}
     username: ${CELLARBRIDGE_DB_USERNAME:cellarbridge}
-    password: ${CELLARBRIDGE_DB_PASSWORD:cellarbridge_local}
+    password: ${CELLARBRIDGE_DB_PASSWORD}
   flyway:
     enabled: true
     locations: classpath:db/migration
@@ -72,15 +72,15 @@ cellarbridge:
     audience: ${CELLARBRIDGE_SECURITY_AUDIENCE:cellarbridge-api}
     allowed-origins: ${CELLARBRIDGE_SECURITY_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
   partner:
-    cursor-secret: ${CELLARBRIDGE_PARTNER_CURSOR_SECRET:local-demo-partner-cursor-key-change-me}
+    cursor-secret: ${CELLARBRIDGE_PARTNER_CURSOR_SECRET}
   catalog:
-    cursor-secret: ${CELLARBRIDGE_CATALOG_CURSOR_SECRET:local-demo-catalog-cursor-key-change-me}
+    cursor-secret: ${CELLARBRIDGE_CATALOG_CURSOR_SECRET}
   order:
-    cursor-secret: ${CELLARBRIDGE_ORDER_CURSOR_SECRET:local-demo-order-cursor-key-change-me}
+    cursor-secret: ${CELLARBRIDGE_ORDER_CURSOR_SECRET}
   settlement:
-    cursor-secret: ${CELLARBRIDGE_SETTLEMENT_CURSOR_SECRET:local-demo-settlement-cursor-key-change-me}
+    cursor-secret: ${CELLARBRIDGE_SETTLEMENT_CURSOR_SECRET}
   audit-reporting:
-    cursor-secret: ${CELLARBRIDGE_AUDIT_CURSOR_SECRET:local-demo-audit-cursor-key-change-me}
+    cursor-secret: ${CELLARBRIDGE_AUDIT_CURSOR_SECRET}
   platform:
     local-events:
       enabled: ${CELLARBRIDGE_LOCAL_EVENTS_ENABLED:false}

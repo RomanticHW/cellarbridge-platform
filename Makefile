@@ -5,10 +5,12 @@ COMPOSE_FILE := deploy/compose/core.compose.yaml
 FULL_COMPOSE_FILE := deploy/compose/full.compose.yaml
 ENV_FILE ?= $(if $(wildcard .env),.env,.env.example)
 FULL_ENV_FILE ?= .env
+DEMO_PROFILE ?= core
 
 .PHONY: help validate validate-docs validate-contracts validate-public validate-backend \
 	validate-frontend validate-compose validate-full-compose test test-backend test-frontend test-migration-history \
 	dev-core stop-core dev-full stop-full smoke-core verify-container-security \
+	demo demo-reset stop-demo demo-e2e smoke-full \
 	identity-e2e partner-e2e catalog-e2e quotation-e2e acceptance-e2e order-e2e fulfillment-e2e exception-e2e settlement-e2e reporting-e2e \
 	catalog-benchmark performance-smoke performance-full generate-api-client
 
@@ -22,6 +24,11 @@ help:
 	  '  make dev-full            Start core plus the local observability profile using .env' \
 	  '  make stop-full           Stop the complete local profile' \
 	  '  make smoke-core          Build, verify, and clean an isolated core profile' \
+	  '  make smoke-full          Build and verify an isolated observable full profile' \
+	  '  make demo                Start the deterministic core demo (DEMO_PROFILE=full for full)' \
+	  '  make demo-reset          Destroy only synthetic demo volumes and start fresh' \
+	  '  make stop-demo           Stop the demo profile without deleting its data' \
+	  '  make demo-e2e            Run the complete reviewer journey and capture evidence' \
 	  '  make identity-e2e        Verify real OIDC login and two-tenant isolation' \
 	  '  make partner-e2e         Verify partner onboarding and independent review' \
 	  '  make catalog-e2e         Verify catalog search and local quote selection' \
@@ -47,6 +54,7 @@ validate-contracts:
 
 validate-public:
 	$(PYTHON) scripts/validate_repository.py --scope public
+	$(PYTHON) scripts/generate_publication_inventory.py
 
 validate-backend:
 	./mvnw -q -pl backend -am -DskipTests compile spotless:check
@@ -88,11 +96,26 @@ dev-full:
 stop-full:
 	docker compose --env-file $(FULL_ENV_FILE) --file $(COMPOSE_FILE) --file $(FULL_COMPOSE_FILE) down --remove-orphans
 
+demo:
+	DEMO_PROFILE=$(DEMO_PROFILE) ./scripts/demo.sh
+
+demo-reset:
+	DEMO_PROFILE=$(DEMO_PROFILE) ./scripts/demo_reset.sh
+
+stop-demo:
+	docker compose --project-name cellarbridge-demo --env-file $(ENV_FILE) --file $(COMPOSE_FILE) down --remove-orphans
+
+demo-e2e:
+	./scripts/demo_e2e.sh
+
 verify-container-security:
 	./scripts/verify_container_security.sh
 
 smoke-core:
 	./scripts/smoke_core.sh
+
+smoke-full:
+	./scripts/smoke_full.sh
 
 identity-e2e:
 	./scripts/identity_access_e2e.sh

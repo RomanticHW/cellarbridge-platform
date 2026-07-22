@@ -1,0 +1,15 @@
+spring:
+  datasource:
+    password: cellarbridge_test
+
+cellarbridge:
+  partner:
+    cursor-secret: test-partner-cursor-key-not-for-production
+  catalog:
+    cursor-secret: test-catalog-cursor-key-not-for-production
+  order:
+    cursor-secret: test-order-cursor-key-not-for-production
+  settlement:
+    cursor-secret: test-settlement-cursor-key-not-for-production
+  audit-reporting:
+    cursor-secret: test-audit-cursor-key-not-for-production
