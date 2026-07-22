@@ -11,7 +11,7 @@ COPY contracts /workspace/contracts
 COPY frontend ./
 RUN pnpm generate:api && pnpm build
 
-FROM nginx:1.29.4-alpine
-COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
+FROM cgr.dev/chainguard/nginx:latest@sha256:4a7323c4539d04a2d515f7b5f5f449b0d70d06e8128558585c2cabcc05ad2a76
+COPY frontend/nginx.conf /etc/nginx/conf.d/nginx.default.conf
 COPY --from=build /workspace/frontend/dist /usr/share/nginx/html
-EXPOSE 80
+EXPOSE 8080

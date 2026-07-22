@@ -27,8 +27,10 @@ Java 21 而非更新非 LTS：作品核心是稳定工程；Boot 4 需要在 Tas
 | Keycloak | 26.7.0 | Available | 本地 OIDC 身份提供方 |
 | Redis | 8.8 | Planned full profile | 安全读缓存/限流辅助，不参与正确性 |
 | Apache Kafka | 4.3 | Planned full profile | 外部事件流 |
-| OpenTelemetry | compatible stable | Planned | vendor-neutral traces/metrics/logs export |
-| Prometheus/Grafana | 待 compose 锁定 | Planned | 演示指标与看板 |
+| OpenTelemetry Collector | 0.156.0 | Available full profile | vendor-neutral trace pipeline |
+| Tempo | 2.10.5 | Available full profile | 单节点演示 trace backend |
+| Prometheus | 3.12.0 | Available full profile | 演示指标与告警规则 |
+| Grafana | 13.1.0 | Available full profile | 版本化演示看板与 trace 查询 |
 
 容器 image 必须锁定 patch/tag，并在 release 可选择 digest。数据库主版本变化需迁移/驱动/Testcontainers 验证。
 

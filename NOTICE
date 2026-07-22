@@ -4,3 +4,5 @@ Copyright 2026 the CellarBridge contributors
 This is an independent technical demonstration. Chengdu Fine West International Trade Co., Ltd., FineWest, WineMatcher, BOSS直聘, and any other company or product names referenced in research materials are trademarks or names of their respective owners. Their appearance does not imply affiliation, sponsorship, or endorsement.
 
 No third-party logo, customer record, price list, inventory record, order record, or proprietary implementation is included in the public repository. Demonstration data is synthetic.
+
+Observability support uses Micrometer, OpenTelemetry and CycloneDX libraries distributed under the Apache License 2.0. The optional full profile runs unmodified upstream Grafana and Tempo containers, which are distributed separately under the GNU Affero General Public License v3.0; their source and notices remain available from the respective upstream projects. PostgreSQL, Keycloak, Prometheus, nginx and other container images retain their own upstream licenses and notices.

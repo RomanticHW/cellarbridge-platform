@@ -58,18 +58,28 @@ services:
       CELLARBRIDGE_SECURITY_ALLOWED_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
     ports:
       - '127.0.0.1:${BACKEND_PORT:-8080}:8080'
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
     depends_on:
       postgres:
         condition: service_healthy
       keycloak:
         condition: service_healthy
     healthcheck:
-      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:8080/actuator/health/readiness | grep -q UP']
+      test: [CMD, /usr/bin/wget, -qO-, http://127.0.0.1:8080/actuator/health/readiness]
       interval: 5s
       timeout: 3s
       retries: 20
       start_period: 15s
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.50'
+          memory: 1024M
+        reservations:
+          memory: 512M
 
   frontend:
     build:
@@ -79,16 +89,28 @@ services:
         VITE_OIDC_AUTHORITY: ${OIDC_AUTHORITY:-http://localhost:8081/realms/cellarbridge}
         VITE_OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-cellarbridge-console}
     ports:
-      - '${FRONTEND_PORT:-5173}:80'
+      - '${FRONTEND_PORT:-5173}:8080'
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+      - /var/lib/nginx/tmp:size=32m,uid=65532,gid=65532,mode=0750
+      - /var/run:size=4m,mode=1777
     depends_on:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1/ | grep -q "CellarBridge Operations"']
+      test: [CMD, /usr/sbin/nginx, -t]
       interval: 5s
       timeout: 3s
       retries: 20
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 128M
+        reservations:
+          memory: 32M
 
 volumes:
   postgres-data:

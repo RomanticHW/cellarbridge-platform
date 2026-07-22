@@ -2,11 +2,13 @@ SHELL := /bin/bash
 PYTHON ?= python3
 PNPM ?= corepack pnpm
 COMPOSE_FILE := deploy/compose/core.compose.yaml
+FULL_COMPOSE_FILE := deploy/compose/full.compose.yaml
 ENV_FILE ?= $(if $(wildcard .env),.env,.env.example)
+FULL_ENV_FILE ?= .env
 
 .PHONY: help validate validate-docs validate-contracts validate-public validate-backend \
-	validate-frontend validate-compose test test-backend test-frontend test-migration-history \
-	dev-core stop-core smoke-core \
+	validate-frontend validate-compose validate-full-compose test test-backend test-frontend test-migration-history \
+	dev-core stop-core dev-full stop-full smoke-core verify-container-security \
 	identity-e2e partner-e2e catalog-e2e quotation-e2e acceptance-e2e order-e2e fulfillment-e2e exception-e2e settlement-e2e reporting-e2e \
 	catalog-benchmark generate-api-client
 
@@ -17,6 +19,8 @@ help:
 	  '  make test                Run backend and frontend tests' \
 	  '  make dev-core            Start PostgreSQL, Keycloak, backend, and frontend' \
 	  '  make stop-core           Stop the core development profile' \
+	  '  make dev-full            Start core plus the local observability profile using .env' \
+	  '  make stop-full           Stop the complete local profile' \
 	  '  make smoke-core          Build, verify, and clean an isolated core profile' \
 	  '  make identity-e2e        Verify real OIDC login and two-tenant isolation' \
 	  '  make partner-e2e         Verify partner onboarding and independent review' \
@@ -31,7 +35,7 @@ help:
 	  '  make catalog-benchmark   Seed and benchmark PostgreSQL catalog search' \
 	  '  make generate-api-client Regenerate TypeScript API types from OpenAPI'
 
-validate: validate-docs validate-contracts validate-public validate-backend validate-frontend validate-compose
+validate: validate-docs validate-contracts validate-public validate-backend validate-frontend validate-compose validate-full-compose
 
 validate-docs:
 	$(PYTHON) scripts/validate_repository.py --scope docs
@@ -52,6 +56,12 @@ validate-frontend: generate-api-client
 validate-compose:
 	docker compose --env-file $(ENV_FILE) --file $(COMPOSE_FILE) config --quiet
 
+validate-full-compose:
+	POSTGRES_DB=cellarbridge POSTGRES_USER=cellarbridge POSTGRES_PASSWORD=validation-only \
+	KEYCLOAK_ADMIN_USERNAME=validation KEYCLOAK_ADMIN_PASSWORD=validation-only \
+	GRAFANA_ADMIN_USER=validation GRAFANA_ADMIN_PASSWORD=validation-only \
+	docker compose --env-file /dev/null --file $(COMPOSE_FILE) --file $(FULL_COMPOSE_FILE) config --quiet
+
 test-migration-history:
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m unittest -v scripts/test_validate_migration_history.py
 
@@ -68,6 +78,16 @@ dev-core:
 
 stop-core:
 	docker compose --env-file $(ENV_FILE) --file $(COMPOSE_FILE) down --remove-orphans
+
+dev-full:
+	test -f $(FULL_ENV_FILE)
+	docker compose --env-file $(FULL_ENV_FILE) --file $(COMPOSE_FILE) --file $(FULL_COMPOSE_FILE) up --detach --build
+
+stop-full:
+	docker compose --env-file $(FULL_ENV_FILE) --file $(COMPOSE_FILE) --file $(FULL_COMPOSE_FILE) down --remove-orphans
+
+verify-container-security:
+	./scripts/verify_container_security.sh
 
 smoke-core:
 	./scripts/smoke_core.sh

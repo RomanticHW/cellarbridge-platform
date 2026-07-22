@@ -1,0 +1,27 @@
+groups:
+  - name: cellarbridge-demo
+    rules:
+      - alert: CellarBridgePublicationBacklog
+        expr: sum(cellarbridge_event_publication_backlog) > 25
+        for: 10m
+        annotations:
+          summary: Local publication backlog exceeds the demonstration threshold
+      - alert: CellarBridgeProjectionLag
+        expr: cellarbridge_projection_lag_seconds > 300
+        for: 10m
+        annotations:
+          summary: Audit reporting projection lag exceeds the demonstration threshold
+      - alert: CellarBridgeReservationFailureSpike
+        expr: increase(cellarbridge_reservation_outcome_total{outcome="failed"}[10m]) > 5
+        annotations:
+          summary: Reservation failures exceed the demonstration threshold
+      - alert: CellarBridgeOpenCriticalExceptions
+        expr: cellarbridge_exception_open_critical > 0
+        for: 5m
+        annotations:
+          summary: A critical exception remains open
+      - alert: CellarBridgeReadinessFailure
+        expr: up{job="cellarbridge-backend"} == 0
+        for: 2m
+        annotations:
+          summary: Backend metrics target is not ready

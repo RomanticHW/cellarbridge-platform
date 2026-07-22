@@ -1,5 +1,6 @@
 package com.rom.cellarbridge.quotation.internal.application;
 
+import com.rom.cellarbridge.platform.SchedulerTelemetry;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,27 +24,33 @@ class QuotationExpirationScheduler {
   private static final Logger LOGGER = LoggerFactory.getLogger(QuotationExpirationScheduler.class);
   private final UUID owner = UUID.randomUUID();
   private final QuotationExpirationService expirationService;
+  private final SchedulerTelemetry telemetry;
 
-  QuotationExpirationScheduler(QuotationExpirationService expirationService) {
+  QuotationExpirationScheduler(
+      QuotationExpirationService expirationService, SchedulerTelemetry telemetry) {
     this.expirationService = expirationService;
+    this.telemetry = telemetry;
   }
 
   @Scheduled(
       initialDelayString = "${cellarbridge.quotation.expiration.initial-delay:PT30S}",
       fixedDelayString = "${cellarbridge.quotation.expiration.fixed-delay:PT30S}")
   void expireDueQuotations() {
-    expirationService
-        .claim(owner, BATCH_SIZE)
-        .forEach(
-            workItem -> {
-              try {
-                expirationService.expire(workItem);
-              } catch (RuntimeException exception) {
-                LOGGER.error(
-                    "quotationExpirationFailed workItemId={} errorType={}",
-                    workItem.id(),
-                    exception.getClass().getSimpleName());
-              }
-            });
+    telemetry.run(
+        "quotation-expiration",
+        () ->
+            expirationService
+                .claim(owner, BATCH_SIZE)
+                .forEach(
+                    workItem -> {
+                      try {
+                        expirationService.expire(workItem);
+                      } catch (RuntimeException exception) {
+                        LOGGER.error(
+                            "quotationExpirationFailed workItemId={} errorType={}",
+                            workItem.id(),
+                            exception.getClass().getSimpleName());
+                      }
+                    }));
   }
 }

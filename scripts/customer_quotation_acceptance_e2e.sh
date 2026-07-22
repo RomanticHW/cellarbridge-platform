@@ -69,3 +69,50 @@ else
 fi
 "${package_manager[@]}" test:e2e:acceptance 2>&1 \
   | sed -E 's#/portal/(quotes|quotations)/[A-Za-z0-9_-]{40,100}#/portal/\1/[redacted]#g'
+
+journey_correlation_id='74000000-0000-4000-8000-000000000013'
+correlated_events="$(
+  compose exec -T postgres psql -U cellarbridge -d cellarbridge -Atc \
+    "SELECT count(*) FROM platform_event.event_publication
+      WHERE correlation_id = '${journey_correlation_id}'
+        AND event_type = 'cellarbridge.quotation.accepted.v1'"
+)"
+traceable_events="$(
+  compose exec -T postgres psql -U cellarbridge -d cellarbridge -Atc \
+    "SELECT count(*) FROM platform_event.event_publication
+      WHERE correlation_id = '${journey_correlation_id}'
+        AND event_type = 'cellarbridge.quotation.accepted.v1'
+        AND length(payload #>> '{metadata,traceparent}') = 55
+        AND left(payload #>> '{metadata,traceparent}', 3) = '00-'
+        AND substring(payload #>> '{metadata,traceparent}' FROM 36 FOR 1) = '-'
+        AND substring(payload #>> '{metadata,traceparent}' FROM 53 FOR 1) = '-'
+        AND substring(payload #>> '{metadata,traceparent}' FROM 4 FOR 32) <> repeat('0', 32)
+        AND substring(payload #>> '{metadata,traceparent}' FROM 37 FOR 16) <> repeat('0', 16)
+        AND translate(
+              replace(payload #>> '{metadata,traceparent}', '-', ''),
+              '0123456789abcdef',
+              '') = ''"
+)"
+if [[ "${correlated_events}" != "1" || "${traceable_events}" != "1" ]]; then
+  trace_shape="$(
+    compose exec -T postgres psql -U cellarbridge -d cellarbridge -Atc \
+      "SELECT COALESCE(length(payload #>> '{metadata,traceparent}'), 0) || ':' ||
+              COALESCE(left(payload #>> '{metadata,traceparent}', 3), 'missing') || ':' ||
+              COALESCE((substring(payload #>> '{metadata,traceparent}' FROM 36 FOR 1) = '-')::text, 'missing') || ':' ||
+              COALESCE((substring(payload #>> '{metadata,traceparent}' FROM 53 FOR 1) = '-')::text, 'missing') || ':' ||
+              COALESCE(right(payload #>> '{metadata,traceparent}', 2), 'missing') || ':' ||
+              COALESCE(length(translate(
+                replace(payload #>> '{metadata,traceparent}', '-', ''),
+                '0123456789abcdef',
+                ''))::text, 'missing')
+         FROM platform_event.event_publication
+        WHERE correlation_id = '${journey_correlation_id}'
+          AND event_type = 'cellarbridge.quotation.accepted.v1'"
+  )"
+  printf 'The accepted quotation trace assertion failed (correlated=%s, traceable=%s).\n' \
+    "${correlated_events}" "${traceable_events}" >&2
+  printf 'Observed trace metadata shape (length:version:separator36:separator53:flags:invalidChars): %s\n' \
+    "${trace_shape}" >&2
+  exit 1
+fi
+printf 'Verified browser-to-event correlation and trace context: %s\n' "${journey_correlation_id}"

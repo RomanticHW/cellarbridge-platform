@@ -30,6 +30,7 @@
     <maven-enforcer-plugin.version>3.6.3</maven-enforcer-plugin.version>
     <jacoco-maven-plugin.version>0.8.15</jacoco-maven-plugin.version>
     <archunit.version>1.4.2</archunit.version>
+    <postgresql.version>42.7.12</postgresql.version>
   </properties>
 
   <dependencyManagement>

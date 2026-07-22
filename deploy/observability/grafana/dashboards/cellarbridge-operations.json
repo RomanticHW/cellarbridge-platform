@@ -1,0 +1,19 @@
+{
+  "annotations": {"list": []},
+  "editable": false,
+  "panels": [
+    {"type": "timeseries", "title": "HTTP request rate", "targets": [{"expr": "sum(rate(http_server_requests_seconds_count[5m])) by (method, status)"}], "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}},
+    {"type": "stat", "title": "Publication backlog", "targets": [{"expr": "sum(cellarbridge_event_publication_backlog)"}], "gridPos": {"h": 8, "w": 6, "x": 12, "y": 0}},
+    {"type": "stat", "title": "Projection lag (seconds)", "targets": [{"expr": "cellarbridge_projection_lag_seconds"}], "gridPos": {"h": 8, "w": 6, "x": 18, "y": 0}},
+    {"type": "timeseries", "title": "Reservation outcomes", "targets": [{"expr": "sum(increase(cellarbridge_reservation_outcome_total[15m])) by (outcome)"}], "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}},
+    {"type": "timeseries", "title": "Quotation lifecycle", "targets": [{"expr": "sum(increase(cellarbridge_quotation_lifecycle_total[15m])) by (stage)"}], "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}}
+  ],
+  "schemaVersion": 41,
+  "tags": ["cellarbridge", "demo"],
+  "templating": {"list": []},
+  "time": {"from": "now-1h", "to": "now"},
+  "timezone": "browser",
+  "title": "CellarBridge Operations",
+  "uid": "cellarbridge-operations",
+  "version": 1
+}

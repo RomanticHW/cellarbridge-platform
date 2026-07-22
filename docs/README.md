@@ -114,6 +114,9 @@ The documentation is organized from evidence to delivery. Each layer narrows the
 - [Trade order conversion runbook](05-delivery/18-trade-order-conversion-runbook.md)
 - [Fulfillment orchestration runbook](05-delivery/19-fulfillment-orchestration-runbook.md)
 - [Exception Center and recovery runbook](05-delivery/20-exception-center-runbook.md)
+- [Settlement runbook](05-delivery/21-settlement-runbook.md)
+- [Audit and reporting runbook](05-delivery/22-audit-reporting-runbook.md)
+- [Observability and security runbook](05-delivery/23-observability-security-runbook.md)
 
 ## Change control
 

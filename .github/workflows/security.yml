@@ -23,3 +23,80 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Reject vulnerable or incompatible dependency changes
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          deny-licenses: GPL-2.0, GPL-3.0, AGPL-1.0, AGPL-3.0
+
+  sbom-and-container-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Build runtime containers
+        run: |
+          docker build --file backend/Dockerfile --tag cellarbridge/backend:ci .
+          docker build --file frontend/Dockerfile --tag cellarbridge/frontend:ci .
+
+      - name: Verify non-root runtime identities
+        run: |
+          BACKEND_IMAGE=cellarbridge/backend:ci FRONTEND_IMAGE=cellarbridge/frontend:ci \
+            ./scripts/verify_container_security.sh
+
+      - name: Prepare report directory
+        run: mkdir -p security-reports
+
+      - name: Generate backend CycloneDX SBOM
+        uses: anchore/sbom-action@v0.24.0
+        with:
+          image: cellarbridge/backend:ci
+          format: cyclonedx-json
+          output-file: security-reports/backend.cdx.json
+          upload-artifact: false
+
+      - name: Generate frontend CycloneDX SBOM
+        uses: anchore/sbom-action@v0.24.0
+        with:
+          image: cellarbridge/frontend:ci
+          format: cyclonedx-json
+          output-file: security-reports/frontend.cdx.json
+          upload-artifact: false
+
+      - name: Scan backend image
+        uses: anchore/scan-action@v7
+        with:
+          image: cellarbridge/backend:ci
+          fail-build: true
+          severity-cutoff: high
+          output-format: json
+          output-file: security-reports/backend-grype.json
+
+      - name: Scan frontend image
+        uses: anchore/scan-action@v7
+        with:
+          image: cellarbridge/frontend:ci
+          fail-build: true
+          severity-cutoff: high
+          output-format: json
+          output-file: security-reports/frontend-grype.json
+
+      - name: Upload machine-readable reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: security-reports
+          path: security-reports/
+          if-no-files-found: warn
+          retention-days: 14

@@ -32,6 +32,7 @@ final class LocalEventDispatcher {
   private final JdbcEventPublicationSource publicationSource;
   private final LocalEventDeliveryService deliveryService;
   private final JdbcEventFailureRecorder failureRecorder;
+  private final BusinessEventMetrics businessMetrics;
   private final int batchSize;
 
   LocalEventDispatcher(
@@ -39,6 +40,7 @@ final class LocalEventDispatcher {
       JdbcEventPublicationSource publicationSource,
       LocalEventDeliveryService deliveryService,
       JdbcEventFailureRecorder failureRecorder,
+      BusinessEventMetrics businessMetrics,
       @Value("${cellarbridge.platform.local-events.batch-size:50}") int batchSize) {
     if (batchSize < 1 || batchSize > 500) {
       throw new IllegalArgumentException("Local event batch size must be between 1 and 500");
@@ -47,6 +49,7 @@ final class LocalEventDispatcher {
     this.publicationSource = publicationSource;
     this.deliveryService = deliveryService;
     this.failureRecorder = failureRecorder;
+    this.businessMetrics = businessMetrics;
     this.batchSize = batchSize;
   }
 
@@ -68,6 +71,9 @@ final class LocalEventDispatcher {
       try {
         JdbcEventFailureRecorder.FailureOutcome outcome =
             failureRecorder.record(handler, event, failure);
+        if (outcome == JdbcEventFailureRecorder.FailureOutcome.RETRY_SCHEDULED) {
+          businessMetrics.deliveryOutcome(event.eventType(), "retry_scheduled");
+        }
         LOGGER.warn(
             "localEventDeliveryFailed consumer={} eventId={} outcome={} errorType={}",
             handler.consumerName(),

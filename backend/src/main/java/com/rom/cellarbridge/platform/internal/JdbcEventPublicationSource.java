@@ -31,7 +31,9 @@ class JdbcEventPublicationSource {
                publication.subject_number,
                publication.correlation_id,
                publication.causation_id,
-               (publication.payload -> 'payload')::text AS business_payload
+               (publication.payload -> 'payload')::text AS business_payload,
+               publication.payload -> 'metadata' ->> 'traceparent' AS trace_parent,
+               publication.payload -> 'metadata' ->> 'tracestate' AS trace_state
           FROM platform_event.event_publication AS publication
           LEFT JOIN platform_event.event_inbox AS inbox
             ON inbox.tenant_id = publication.tenant_id
@@ -62,6 +64,8 @@ class JdbcEventPublicationSource {
                     resultSet.getString("subject_number")),
                 resultSet.getObject("correlation_id", UUID.class),
                 resultSet.getObject("causation_id", UUID.class),
-                resultSet.getString("business_payload")));
+                resultSet.getString("business_payload"),
+                resultSet.getString("trace_parent"),
+                resultSet.getString("trace_state")));
   }
 }

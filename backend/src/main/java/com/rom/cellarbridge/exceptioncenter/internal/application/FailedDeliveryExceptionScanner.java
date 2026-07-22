@@ -5,6 +5,7 @@ import com.rom.cellarbridge.exceptioncenter.ExceptionSeverity;
 import com.rom.cellarbridge.exceptioncenter.internal.application.ExceptionCaseStore.Detection;
 import com.rom.cellarbridge.identityaccess.TenantId;
 import com.rom.cellarbridge.platform.EventPublicationOperations;
+import com.rom.cellarbridge.platform.SchedulerTelemetry;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.temporal.ChronoUnit;
@@ -21,23 +22,30 @@ final class FailedDeliveryExceptionScanner {
   private final ExceptionCaseService cases;
   private final JsonMapper json;
   private final Clock clock;
+  private final SchedulerTelemetry telemetry;
 
   FailedDeliveryExceptionScanner(
       EventPublicationOperations publications,
       ExceptionCaseService cases,
       JsonMapper json,
-      Clock clock) {
+      Clock clock,
+      SchedulerTelemetry telemetry) {
     this.publications = publications;
     this.cases = cases;
     this.json = json;
     this.clock = clock;
+    this.telemetry = telemetry;
   }
 
   @Scheduled(fixedDelayString = "${cellarbridge.exception.failed-delivery-scan-ms:30000}")
   void scan() {
-    for (EventPublicationOperations.FailedDelivery failure : publications.listFinal(0, 100)) {
-      cases.detect(detection(failure));
-    }
+    telemetry.run(
+        "failed-delivery-exceptions",
+        () -> {
+          for (EventPublicationOperations.FailedDelivery failure : publications.listFinal(0, 100)) {
+            cases.detect(detection(failure));
+          }
+        });
   }
 
   private Detection detection(EventPublicationOperations.FailedDelivery failure) {

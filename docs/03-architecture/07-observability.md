@@ -1,6 +1,6 @@
 # 可观测性设计
 
-状态：**Partially available**。当前 core 提供 Actuator/Micrometer 基础端点与安全应用日志；OpenTelemetry export、Prometheus/Grafana、完整业务指标、告警和 trace walkthrough 均为 Task 13 Planned。
+状态：**Available for the demonstration profile**。core 提供 Actuator/Micrometer、ECS JSON 日志和 OpenTelemetry export；full profile 增加 Collector、Tempo、Prometheus、Grafana、版本化 dashboard 与演示告警。设计决策见 ADR-025，操作证据见 `docs/evidence/observability/`。
 
 ## 1. 目标
 
@@ -19,7 +19,7 @@
 
 ### 日志
 
-当前已有安全应用日志、审计日志 sanitizer 和部分 MDC/correlation 字段。下列 JSON 结构化字段目录为 Planned：timestamp、level、service、module、useCase、tenantHash、actorType、businessNumber、traceId、spanId、correlationId、errorCode、outcome、durationMs。
+控制台使用 Spring Boot ECS JSON。基础字段包含 timestamp、level、service/version、trace/span；MDC 提供 correlation、tenant-safe hash 和上下文字段，固定 module/errorCode 表明未显式设置时的安全默认。应用日志和审计 sanitizer 对凭据、body、成本/毛利与个人联系字段 fail closed。
 
 禁止：访问令牌、密码、完整请求体、成本/毛利、客户门户 token、完整个人信息、事件完整敏感 payload。
 
@@ -33,8 +33,7 @@
 - JVM/GC/thread；
 - DB pool/query；
 - event publication backlog/age/retry；
-- Kafka lag；
-- cache hit/eviction；
+- local Consumer Inbox retry/final failure；
 - scheduler duration/last success。
 
 业务：
@@ -53,7 +52,7 @@
 
 ### Trace
 
-状态：**Planned**。
+状态：**Available**。
 
 OpenTelemetry spans：
 
@@ -66,9 +65,9 @@ OpenTelemetry spans：
 
 异步使用 trace links + correlation/causation，而不是伪造同步 parent。
 
-## 3. Correlation 设计（Partially available）
+## 3. Correlation 设计（Available）
 
-事件 envelope 已保存 correlation/causation，部分 API 与日志也传播 correlation；`traceparent`、span link、全链路检索和 trace export 仍为 Planned。
+事件 envelope 保存 correlation/causation 以及 W3C `traceparent`/`tracestate` metadata。入口 filter 建立固定名称的安全请求 span，Spring/Micrometer 补充低基数路由模板；自定义 observation convention 不导出原始 URL，防止门户 capability token 进入 trace。异步消费者建立独立 consumer span 并 link 生产上下文。浏览器验收固定 correlation header 并用数据库断言事件 trace metadata。
 
 - 入站 `traceparent` 合法则继续；
 - 每个业务命令有 `commandId`；
@@ -78,23 +77,17 @@ OpenTelemetry spans：
 - 审计时间线可按 correlation 搜索；
 - 外部客户端提供的 correlation 仅作为候选，验证格式并防日志注入。
 
-## 4. Dashboard（Planned）
+## 4. Dashboard（Available）
 
-### Technical Overview
+版本化 `CellarBridge Operations` dashboard 当前覆盖：
 
-服务健康、API RED、JVM、DB、事件积压、Kafka lag、失败发布。
+- HTTP rate/status；
+- publication backlog；
+- projection lag；
+- reservation outcomes；
+- quotation lifecycle。
 
-### Quote-to-Fulfillment
-
-报价漏斗、审批时长、路径拒绝、转换延迟、预占成功、履约 SLA、异常。
-
-### Inventory Correctness
-
-预占请求、成功量、冲突重试、库存不足、SQL latency、异常约束次数（目标 0）。
-
-### Event Reliability
-
-pending oldest age、publish attempts、duplicates consumed、failed final、replay actions。
+Prometheus 还暴露 oldest pending age、order conversion replay、reservation retry、fulfillment overdue、exception recovery、payment/reversal、open critical exception 和 scheduler outcome。标签只采用受控枚举或已注册 consumer 名称。
 
 ## 5. SLO（演示目标）
 
@@ -107,14 +100,13 @@ pending oldest age、publish attempts、duplicates consumed、failed final、rep
 - invariant violation metric = 0；
 - failed-final events = 0 发布前。
 
-## 6. 告警演示（Planned）
+## 6. 告警演示（Available examples）
 
 - event backlog age；
 - reservation failure surge；
 - open critical exceptions；
-- DB connection saturation；
 - projection stalled；
-- authentication failure spike。
+- readiness failure。
 
 告警路由到本地 Alertmanager/日志模拟，不连接真实人员渠道。
 
@@ -126,6 +118,6 @@ pending oldest age、publish attempts、duplicates consumed、failed final、rep
 - 不将完整事件 payload 复制到日志；
 - 审计业务记录与技术日志分开。
 
-## 8. 验收（Planned）
+## 8. 验收
 
-主 demo 可从一个订单页面复制 correlation ID，在 trace 中看到接受 → 订单 → 预占 → 计划；日志无敏感字段；故障注入后 backlog/重试/异常指标变化可解释。
+主 demo 用固定合成 correlation ID 证明浏览器请求、事件 correlation 与 W3C trace metadata 一致；Tempo walkthrough 说明如何沿 producer span 和 consumer link 检查异步链路。单元测试捕获脱敏日志、检查低基数标签并验证 event/scheduler trace 行为。

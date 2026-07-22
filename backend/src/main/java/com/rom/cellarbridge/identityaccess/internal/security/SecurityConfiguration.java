@@ -32,7 +32,8 @@ class SecurityConfiguration {
         .authorizeHttpRequests(
             requests ->
                 requests
-                    .requestMatchers("/actuator/health/**", "/actuator/info")
+                    .requestMatchers(
+                        "/actuator/health/**", "/actuator/info", "/actuator/prometheus")
                     .permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/v1/me")
                     .authenticated()

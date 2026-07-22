@@ -1,5 +1,6 @@
 package com.rom.cellarbridge.quotation.internal.application;
 
+import com.rom.cellarbridge.platform.CorrelationContext;
 import com.rom.cellarbridge.platform.PendingEvent;
 import com.rom.cellarbridge.platform.ReliableEventPublisher;
 import com.rom.cellarbridge.quotation.QuotationAcceptedV1;
@@ -472,7 +473,7 @@ public class CustomerQuotationService {
       CustomerDecision decision,
       CommercialSnapshot snapshot,
       UUID eventId) {
-    UUID commandId = UUID.randomUUID();
+    UUID correlationId = CorrelationContext.currentOrCreate();
     QuotationAcceptedV1.Payload payload =
         new QuotationAcceptedV1.Payload(
             snapshot.quotationId(),
@@ -503,8 +504,8 @@ public class CustomerQuotationService {
         quotation.tenantId().value(),
         "quotation",
         new QuotationAcceptedV1.Subject("QUOTATION", quotation.id(), quotation.number()),
-        commandId,
-        commandId,
+        correlationId,
+        decision.id(),
         payload,
         Map.of("idempotencyDigest", "sha256:" + decision.idempotencyDigest()));
   }

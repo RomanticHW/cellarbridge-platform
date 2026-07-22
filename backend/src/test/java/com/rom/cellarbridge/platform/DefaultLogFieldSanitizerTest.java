@@ -12,6 +12,9 @@ class DefaultLogFieldSanitizerTest {
   void redactsCredentialFields() {
     assertThat(sanitizer.sanitize("Authorization", "Bearer value")).isEqualTo("[redacted]");
     assertThat(sanitizer.sanitize("refresh_token", "value")).isEqualTo("[redacted]");
+    assertThat(sanitizer.sanitize("requestBody", "commercial payload")).isEqualTo("[redacted]");
+    assertThat(sanitizer.sanitize("grossMargin", "42")).isEqualTo("[redacted]");
+    assertThat(sanitizer.sanitize("contactEmail", "person@example.test")).isEqualTo("[redacted]");
   }
 
   @Test

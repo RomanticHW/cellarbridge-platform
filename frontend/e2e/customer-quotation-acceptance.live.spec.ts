@@ -1,6 +1,7 @@
 import { expect, test, type Browser } from '@playwright/test';
 
 const password = 'CellarBridge-Demo-2026!';
+const journeyCorrelationId = '74000000-0000-4000-8000-000000000013';
 
 async function login(browser: Browser, username: string) {
   const context = await browser.newContext();
@@ -63,6 +64,11 @@ test('accepts once, renders a durable receipt, and refreshes without a duplicate
   const customer = await customerContext.newPage();
   const browserErrors: string[] = [];
   let acceptanceRequests = 0;
+  await customer.route('**/api/v1/portal/quotations/*/acceptance', async (route) => {
+    await route.continue({
+      headers: { ...route.request().headers(), 'x-correlation-id': journeyCorrelationId },
+    });
+  });
   customer.on('pageerror', (error) => browserErrors.push(error.message));
   customer.on('console', (message) => {
     if (message.type() === 'error') browserErrors.push(message.text());
@@ -98,6 +104,7 @@ test('accepts once, renders a durable receipt, and refreshes without a duplicate
   const response = await acceptanceResponse;
   expect(response.status()).toBe(201);
   expect(response.headers()['idempotency-replayed']).toBe('false');
+  expect(response.headers()['x-correlation-id']).toBe(journeyCorrelationId);
   await expect(customer.getByText('Quotation accepted')).toBeVisible();
   await expect(
     customer.getByText(
