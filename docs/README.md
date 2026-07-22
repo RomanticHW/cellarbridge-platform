@@ -119,4 +119,4 @@ The documentation is organized from evidence to delivery. Each layer narrows the
 
 `docs/design-baseline.yaml` identifies the approved baseline. A behavior change must update its requirement, domain, contract, test, and implementation status together. Architecture changes require an ADR before code changes.
 
-Task 07C follows [ADR-016](03-architecture/adr/ADR-016-route-supply-decision-readiness-layers.md): Planning, Quotation freeze, and [Propagation](03-architecture/adr/ADR-018-pre-1-0-supply-decision-event-propagation.md) are available. Task 08 Inventory reservation and Task 09 Fulfillment orchestration are available. Task 10 Exception Center is implemented in review with source-verified recovery and controlled event replay.
+Task 07C follows [ADR-016](03-architecture/adr/ADR-016-route-supply-decision-readiness-layers.md): Planning, Quotation freeze, and [Propagation](03-architecture/adr/ADR-018-pre-1-0-supply-decision-event-propagation.md) are available. Task 08 Inventory reservation, Task 09 Fulfillment orchestration, and Task 10 Exception Center are available, including source-verified recovery and controlled event replay.
