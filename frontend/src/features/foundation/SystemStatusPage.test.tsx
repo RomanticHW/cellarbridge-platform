@@ -39,9 +39,11 @@ describe('SystemStatusPage', () => {
     expect(
       await screen.findByText('Reported by the backend readiness health group.'),
     ).toBeVisible();
-    expect(screen.getAllByText('Planned')).toHaveLength(3);
+    expect(screen.getAllByText('Planned')).toHaveLength(2);
     expect(
-      screen.getByText(/Inventory reservation, and Fulfillment orchestration are available/),
+      screen.getByText(
+        /Inventory reservation, Fulfillment orchestration, Exception Center, and Settlement workspace are available/,
+      ),
     ).toBeVisible();
     expect((await axe.run(container)).violations).toEqual([]);
   });

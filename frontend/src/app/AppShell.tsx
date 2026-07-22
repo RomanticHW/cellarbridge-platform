@@ -41,6 +41,9 @@ function createMenuItems(permissions: ReadonlyArray<string>): MenuProps['items']
     ...(permissions.includes('exception:read')
       ? [{ key: '/app/exceptions', label: 'Exception Center' }]
       : []),
+    ...(permissions.includes('settlement:read')
+      ? [{ key: '/app/receivables', label: 'Receivables' }]
+      : []),
     ...(plannedItems.length === 0
       ? []
       : [
@@ -106,7 +109,9 @@ export function AppShell() {
             ? '/app/fulfillment'
             : location.pathname.startsWith('/app/exceptions')
               ? '/app/exceptions'
-              : location.pathname;
+              : location.pathname.startsWith('/app/receivables')
+                ? '/app/receivables'
+                : location.pathname;
 
   return (
     <Layout className="app-shell">

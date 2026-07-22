@@ -87,6 +87,16 @@ const ExceptionDetailPage = lazy(() =>
     default: module.ExceptionDetailPage,
   })),
 );
+const ReceivableListPage = lazy(() =>
+  import('../features/settlement/ReceivableListPage').then((module) => ({
+    default: module.ReceivableListPage,
+  })),
+);
+const ReceivableDetailPage = lazy(() =>
+  import('../features/settlement/ReceivableDetailPage').then((module) => ({
+    default: module.ReceivableDetailPage,
+  })),
+);
 
 function FoundationRoute() {
   return (
@@ -225,6 +235,21 @@ function ExceptionRoute({ page }: { page: 'center' | 'detail' }) {
   );
 }
 
+function SettlementRoute({ page }: { page: 'list' | 'detail' }) {
+  const Page = page === 'list' ? ReceivableListPage : ReceivableDetailPage;
+  return (
+    <Suspense
+      fallback={
+        <Flex role="status" aria-label="Loading settlement workspace" justify="center">
+          <Spin size="large" />
+        </Flex>
+      }
+    >
+      <Page />
+    </Suspense>
+  );
+}
+
 export const router = createBrowserRouter([
   { path: '/', element: <Navigate to="/app" replace /> },
   { path: '/login', element: <LoginPage /> },
@@ -255,6 +280,8 @@ export const router = createBrowserRouter([
           { path: 'fulfillment/:planId', element: <FulfillmentRoute page="detail" /> },
           { path: 'exceptions', element: <ExceptionRoute page="center" /> },
           { path: 'exceptions/:exceptionId', element: <ExceptionRoute page="detail" /> },
+          { path: 'receivables', element: <SettlementRoute page="list" /> },
+          { path: 'receivables/:receivableId', element: <SettlementRoute page="detail" /> },
         ],
       },
     ],
