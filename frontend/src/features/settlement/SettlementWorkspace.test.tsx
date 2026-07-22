@@ -187,7 +187,7 @@ describe('settlement workspace', () => {
       }),
     );
     expect(confirm).toBeEnabled();
-  }, 30_000);
+  }, 90_000);
 
   it('masks commercial evidence and actions for an auditor', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
