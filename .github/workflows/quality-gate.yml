@@ -48,6 +48,9 @@ jobs:
   performance-resilience:
     uses: ./.github/workflows/performance-resilience.yml
 
+  release-readiness:
+    uses: ./.github/workflows/release-readiness.yml
+
   migration-history:
     uses: ./.github/workflows/migration-history.yml
     with:
@@ -72,6 +75,7 @@ jobs:
         trade-order-conversion,
         audit-reporting,
         performance-resilience,
+        release-readiness,
         migration-history,
       ]
     steps:
@@ -89,6 +93,7 @@ jobs:
           ORDER_RESULT: ${{ needs['trade-order-conversion'].result }}
           REPORTING_RESULT: ${{ needs['audit-reporting'].result }}
           PERFORMANCE_RESULT: ${{ needs['performance-resilience'].result }}
+          RELEASE_RESULT: ${{ needs['release-readiness'].result }}
           MIGRATION_RESULT: ${{ needs['migration-history'].result }}
         run: |
           test "${DOCS_RESULT}" = "success"
@@ -103,4 +108,5 @@ jobs:
           test "${ORDER_RESULT}" = "success"
           test "${REPORTING_RESULT}" = "success"
           test "${PERFORMANCE_RESULT}" = "success"
+          test "${RELEASE_RESULT}" = "success"
           test "${MIGRATION_RESULT}" = "success"
