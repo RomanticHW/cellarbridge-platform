@@ -20,6 +20,9 @@ Semantic Versioning：
 - performance/concurrency/failure reports；
 - public history hygiene scan。
 
+v1.0.0 使用同一门禁但不创建缺少证据的中间 RC：release-candidate PR、合并后 `main` 与 annotated
+tag workflow 分别验证候选、主干和精确发布提交。
+
 ## 3. Release Pipeline
 
 1. checkout exact tag candidate；
@@ -45,6 +48,11 @@ Semantic Versioning：
 - release notes；
 - checksums；
 - known limitations。
+
+v1.0.0 的小型附件由 `scripts/prepare_release_assets.py` 从 tag commit、浏览器证据和安全
+workflow 工件装配。`release-manifest.json` 记录 commit/tree/兼容版本和单件 SHA-256，
+`SHA256SUMS` 覆盖发布说明、证据、截图、SBOM 与 scan JSON。GitHub 自动 source archive
+不重复上传。
 
 ## 5. 迁移兼容
 

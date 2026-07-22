@@ -8,9 +8,9 @@ baseline:
   status: approved-for-implementation
   approved_on: 2026-07-13
   implementation_present: true
-  current_openapi_contract: "1.11.0"
-  current_asyncapi_contract: "1.4.0"
-  current_database_migration: 20
+  current_openapi_contract: "1.13.0"
+  current_asyncapi_contract: "1.5.0"
+  current_database_migration: 22
   current_route_policy: ROUTE-2026-03
   route_input_summary_schema: 3
   planning_supply_decision_evidence: available
@@ -21,6 +21,10 @@ baseline:
   fulfillment_orchestration: available
   exception_center: available
   settlement: available
+  audit_reporting: available
+  observability_security: available
+  performance_resilience: available
+  public_release: available
   architecture_style: domain-oriented-modular-monolith
   primary_scenario: b2b-quotation-to-order-to-fulfillment
   data_policy: synthetic-only
@@ -56,15 +60,14 @@ technology:
     jpa:
       status: planned-not-installed
       decision: ADR-012
-  planned_full_profile:
-    kafka: "4.3"
-    redis: "8.8"
-    opentelemetry: compatible-stable
-    prometheus_grafana: compose-version-not-yet-locked
-  planned_application:
-    echarts:
-      status: planned-not-installed
-      task: 12
+  full_profile:
+    opentelemetry_collector: "0.156.0"
+    prometheus: "3.12.0"
+    grafana: "13.1.0"
+    tempo: "2.10.5"
+  not_installed:
+    kafka: external-channel-not-required
+    redis: correctness-path-does-not-use-cache
 quality_gates:
   architecture_verification: required
   domain_unit_tests: required

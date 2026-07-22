@@ -2,7 +2,10 @@
 
 ## Supported versions
 
-Until the first executable release, only the latest commit on `main` is maintained. After `v1.0.0`, the support table will be updated in this file and in the release notes.
+| Version | Supported |
+| --- | --- |
+| 1.0.x | Yes |
+| < 1.0 | No |
 
 ## Reporting a vulnerability
 

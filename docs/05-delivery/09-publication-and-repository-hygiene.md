@@ -57,6 +57,10 @@ CI `public-repo-policy` 检查路径和秘密。
 - source images metadata strip；
 - dependency lockfiles committed。
 
+v1.0.0 额外维护 `docs/evidence/release/tracked-file-inventory.tsv`。每个 release-tree 文件必须
+被归类为 source、test、contract、doc、generated、release_asset 或 evidence；
+`scripts/generate_publication_inventory.py` 在 public validation 中阻止清单漂移。
+
 ## 5. 截图与媒体
 
 - 只使用 synthetic data；
@@ -66,6 +70,9 @@ CI `public-repo-policy` 检查路径和秘密。
 - alt text；
 - 不使用目标公司 logo；
 - release screenshot 与 tag 匹配。
+
+v1.0.0 截图由精确 tag 的 `make demo-e2e` 生成到 CI 工件，再由 release workflow 附加；
+不把 Playwright trace、带 capability URL 的错误页或未经复核的二进制提交到源码树。
 
 ## 6. README 语言
 

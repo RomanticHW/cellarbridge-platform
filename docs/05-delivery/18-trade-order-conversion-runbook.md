@@ -75,6 +75,6 @@ make order-e2e
 
 ## 7. 已知限制与下一步
 
-- 库存尚未分配或预占；`PENDING_RESERVATION`、reservation/fulfillment/settlement 的 pending/not-started projection 是诚实的流程边界，不代表订单完成。
-- Task 08 A2 只建立 V15、Repository 与原子 Lot 原语；后续 Stack B 才可消费 `TradeOrderCreatedV1`，编排 all-or-nothing 库存预占并发布 reservation outcome。当前订单仍不写 Inventory 事实、不虚构可用量或承诺日期。
+- 本运行手册聚焦转单边界；当前完整 v1.0.0 会继续消费 `TradeOrderCreatedV1`，由 Inventory 编排 all-or-nothing 预占并把结果应用回订单，详见 Inventory、Fulfillment 与 Exception 运行手册。
+- `PENDING_RESERVATION` 仍是真实中间态，不代表预占、履约或应收已经完成；各下游模块只拥有自身事实，不由 Trade Order 直接写表。
 - 外部 Kafka adapter 与外部 publication acknowledgement 不在 core demo 的当前执行路径；保留的 `PENDING` publication 是后续 adapter 的可靠输入，不是丢失事件。

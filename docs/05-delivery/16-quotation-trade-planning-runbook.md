@@ -14,7 +14,7 @@ Requirements: **UC-QUO-001–003, UC-TRD-001, FR-QUO-001–009, FR-TRD-001–006
 - 折扣、毛利、账期、人工/异常价格、非推荐路线和有效期规则产生审批要求。提交者不能审批自己的修订；并发重复审批由版本条件与唯一约束收敛为一条决策。
 - 路线评估在同一事务复制 Planning selected-route Decision 到当前 Revision；按 `quotationLineId` 严格匹配 AUTO/FIXED 行。签发复核原 Evaluation，不重新推荐路线或重查库存。
 - 只有仍在有效期且拥有 `FROZEN` Decision 的已批准报价可以签发。签发生成高熵令牌，只保存 SHA-256 摘要；公开 API 使用明确 allow-list 和 `Cache-Control: no-store`。
-- Task 05 的交付边界停在只读预览；当前仓库已由 Task 06 增加客户接受/拒绝与终态回执，详见 `17-customer-quotation-acceptance-runbook.md`。转订单和库存预占仍属于后续任务。
+- Task 05 的历史交付边界停在只读预览；当前 v1.0.0 已增加客户接受/拒绝、终态回执、转订单与库存预占，分别见后续运行手册。
 
 ## 2. 模块与数据归属
 
@@ -74,5 +74,5 @@ make quotation-e2e
 
 - Task 05 自身不实现客户决定；当前仓库的接受/拒绝见 Task 06 运行手册，幂等报价转订单见 Task 07 运行手册。库存预占与履约仍未实现。
 - 报价列表当前面向演示规模；接口返回稳定页结构，但深分页优化可在真实数据规模需要时引入。
-- 签发后的通知投递和外部事件 broker 发布属于后续可靠事件/通知任务；Task 05 只在 Quotation 自有表内记录发布证据与待办。
+- 签发后的外部通知和 broker 发布不在 v1.0.0；Quotation 在自有表记录发布证据，跨模块事实由 PostgreSQL local publication/Inbox 可靠处理。
 - 路线与价格是确定性合成策略，不代表实际海关、税务、承运商报价或生产承诺。Planning 已有内部 route-bound evidence，但 Quotation freeze、事件/订单传播和库存预占均未实现。
