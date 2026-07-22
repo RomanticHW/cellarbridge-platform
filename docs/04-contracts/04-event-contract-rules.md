@@ -22,6 +22,8 @@ AsyncAPI channel/topic 名：`cellarbridge.<domain>.<fact>.v1`。
 - `payload`；
 - `metadata`（受控可选）。
 
+`occurredAt` 在可靠 publication 落库前统一截断到 PostgreSQL `timestamptz` 的微秒精度；关系列与 JSON envelope 必须使用同一个规范化值，避免不同运行时的时钟精度破坏信封一致性约束。
+
 ## 3. Payload 原则
 
 - 事件自足到消费者不需回查上游私有表；

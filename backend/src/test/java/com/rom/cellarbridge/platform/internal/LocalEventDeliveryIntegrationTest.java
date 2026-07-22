@@ -12,6 +12,7 @@ import com.rom.cellarbridge.platform.ReliableEventPublisher;
 import com.rom.cellarbridge.test.PostgresIntegrationTestSupport;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -57,6 +58,22 @@ class LocalEventDeliveryIntegrationTest extends PostgresIntegrationTestSupport {
     assertThat(inboxValue(handler, delivery, "status")).isEqualTo("PROCESSED");
     assertThat(inboxNumber(handler, delivery, "duplicate_count")).isEqualTo(1);
     assertThat(publicationCount(handler.nextEventId(delivery))).isEqualTo(1);
+  }
+
+  @Test
+  void normalizesNanosecondEventTimeAcrossTheEnvelopeAndPostgresColumn() {
+    Instant occurredAt = Instant.parse("2026-07-22T10:02:31.452170999Z");
+    EventDelivery delivery = delivery(UUID.randomUUID(), occurredAt);
+    RecordingHandler handler =
+        new RecordingHandler("test.order-create.timestamp-precision", eventPublisher);
+
+    assertThat(deliveryService.deliver(handler, delivery))
+        .isEqualTo(LocalEventDeliveryService.DeliveryOutcome.PROCESSED);
+
+    UUID publicationId = handler.nextEventId(delivery);
+    Instant expected = occurredAt.truncatedTo(ChronoUnit.MICROS);
+    assertThat(publicationOccurredAt(publicationId)).isEqualTo(expected);
+    assertThat(publicationEnvelopeOccurredAt(publicationId)).isEqualTo(expected);
   }
 
   @Test
@@ -227,6 +244,22 @@ class LocalEventDeliveryIntegrationTest extends PostgresIntegrationTestSupport {
     return value == null ? -1 : value;
   }
 
+  private Instant publicationOccurredAt(UUID eventId) {
+    return jdbc.queryForObject(
+        "SELECT occurred_at FROM platform_event.event_publication WHERE event_id = ?",
+        (resultSet, rowNumber) -> resultSet.getTimestamp(1).toInstant(),
+        eventId);
+  }
+
+  private Instant publicationEnvelopeOccurredAt(UUID eventId) {
+    String value =
+        jdbc.queryForObject(
+            "SELECT payload ->> 'occurredAt' FROM platform_event.event_publication WHERE event_id = ?",
+            String.class,
+            eventId);
+    return Instant.parse(value);
+  }
+
   private void makeRetryDue(LocalEventHandler handler, EventDelivery delivery) {
     jdbc.update(
         """
@@ -248,6 +281,10 @@ class LocalEventDeliveryIntegrationTest extends PostgresIntegrationTestSupport {
   }
 
   private static EventDelivery delivery(UUID eventId) {
+    return delivery(eventId, Instant.now());
+  }
+
+  private static EventDelivery delivery(UUID eventId, Instant occurredAt) {
     UUID quotationId =
         UUID.nameUUIDFromBytes(("quotation:" + eventId).getBytes(StandardCharsets.UTF_8));
     return new EventDelivery(
@@ -255,7 +292,7 @@ class LocalEventDeliveryIntegrationTest extends PostgresIntegrationTestSupport {
         TENANT_ID,
         "cellarbridge.quotation.accepted.v1",
         1,
-        Instant.now(),
+        occurredAt,
         "quotation",
         new EventDelivery.Subject(
             "Quotation", quotationId, "Q-" + eventId.toString().substring(0, 8)),
