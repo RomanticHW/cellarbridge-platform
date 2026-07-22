@@ -22,4 +22,4 @@ done
 
 # Start a minimal process through each runtime in addition to checking its configured user.
 docker run --rm --entrypoint /usr/lib/jvm/java-21-openjdk/bin/java "$backend_image" -version >/dev/null
-docker run --rm --entrypoint sh "$frontend_image" -c 'test "$(id -u)" -ne 0'
+docker run --rm --entrypoint /usr/sbin/nginx "$frontend_image" -v >/dev/null

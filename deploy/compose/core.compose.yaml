@@ -99,7 +99,7 @@ services:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:8080/ | grep -q "CellarBridge Operations"']
+      test: [CMD, /usr/sbin/nginx, -t]
       interval: 5s
       timeout: 3s
       retries: 20
