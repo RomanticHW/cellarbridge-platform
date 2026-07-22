@@ -4,6 +4,7 @@ import com.rom.cellarbridge.platform.PendingEvent;
 import com.rom.cellarbridge.platform.ReliableEventPublisher;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -28,8 +29,9 @@ public class JdbcReliableEventPublisher implements ReliableEventPublisher {
   @Override
   @Transactional(propagation = Propagation.MANDATORY)
   public void publish(PendingEvent event) {
-    String envelope = serialize(event);
-    MapSqlParameterSource parameters = parameters(event, envelope);
+    Instant occurredAt = event.occurredAt().truncatedTo(ChronoUnit.MICROS);
+    String envelope = serialize(event, occurredAt);
+    MapSqlParameterSource parameters = parameters(event, envelope, occurredAt);
     int inserted =
         jdbc.update(
             """
@@ -77,14 +79,14 @@ public class JdbcReliableEventPublisher implements ReliableEventPublisher {
     return matches != null && matches == 1;
   }
 
-  private String serialize(PendingEvent event) {
+  private String serialize(PendingEvent event, Instant occurredAt) {
     try {
       return jsonMapper.writeValueAsString(
           new EventEnvelope(
               event.eventId(),
               event.eventType(),
               PendingEvent.SPEC_VERSION,
-              event.occurredAt(),
+              occurredAt,
               event.tenantId(),
               event.producer(),
               new EventSubject(
@@ -98,7 +100,8 @@ public class JdbcReliableEventPublisher implements ReliableEventPublisher {
     }
   }
 
-  private static MapSqlParameterSource parameters(PendingEvent event, String envelope) {
+  private static MapSqlParameterSource parameters(
+      PendingEvent event, String envelope, Instant occurredAt) {
     return new MapSqlParameterSource()
         .addValue("eventId", event.eventId())
         .addValue("tenantId", event.tenantId())
@@ -110,7 +113,7 @@ public class JdbcReliableEventPublisher implements ReliableEventPublisher {
         .addValue("subjectId", event.subject().id())
         .addValue("subjectNumber", event.subject().number())
         .addValue("payload", envelope)
-        .addValue("occurredAt", Timestamp.from(event.occurredAt()))
+        .addValue("occurredAt", Timestamp.from(occurredAt))
         .addValue("correlationId", event.correlationId())
         .addValue("causationId", event.causationId());
   }
