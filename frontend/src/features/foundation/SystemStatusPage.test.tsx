@@ -39,9 +39,9 @@ describe('SystemStatusPage', () => {
     expect(
       await screen.findByText('Reported by the backend readiness health group.'),
     ).toBeVisible();
-    expect(screen.getAllByText('Planned')).toHaveLength(5);
+    expect(screen.getAllByText('Planned')).toHaveLength(3);
     expect(
-      screen.getByText(/quotations, and immutable trade-order review are available\./),
+      screen.getByText(/Inventory reservation, and Fulfillment orchestration are available/),
     ).toBeVisible();
     expect((await axe.run(container)).violations).toEqual([]);
   });

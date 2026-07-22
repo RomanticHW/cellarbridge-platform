@@ -117,7 +117,7 @@ flowchart TD
 
 ## 10. Task 08 — Inventory
 
-**Status: Blocked.** Task 07A 先后交付 `integrity-core` 与 `inventory-readiness`；两个准备 PR 均合并前不得开始 reservation/allocation/movement 或订单预占状态 handler。
+**Status: Available.** A1/A2/A2C、B1/B2、C1/C2 已按依赖顺序完成并通过合并门禁。
 
 ### Task 07A gate evidence
 
@@ -125,15 +125,15 @@ flowchart TD
 - inventory readiness：V10 数量单位、仓库优先级、Inventory API/generated types/React/seed 与 Task 08 准备契约；
 - 两阶段都不实现实际 reservation、allocation 或 movement。
 
-- lot/reservation/movement schema；
-- allocation policy and JDBC atomic updates；
-- reservation process manager；
-- order status consumers；
-- React reservation view；
-- concurrent Testcontainers suite；
-- failure shortages and exception trigger。
+- V15~V17 Reservation/Attempt/Allocation/Movement/Shortage 与 command/audit schema；
+- 确定性 allocation policy、JDBC 条件更新与 nested savepoint；
+- Current/Legacy reservation process manager 与幂等 order outcome consumer；
+- tenant/permission/warehouse-assignment 约束的 Reservation API 与 React Order workbench；
+- 真实 PostgreSQL 并发、API、组件与 OIDC 浏览器证据。
 
 ## 11. Task 09 — Fulfillment
+
+**Status: Available.** 完整纵向切片已通过合并门禁。
 
 - templates and seed versions；
 - plan/step/dependency aggregate；
@@ -144,6 +144,8 @@ flowchart TD
 - dependency and restart tests。
 
 ## 12. Task 10 — Exception
+
+**Status: Available.** 完整纵向切片已通过合并门禁。
 
 - exception aggregate/schema；
 - source failure consumers；

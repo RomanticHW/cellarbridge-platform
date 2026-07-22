@@ -67,6 +67,26 @@ const OrderDetailPage = lazy(() =>
     default: module.OrderDetailPage,
   })),
 );
+const FulfillmentBoardPage = lazy(() =>
+  import('../features/fulfillment/FulfillmentBoardPage').then((module) => ({
+    default: module.FulfillmentBoardPage,
+  })),
+);
+const FulfillmentDetailPage = lazy(() =>
+  import('../features/fulfillment/FulfillmentDetailPage').then((module) => ({
+    default: module.FulfillmentDetailPage,
+  })),
+);
+const ExceptionCenterPage = lazy(() =>
+  import('../features/exceptions/ExceptionCenterPage').then((module) => ({
+    default: module.ExceptionCenterPage,
+  })),
+);
+const ExceptionDetailPage = lazy(() =>
+  import('../features/exceptions/ExceptionDetailPage').then((module) => ({
+    default: module.ExceptionDetailPage,
+  })),
+);
 
 function FoundationRoute() {
   return (
@@ -175,6 +195,36 @@ function OrderRoute({ page }: { page: 'list' | 'detail' }) {
   );
 }
 
+function FulfillmentRoute({ page }: { page: 'board' | 'detail' }) {
+  const Page = page === 'board' ? FulfillmentBoardPage : FulfillmentDetailPage;
+  return (
+    <Suspense
+      fallback={
+        <Flex role="status" aria-label="Loading fulfillment workspace" justify="center">
+          <Spin size="large" />
+        </Flex>
+      }
+    >
+      <Page />
+    </Suspense>
+  );
+}
+
+function ExceptionRoute({ page }: { page: 'center' | 'detail' }) {
+  const Page = page === 'center' ? ExceptionCenterPage : ExceptionDetailPage;
+  return (
+    <Suspense
+      fallback={
+        <Flex role="status" aria-label="Loading exception workspace" justify="center">
+          <Spin size="large" />
+        </Flex>
+      }
+    >
+      <Page />
+    </Suspense>
+  );
+}
+
 export const router = createBrowserRouter([
   { path: '/', element: <Navigate to="/app" replace /> },
   { path: '/login', element: <LoginPage /> },
@@ -201,6 +251,10 @@ export const router = createBrowserRouter([
           { path: 'quotations/:quotationId', element: <QuotationRoute page="detail" /> },
           { path: 'orders', element: <OrderRoute page="list" /> },
           { path: 'orders/:orderId', element: <OrderRoute page="detail" /> },
+          { path: 'fulfillment', element: <FulfillmentRoute page="board" /> },
+          { path: 'fulfillment/:planId', element: <FulfillmentRoute page="detail" /> },
+          { path: 'exceptions', element: <ExceptionRoute page="center" /> },
+          { path: 'exceptions/:exceptionId', element: <ExceptionRoute page="detail" /> },
         ],
       },
     ],

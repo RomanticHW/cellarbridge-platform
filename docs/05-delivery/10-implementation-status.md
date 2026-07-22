@@ -1,7 +1,7 @@
 # 实现状态
 
 Baseline version: **Design Baseline v1.0**  
-Status date: **2026-07-16**
+Status date: **2026-07-22**
 
 ## 1. 状态定义
 
@@ -34,11 +34,13 @@ Status date: **2026-07-16**
 | Quotation and trade planning | Available | revisioned snapshots/pricing, ROUTE-2026-03 route-bound supply evidence, independent approval, issue token, customer-safe preview, React workspace, Testcontainers and real OIDC E2E |
 | Route supply-decision Planning evidence | Available | ROUTE-2026-03 single-source eligibility/confidence, one microsecond evaluation time, canonical input schema 3, V12 selected-route evidence and historical reads |
 | Quotation Supply Decision freeze | Available | V13 quotation-owned copy, exact line identity, AUTO/FIXED, original Evaluation issue verification, Legacy gates, OpenAPI 1.6 and React evidence |
-| Supply Decision propagation | Available | Current/Legacy V1、FROZEN/LEGACY_UNVERIFIED Order、V14、OpenAPI 1.7/AsyncAPI 1.1；Task 08 未实施 |
+| Supply Decision propagation | Available | Current/Legacy V1、FROZEN/LEGACY_UNVERIFIED Order、V14、OpenAPI 1.7/AsyncAPI 1.2 |
 | Customer quotation decision | Available | controlled portal context, strict customer DTO, accept/reject idempotency, immutable decision, leased expiry work, durable `QuotationAcceptedV1`, React receipt and refresh-safe E2E |
 | Quote-to-order conversion | Available | transactional Inbox consumer, immutable Trade Order snapshot, unique quotation conversion, reliable `TradeOrderCreatedV1`, eventual Quotation link, tenant/Buyer-scoped query UI and real OIDC E2E |
-| Inventory reservation | Designed / In progress | A1 defines Reservation facts, exact quantity and Request Hash only；orders remain `PENDING_RESERVATION`；Repository、V15、Inventory writes and execution remain blocked in A2/B/C |
-| Fulfillment/exception/settlement/reporting | Designed | implementation not started |
+| Inventory reservation | Available | B1/B2 原子预占与订单 outcome；C1 V17 command/audit、actor-scoped request hash、Reservation/Allocation 锁、NESTED savepoint 与条件 Lot SQL；C2 tenant-scoped Reservation API、warehouse-assignment exact 投影、React Order workbench、组件测试与真实 OIDC/PostgreSQL E2E |
+| Fulfillment orchestration | Available | V18 路线模板与冻结快照；依赖动作、版本并发、幂等与 SLA；模拟适配器；Trade Order 联动；OpenAPI/事件契约；React board/detail/customer milestones；PostgreSQL、组件和 Playwright 证据 |
+| Exception Center and recovery | Available | V19 去重 case/occurrence/history/recovery/work-item；库存失败、履约失败/逾期与技术投递检测；源状态验证的库存重试、履约重试/恢复和 publication 重放；权限/租户/掩码边界；OpenAPI 1.10/generated client；React queue/detail；PostgreSQL、组件与真实 Playwright 证据 |
+| Settlement/reporting | Designed | implementation not started |
 | Architecture fitness functions | Partially available | Modulith、domain/controller/public-contract、Catalog/Inventory 单位与 migration 核心规则已执行；shared-kernel、运行和性能门禁仍按 fitness status 分为 Partially available/Planned |
 | Kafka/Redis/OTel/Prometheus/Grafana full profile | Planned | no current runtime dependency or compose service |
 | ECharts dashboards | Planned | ECharts is not installed；dashboard slice remains Task 12 |
@@ -46,7 +48,7 @@ Status date: **2026-07-16**
 
 ## 3. 声明
 
-当前基线已在 Quotation、Current/Legacy Event 和 Trade Order 中保存一致的决策证据，客户与 Buyer DTO 仍严格隐藏内部证据。库存预占处于 `Designed / In progress`：A1 只建立领域与 Request Hash，尚无 Repository、V15 或库存写入；订单的 `PENDING_RESERVATION` 是明确的未完成状态。
+当前基线已在 Quotation、Current/Legacy Event 和 Trade Order 中保存一致决策证据；Task 08 Inventory reservation、Task 09 Fulfillment orchestration 与 Task 10 Exception Center 均已可运行。异常中心内部工作台展示去重案例、检测证据、责任人、恢复尝试和技术投递摘要；只有源模块返回可验证状态后才进入 `RESOLVED`，客户与 Buyer 边界不暴露内部异常证据。
 
 ## 4. 追踪模板
 

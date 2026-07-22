@@ -426,6 +426,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/inventory/reservations/by-order/{orderId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the current tenant's Reservation for an order */
+        get: operations["getInventoryReservationByOrder"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inventory/reservations/{reservationId}/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Idempotently release confirmed Reservation quantities */
+        post: operations["releaseInventoryReservation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inventory/reservations/{reservationId}/consume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Idempotently consume confirmed Reservation quantities */
+        post: operations["consumeInventoryReservation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/fulfillment/plans": {
         parameters: {
             query?: never;
@@ -511,6 +562,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/exceptions/{exceptionId}/assignment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Assign an open exception case */
+        post: operations["assignException"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/exceptions/{exceptionId}/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Acknowledge an exception or begin its investigation */
+        post: operations["transitionException"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/exceptions/{exceptionId}/recovery-attempts": {
         parameters: {
             query?: never;
@@ -522,6 +607,40 @@ export interface paths {
         put?: never;
         /** Execute an allowed, auditable recovery action */
         post: operations["requestExceptionRecovery"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/exceptions/{exceptionId}/closure": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close a verified, false-positive or duplicate exception */
+        post: operations["closeException"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/event-publications/failed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List masked failed local deliveries for controlled replay */
+        get: operations["listFailedEventPublications"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1312,7 +1431,7 @@ export interface components {
         };
         OrderProcessProjection: {
             /** @enum {string} */
-            status: "PENDING" | "BLOCKED" | "NOT_STARTED";
+            status: "PENDING" | "CONFIRMED" | "FAILED" | "BLOCKED" | "NOT_STARTED" | "READY" | "IN_PROGRESS" | "COMPLETED";
             message: string;
         };
         OrderTimelineEntry: {
@@ -1403,7 +1522,7 @@ export interface components {
         };
         BuyerOrderProcessProjection: {
             /** @enum {string} */
-            status: "PENDING" | "BLOCKED" | "NOT_STARTED";
+            status: "PENDING" | "CONFIRMED" | "FAILED" | "BLOCKED" | "NOT_STARTED" | "READY" | "IN_PROGRESS" | "COMPLETED";
             message: string;
         };
         BuyerOrderTimelineEntry: {
@@ -1441,32 +1560,139 @@ export interface components {
             /** @enum {string} */
             processStatus: "ACCEPTED" | "IN_PROGRESS" | "COMPLETED" | "FAILED";
         };
+        /** @enum {string} */
+        InventoryReservationStatus: "PENDING" | "CONFIRMED" | "FAILED" | "RELEASED" | "CONSUMED";
+        InventoryReservationRequestedLine: {
+            /** Format: uuid */
+            orderLineId: string;
+            /** Format: uuid */
+            skuId: string;
+            quantity: string;
+            quantityUnit: components["schemas"]["QuantityUnit"];
+        };
+        InventoryReservationAllocation: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            orderLineId: string;
+            /** Format: uuid */
+            skuId: string;
+            allocatedQuantity: string;
+            releasedQuantity: string;
+            consumedQuantity: string;
+            remainingReservedQuantity: string;
+            quantityUnit: components["schemas"]["QuantityUnit"];
+            supplyType: components["schemas"]["SupplyType"];
+            /**
+             * Format: uuid
+             * @description Present only with inventory:read-exact and a current warehouse assignment.
+             */
+            supplyPoolId: string | null;
+            /**
+             * Format: uuid
+             * @description Present only with inventory:read-exact and a current warehouse assignment.
+             */
+            lotId: string | null;
+            /** @description Present only with inventory:read-exact and a current warehouse assignment. */
+            warehouseLabel: string | null;
+            /** @description Present only with inventory:read-exact and a current warehouse assignment. */
+            warehousePriority: number | null;
+            /**
+             * Format: int64
+             * @description Present only with inventory:read-exact and a current warehouse assignment.
+             */
+            warehouseVersion: number | null;
+        };
+        InventoryReservationShortage: {
+            /** Format: uuid */
+            orderLineId: string;
+            /** Format: uuid */
+            skuId: string;
+            requestedQuantity: string;
+            availableQuantity: string;
+            shortageQuantity: string;
+            quantityUnit: components["schemas"]["QuantityUnit"];
+            failureCode: string;
+        };
+        InventoryReservationAttempt: {
+            attemptNumber: number;
+            /** @enum {string} */
+            outcome: "CONFIRMED" | "FAILED";
+            failureCode: string | null;
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            completedAt: string;
+        };
+        InventoryReservationOperationAudit: {
+            /** Format: uuid */
+            commandId: string;
+            /** @enum {string} */
+            action: "RELEASE" | "CONSUME";
+            /** @enum {string} */
+            outcome: "COMPLETED" | "REJECTED";
+            reasonCode: string;
+            previousState: components["schemas"]["InventoryReservationStatus"];
+            newState: components["schemas"]["InventoryReservationStatus"];
+            /** Format: date-time */
+            occurredAt: string;
+        };
         InventoryReservationDetail: {
             /** Format: uuid */
             id: string;
-            number: string;
             /** Format: uuid */
             orderId: string;
-            /** @enum {string} */
-            status: "PENDING" | "CONFIRMED" | "FAILED" | "PARTIALLY_CONSUMED" | "PARTIALLY_RELEASED" | "RELEASED" | "CONSUMED";
-            requestedLines: {
-                /** Format: uuid */
-                orderLineId: string;
-                sku: components["schemas"]["SkuSnapshot"];
-                requestedQuantity: components["schemas"]["Quantity"];
-                shortageQuantity?: components["schemas"]["Quantity"] | null;
-            }[];
-            allocations: {
-                /** Format: uuid */
-                lotId: string;
-                lotCode?: string;
-                /** Format: uuid */
-                orderLineId: string;
-                quantity: components["schemas"]["Quantity"];
-                status: string;
-            }[];
+            status: components["schemas"]["InventoryReservationStatus"];
+            failureCode: string | null;
             /** Format: int64 */
             version: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            requestedLines: components["schemas"]["InventoryReservationRequestedLine"][];
+            allocations: components["schemas"]["InventoryReservationAllocation"][];
+            shortages: components["schemas"]["InventoryReservationShortage"][];
+            attempts: components["schemas"]["InventoryReservationAttempt"][];
+            operations: components["schemas"]["InventoryReservationOperationAudit"][];
+            allowedActions: ("RELEASE" | "CONSUME")[];
+        };
+        InventoryReservationOperationItem: {
+            /** Format: uuid */
+            allocationId: string;
+            quantity: string;
+            quantityUnit: components["schemas"]["QuantityUnit"];
+        };
+        InventoryReservationOperationRequest: {
+            allocations: components["schemas"]["InventoryReservationOperationItem"][];
+        };
+        InventoryReservationOperationBalance: {
+            /** Format: uuid */
+            allocationId: string;
+            releasedQuantity: string;
+            consumedQuantity: string;
+            remainingReservedQuantity: string;
+            quantityUnit: components["schemas"]["QuantityUnit"];
+        };
+        InventoryReservationOperationResult: {
+            /** Format: uuid */
+            commandId: string;
+            /** Format: uuid */
+            reservationId: string;
+            /** @enum {string} */
+            action: "RELEASE" | "CONSUME";
+            replayed: boolean;
+            /** @constant */
+            completed: true;
+            /** @constant */
+            code: "COMPLETED";
+            message: string;
+            reservationStatus: components["schemas"]["InventoryReservationStatus"];
+            /** Format: int64 */
+            reservationVersion: number;
+            /** Format: date-time */
+            completedAt: string;
+            allocations: components["schemas"]["InventoryReservationOperationBalance"][];
         };
         /** @enum {string} */
         FulfillmentStatus: "PLANNED" | "READY" | "IN_PROGRESS" | "ON_HOLD" | "COMPLETED" | "CANCELLING" | "CANCELLATION_FAILED" | "CANCELLED";
@@ -1513,7 +1739,21 @@ export interface components {
                 startedAt?: string | null;
                 /** Format: date-time */
                 completedAt?: string | null;
-                public: boolean;
+                customerVisible: boolean;
+                optional: boolean;
+                skippable: boolean;
+                failureCode?: string | null;
+                safeMessage?: string | null;
+                allowedActions: ("START" | "COMPLETE" | "FAIL" | "RETRY" | "SKIP")[];
+                latestAdapterAttempt?: {
+                    /** @enum {string} */
+                    scenario: "SUCCESS" | "FAILURE" | "DELAY";
+                    /** @enum {string} */
+                    outcome: "CONFIRMED" | "FAILED" | "DELAYED";
+                    reference: string;
+                    /** Format: date-time */
+                    occurredAt: string;
+                } | null;
                 /** Format: int64 */
                 version: number;
             }[];
@@ -1522,7 +1762,7 @@ export interface components {
                 label: string;
                 /** Format: date-time */
                 occurredAt: string;
-                public: boolean;
+                customerVisible: boolean;
             }[];
             allowedActions: string[];
         };
@@ -1547,21 +1787,26 @@ export interface components {
         };
         /** @enum {string} */
         ExceptionStatus: "OPEN" | "ASSIGNED" | "ACKNOWLEDGED" | "IN_PROGRESS" | "RECOVERY_PENDING" | "RESOLVED" | "CLOSED";
+        /** @enum {string} */
+        ExceptionCategory: "INVENTORY_SHORTAGE" | "FULFILLMENT_STEP_FAILED" | "FULFILLMENT_STEP_OVERDUE" | "EVENT_DELIVERY_FAILED";
+        /** @enum {string} */
+        ExceptionSeverity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
         ExceptionSummary: {
             /** Format: uuid */
             id: string;
             number: string;
-            type: string;
-            /** @enum {string} */
-            severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+            category: components["schemas"]["ExceptionCategory"];
+            severity: components["schemas"]["ExceptionSeverity"];
             status: components["schemas"]["ExceptionStatus"];
             sourceType: string;
             /** Format: uuid */
             sourceId: string;
-            sourceNumber?: string;
-            title: string;
+            sourceNumber: string;
+            summary: string;
             /** Format: uuid */
             assigneeId?: string | null;
+            /** Format: uuid */
+            primaryCaseId?: string | null;
             /** Format: date-time */
             openedAt: string;
             /** Format: date-time */
@@ -1571,20 +1816,82 @@ export interface components {
         };
         ExceptionPage: {
             items: components["schemas"]["ExceptionSummary"][];
-            pageInfo: components["schemas"]["PageInfo"];
+            nextCursor?: string | null;
+            hasNext: boolean;
+            pageSize: number;
         };
-        ExceptionDetail: components["schemas"]["ExceptionSummary"] & {
-            detectionFact: {
+        ExceptionDetail: {
+            summary: components["schemas"]["ExceptionSummary"];
+            safeDetails: {
                 [key: string]: unknown;
             };
-            history: {
-                [key: string]: unknown;
-            }[];
-            allowedRecoveryActions: string[];
+            occurrences: components["schemas"]["ExceptionOccurrence"][];
+            history: components["schemas"]["ExceptionHistory"][];
+            recoveries: components["schemas"]["RecoveryAttempt"][];
+            allowedRecoveryActions: components["schemas"]["RecoveryAction"][];
             allowedActions: string[];
         };
-        RecoveryRequest: {
+        ExceptionOccurrence: {
+            /** Format: uuid */
+            sourceEventId: string;
+            eventType: string;
+            /** Format: date-time */
+            detectedAt: string;
+            evidence: {
+                [key: string]: unknown;
+            };
+        };
+        ExceptionHistory: {
             action: string;
+            /** @enum {string} */
+            actorType: "SYSTEM" | "INTERNAL_USER";
+            /** Format: uuid */
+            actorId?: string | null;
+            previousStatus?: components["schemas"]["ExceptionStatus"] | null;
+            newStatus: components["schemas"]["ExceptionStatus"];
+            reasonCode?: string | null;
+            safeReason?: string | null;
+            /** Format: uuid */
+            correlationId: string;
+            /** Format: date-time */
+            occurredAt: string;
+        };
+        /** @enum {string} */
+        RecoveryAction: "RETRY_RESERVATION" | "RETRY_FULFILLMENT_STEP" | "RESUME_FULFILLMENT_PLAN" | "REPLAY_PUBLICATION" | "MANUAL_ACKNOWLEDGE";
+        RecoveryAttempt: {
+            /** Format: uuid */
+            id: string;
+            action: components["schemas"]["RecoveryAction"];
+            /** Format: uuid */
+            requesterId: string;
+            inputSummary: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            requestedAt: string;
+            outcome?: components["schemas"]["RecoveryOutcome"] | null;
+        };
+        RecoveryOutcome: {
+            /** @enum {string} */
+            status: "SUCCEEDED" | "FAILED";
+            resultCode: string;
+            safeResult: string;
+            sourceState?: string | null;
+            /** Format: date-time */
+            completedAt: string;
+        };
+        ExceptionAssignmentRequest: {
+            /** Format: uuid */
+            assigneeId: string;
+            reason: string;
+        };
+        ExceptionLifecycleRequest: {
+            /** @enum {string} */
+            action: "ACKNOWLEDGE" | "BEGIN_INVESTIGATION";
+            reason: string;
+        };
+        RecoveryRequest: {
+            action: components["schemas"]["RecoveryAction"];
             reason: string;
             parameters?: {
                 [key: string]: unknown;
@@ -1596,10 +1903,45 @@ export interface components {
             /** Format: uuid */
             attemptId: string;
             /** @enum {string} */
-            status: "ACCEPTED" | "IN_PROGRESS" | "SUCCEEDED" | "FAILED";
+            status: "SUCCEEDED" | "FAILED";
+            resultCode: string;
+            safeResult: string;
+            sourceState?: string | null;
+            caseStatus: components["schemas"]["ExceptionStatus"];
+            /** Format: int64 */
+            version: number;
             /** Format: date-time */
-            acceptedAt: string;
+            completedAt: string;
             replayed: boolean;
+        };
+        ExceptionClosureRequest: {
+            /** @enum {string} */
+            reasonCode: "RECOVERY_VERIFIED" | "FALSE_POSITIVE" | "DUPLICATE";
+            reason: string;
+            /** Format: uuid */
+            primaryCaseId?: string | null;
+        };
+        FailedEventDelivery: {
+            /** Format: uuid */
+            eventId: string;
+            eventType: string;
+            consumerName: string;
+            /** @enum {string} */
+            status: "FAILED_RETRYABLE" | "FAILED_FINAL";
+            attempts: number;
+            /** Format: date-time */
+            nextRetryAt?: string | null;
+            errorCode: string;
+            /** Format: date-time */
+            lastAttemptAt: string;
+            /** Format: int64 */
+            version: number;
+        };
+        FailedEventDeliveryPage: {
+            items: components["schemas"]["FailedEventDelivery"][];
+            nextCursor?: string | null;
+            hasNext: boolean;
+            pageSize: number;
         };
         /** @enum {string} */
         ReceivableStatus: "OPEN" | "PARTIALLY_PAID" | "PAID" | "OVERDUE";
@@ -2681,13 +3023,112 @@ export interface operations {
             /** @description Reservation detail */
             200: {
                 headers: {
+                    ETag: components["headers"]["ETag"];
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["InventoryReservationDetail"];
                 };
             };
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    getInventoryReservationByOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orderId: components["parameters"]["OrderId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reservation detail */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryReservationDetail"];
+                };
+            };
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    releaseInventoryReservation: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                reservationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InventoryReservationOperationRequest"];
+            };
+        };
+        responses: {
+            /** @description Release completed or safely replayed */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    "Idempotency-Replayed": components["headers"]["IdempotencyReplayed"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryReservationOperationResult"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    consumeInventoryReservation: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                reservationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InventoryReservationOperationRequest"];
+            };
+        };
+        responses: {
+            /** @description Consumption completed or safely replayed */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    "Idempotency-Replayed": components["headers"]["IdempotencyReplayed"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryReservationOperationResult"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     listFulfillmentPlans: {
@@ -2697,6 +3138,10 @@ export interface operations {
                 cursor?: components["parameters"]["Cursor"];
                 status?: components["schemas"]["FulfillmentStatus"][];
                 overdue?: boolean;
+                /** @description Return plans with unfinished work owned by this operational role. */
+                ownerRole?: string;
+                /** @description Restrict the board to one Trade Order. */
+                orderId?: string;
             };
             header?: never;
             path?: never;
@@ -2713,6 +3158,9 @@ export interface operations {
                     "application/json": components["schemas"]["FulfillmentPlanPage"];
                 };
             };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
         };
     };
     getFulfillmentPlan: {
@@ -2736,6 +3184,8 @@ export interface operations {
                     "application/json": components["schemas"]["FulfillmentPlanDetail"];
                 };
             };
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -2761,14 +3211,21 @@ export interface operations {
             /** @description Step action result */
             200: {
                 headers: {
+                    ETag: components["headers"]["ETag"];
+                    "Idempotency-Replayed": components["headers"]["IdempotencyReplayed"];
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["FulfillmentStepActionResult"];
                 };
             };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
+            404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             412: components["responses"]["VersionConflict"];
+            428: components["responses"]["PreconditionRequired"];
         };
     };
     listExceptions: {
@@ -2779,6 +3236,8 @@ export interface operations {
                 status?: components["schemas"]["ExceptionStatus"][];
                 severity?: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
                 assigneeId?: string;
+                sourceType?: string;
+                overdue?: boolean;
             };
             header?: never;
             path?: never;
@@ -2795,6 +3254,9 @@ export interface operations {
                     "application/json": components["schemas"]["ExceptionPage"];
                 };
             };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
         };
     };
     getException: {
@@ -2818,7 +3280,81 @@ export interface operations {
                     "application/json": components["schemas"]["ExceptionDetail"];
                 };
             };
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    assignException: {
+        parameters: {
+            query?: never;
+            header: {
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                exceptionId: components["parameters"]["ExceptionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExceptionAssignmentRequest"];
+            };
+        };
+        responses: {
+            /** @description Assigned exception detail */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExceptionDetail"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["VersionConflict"];
+            428: components["responses"]["PreconditionRequired"];
+        };
+    };
+    transitionException: {
+        parameters: {
+            query?: never;
+            header: {
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                exceptionId: components["parameters"]["ExceptionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExceptionLifecycleRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated exception detail */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExceptionDetail"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["VersionConflict"];
+            428: components["responses"]["PreconditionRequired"];
         };
     };
     requestExceptionRecovery: {
@@ -2842,14 +3378,83 @@ export interface operations {
             /** @description Recovery attempt accepted */
             202: {
                 headers: {
+                    ETag: components["headers"]["ETag"];
+                    "Idempotency-Replayed": components["headers"]["IdempotencyReplayed"];
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["RecoveryResult"];
                 };
             };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
+            404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             412: components["responses"]["VersionConflict"];
+            428: components["responses"]["PreconditionRequired"];
+        };
+    };
+    closeException: {
+        parameters: {
+            query?: never;
+            header: {
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                exceptionId: components["parameters"]["ExceptionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExceptionClosureRequest"];
+            };
+        };
+        responses: {
+            /** @description Closed exception detail */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExceptionDetail"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["VersionConflict"];
+            428: components["responses"]["PreconditionRequired"];
+        };
+    };
+    listFailedEventPublications: {
+        parameters: {
+            query?: {
+                pageSize?: components["parameters"]["PageSize"];
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Failed delivery page without commercial payload */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FailedEventDeliveryPage"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
         };
     };
     listReceivables: {

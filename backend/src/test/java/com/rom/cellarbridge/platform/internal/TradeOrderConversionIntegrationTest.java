@@ -706,13 +706,19 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
                 """
                 WITH application_schema(name) AS (VALUES
                   ('identity_access'),('partner'),('catalog'),('inventory'),('trade_planning'),
-                  ('quotation'),('trade_order'),('platform_event')
+                  ('quotation'),('trade_order'),('fulfillment'),('exception_center'),('platform_event')
+                ), global_registry(table_schema,table_name) AS (VALUES
+                  ('identity_access','tenant'),
+                  ('fulfillment','template_version'),('fulfillment','template_step'),
+                  ('fulfillment','template_step_dependency')
                 ), mutable(table_schema,table_name) AS (VALUES
                   ('identity_access','tenant'),('identity_access','user_mapping'),
                   ('partner','partner'),('catalog','wine_product'),('catalog','sku'),
                   ('inventory','warehouse'),('inventory','supply_pool'),('inventory','inventory_lot'),
                   ('trade_planning','evaluation'),('quotation','quotation'),
-                  ('quotation','quotation_revision'),('trade_order','trade_order')
+                  ('quotation','quotation_revision'),('trade_order','trade_order'),
+                  ('fulfillment','fulfillment_plan'),('fulfillment','fulfillment_step'),
+                  ('exception_center','exception_case'),('exception_center','work_item')
                 ), owned AS (
                   SELECT table_schema, table_name FROM information_schema.tables
                    WHERE table_type = 'BASE TABLE'
@@ -728,7 +734,7 @@ class TradeOrderConversionIntegrationTest extends PostgresIntegrationTestSupport
                      AND t.table_schema !~ '^pg_'
                      AND (t.table_schema,t.table_name) <> ('public','flyway_schema_history')
                   UNION ALL SELECT 'tenant:'||o.table_schema||'.'||o.table_name FROM owned o
-                   WHERE (o.table_schema,o.table_name) <> ('identity_access','tenant') AND NOT EXISTS
+                   WHERE (o.table_schema,o.table_name) NOT IN (SELECT * FROM global_registry) AND NOT EXISTS
                      (SELECT FROM information_schema.columns c WHERE c.table_schema=o.table_schema
                        AND c.table_name=o.table_name AND c.column_name='tenant_id' AND c.is_nullable='NO')
                   UNION ALL SELECT 'version:'||m.table_schema||'.'||m.table_name FROM mutable m WHERE NOT EXISTS

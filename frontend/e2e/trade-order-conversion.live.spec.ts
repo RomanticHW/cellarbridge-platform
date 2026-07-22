@@ -1,4 +1,4 @@
-import { expect, test, type Browser, type Page } from '@playwright/test';
+import { expect, test, type APIResponse, type Browser, type Page } from '@playwright/test';
 
 const password = 'CellarBridge-Demo-2026!';
 const forbiddenBuyerFields = new Set([
@@ -33,6 +33,13 @@ const forbiddenBuyerFields = new Set([
   'internalComment',
   'internalComments',
   'comments',
+  'planId',
+  'stepId',
+  'dependencies',
+  'ownerRole',
+  'assigneeRole',
+  'latestAdapterAttempt',
+  'failureCode',
 ]);
 
 interface AuthenticatedPage {
@@ -212,8 +219,8 @@ async function acceptAndAwaitOrder(browser: Browser, publicPath: string): Promis
   return created;
 }
 
-async function authenticatedGetStatus(page: Page, path: string): Promise<number> {
-  const accessToken = await page.evaluate(() => {
+async function oidcAccessToken(page: Page): Promise<string> {
+  return page.evaluate(() => {
     const storedUser = Object.entries(window.sessionStorage)
       .filter(([key]) => key.startsWith('oidc.user:'))
       .map(([, value]) => JSON.parse(value) as { access_token?: string })
@@ -223,10 +230,143 @@ async function authenticatedGetStatus(page: Page, path: string): Promise<number>
     }
     return storedUser.access_token;
   });
-  const response = await page.context().request.get(path, {
+}
+
+async function authenticatedGet(page: Page, path: string): Promise<APIResponse> {
+  const accessToken = await oidcAccessToken(page);
+  return page.context().request.get(path, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
+}
+
+async function authenticatedGetStatus(page: Page, path: string): Promise<number> {
+  const response = await authenticatedGet(page, path);
   return response.status();
+}
+
+async function awaitConfirmedReservation(page: Page, orderId: string) {
+  const path = `/api/v1/inventory/reservations/by-order/${orderId}`;
+  let body: Record<string, unknown> | undefined;
+  await expect
+    .poll(
+      async () => {
+        const response = await authenticatedGet(page, path);
+        if (response.status() !== 200) return `HTTP_${response.status()}`;
+        body = (await response.json()) as Record<string, unknown>;
+        return body.status;
+      },
+      { timeout: 45_000 },
+    )
+    .toBe('CONFIRMED');
+  if (body === undefined || typeof body.id !== 'string') {
+    throw new Error('Confirmed Reservation response is invalid');
+  }
+  return body;
+}
+
+interface FulfillmentPlan {
+  id: string;
+  number: string;
+  orderId: string;
+  steps: { id: string; name: string; status: string }[];
+}
+
+interface ExceptionCaseSummary {
+  id: string;
+  number: string;
+  sourceId: string;
+  status: string;
+  version: number;
+}
+
+async function awaitFulfillmentPlan(page: Page, orderId: string): Promise<FulfillmentPlan> {
+  let planId: string | undefined;
+  await expect
+    .poll(
+      async () => {
+        const response = await authenticatedGet(page, '/api/v1/fulfillment/plans?pageSize=100');
+        if (response.status() !== 200) return `HTTP_${response.status()}`;
+        const body = (await response.json()) as { items?: { id: string; orderId: string }[] };
+        planId = body.items?.find((item) => item.orderId === orderId)?.id;
+        return planId === undefined ? 'MISSING' : 'READY';
+      },
+      { timeout: 45_000 },
+    )
+    .toBe('READY');
+  if (planId === undefined) throw new Error('Fulfillment Plan was not created');
+  const response = await authenticatedGet(page, `/api/v1/fulfillment/plans/${planId}`);
+  expect(response.status()).toBe(200);
+  return (await response.json()) as FulfillmentPlan;
+}
+
+async function awaitExceptionCase(page: Page, sourceId: string): Promise<ExceptionCaseSummary> {
+  let exceptionCase: ExceptionCaseSummary | undefined;
+  await expect
+    .poll(
+      async () => {
+        const response = await authenticatedGet(
+          page,
+          '/api/v1/exceptions?sourceType=FULFILLMENT_STEP&pageSize=100',
+        );
+        if (response.status() !== 200) return `HTTP_${response.status()}`;
+        const body = (await response.json()) as { items?: ExceptionCaseSummary[] };
+        exceptionCase = body.items?.find((item) => item.sourceId === sourceId);
+        return exceptionCase?.status ?? 'MISSING';
+      },
+      { timeout: 45_000 },
+    )
+    .toBe('OPEN');
+  if (exceptionCase === undefined) throw new Error('Exception Case was not created');
+  return exceptionCase;
+}
+
+async function confirmExceptionAction(
+  page: Page,
+  button: 'Acknowledge' | 'Begin investigation' | 'Choose recovery' | 'Close case',
+  reason: string,
+) {
+  await page.getByRole('button', { name: button, exact: true }).click();
+  await page.getByRole('textbox', { name: 'Operational reason' }).fill(reason);
+  const responsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      /\/api\/v1\/exceptions\/[0-9a-f-]{36}\/(actions|recovery-attempts|closure)$/.test(
+        new URL(response.url()).pathname,
+      ),
+  );
+  await page.getByRole('button', { name: 'Confirm', exact: true }).click();
+  const response = await responsePromise;
+  expect(response.status()).toBe(button === 'Choose recovery' ? 202 : 200);
+  expect(response.request().headers()['if-match']).toMatch(/^"\d+"$/);
+  if (button === 'Choose recovery') {
+    expect(response.request().headers()['idempotency-key']).toMatch(/^exception-ui-[0-9a-f-]{36}$/);
+  }
+}
+
+async function confirmFulfillmentAction(
+  page: Page,
+  stepName: string,
+  action: 'Start' | 'Complete' | 'Retry',
+  scenario: 'Success' | 'Failure' = 'Success',
+) {
+  const step = page.locator('.fulfillment-step-node').filter({ hasText: stepName });
+  await step.getByRole('button', { name: action, exact: true }).click();
+  if (action === 'Complete' && scenario === 'Failure') {
+    await page.getByLabel('Simulation outcome').click();
+    await page.getByText('Failure', { exact: true }).last().click();
+  }
+  const responsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      /\/api\/v1\/fulfillment\/plans\/[0-9a-f-]{36}\/steps\/[0-9a-f-]{36}\/actions$/.test(
+        new URL(response.url()).pathname,
+      ),
+  );
+  await page.getByRole('button', { name: 'Confirm action' }).click();
+  const response = await responsePromise;
+  expect(response.status()).toBe(200);
+  expect(response.request().headers()['if-match']).toMatch(/^"\d+"$/);
+  expect(response.request().headers()['idempotency-key']).toMatch(/^fulfillment-ui-[0-9a-f-]{36}$/);
 }
 
 function collectObjectKeys(value: unknown, keys: string[] = []): string[] {
@@ -241,7 +381,7 @@ function collectObjectKeys(value: unknown, keys: string[] = []): string[] {
   return keys;
 }
 
-test('converts accepted quotations once and enforces Buyer, partner, and tenant order scope', async ({
+test('converts accepted quotations once, operates Reservation, and enforces order scope', async ({
   browser,
 }) => {
   const sales = await login(browser, 'north.sales');
@@ -285,23 +425,200 @@ test('converts accepted quotations once and enforces Buyer, partner, and tenant 
   );
   expect(crossPartnerStatus).toBe(404);
 
+  const reservationBoundaryStatus = await authenticatedGetStatus(
+    buyer.page,
+    `/api/v1/inventory/reservations/by-order/${mappedOrder.id}`,
+  );
+  expect(reservationBoundaryStatus).toBe(403);
+  const fulfillmentBoundaryStatus = await authenticatedGetStatus(
+    buyer.page,
+    '/api/v1/fulfillment/plans',
+  );
+  expect(fulfillmentBoundaryStatus).toBe(403);
+
+  const warehouse = await login(browser, 'north.warehouse');
+  const reservation = await awaitConfirmedReservation(warehouse.page, otherOrder.id);
+  const reservationResponsePromise = warehouse.page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname ===
+      `/api/v1/inventory/reservations/by-order/${otherOrder.id}`,
+  );
+  await warehouse.page.goto(otherOrder.path);
+  expect((await reservationResponsePromise).status()).toBe(200);
+  await expect(warehouse.page.getByText('CONFIRMED', { exact: true })).toBeVisible();
+  await expect(warehouse.page.getByText(/^Pool /)).toBeVisible();
+  await expect(warehouse.page.getByText('Restricted')).toHaveCount(0);
+
+  const releaseResponsePromise = warehouse.page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      new URL(response.url()).pathname ===
+        `/api/v1/inventory/reservations/${reservation.id as string}/release`,
+  );
+  await warehouse.page.getByRole('button', { name: 'Release remaining' }).click();
+  await warehouse.page.getByRole('button', { name: 'OK' }).click();
+  const releaseResponse = await releaseResponsePromise;
+  expect(releaseResponse.status()).toBe(200);
+  const releaseResult = (await releaseResponse.json()) as {
+    commandId: string;
+    reservationStatus: string;
+  };
+  expect(releaseResult.reservationStatus).toBe('RELEASED');
+  const releaseRequest = releaseResponse.request();
+  const idempotencyKey = releaseRequest.headers()['idempotency-key'];
+  const releaseBody = releaseRequest.postDataJSON() as unknown;
+  if (idempotencyKey === undefined || !/^[A-Za-z0-9._~-]{20,200}$/.test(idempotencyKey)) {
+    throw new Error('Release request did not carry a valid Idempotency-Key');
+  }
+  await expect(warehouse.page.getByText('RELEASED', { exact: true })).toBeVisible();
+  await expect(warehouse.page.getByText('RELEASE · COMPLETED')).toBeVisible();
+
+  const replayResponse = await warehouse.page.context().request.post(releaseRequest.url(), {
+    headers: {
+      Authorization: `Bearer ${await oidcAccessToken(warehouse.page)}`,
+      'Content-Type': 'application/json',
+      'Idempotency-Key': idempotencyKey,
+    },
+    data: releaseBody,
+  });
+  expect(replayResponse.status()).toBe(200);
+  expect(replayResponse.headers()['idempotency-replayed']).toBe('true');
+  const replayResult = (await replayResponse.json()) as { commandId: string };
+  expect(replayResult.commandId).toBe(releaseResult.commandId);
+
+  const administrator = await login(browser, 'north.admin');
+  const fulfillment = await awaitFulfillmentPlan(administrator.page, mappedOrder.id);
+  expect(fulfillment.steps).toHaveLength(5);
+  expect(fulfillment.steps.map((step) => step.status)).toEqual([
+    'READY',
+    'BLOCKED',
+    'BLOCKED',
+    'BLOCKED',
+    'BLOCKED',
+  ]);
+  await administrator.page.goto(`/app/fulfillment/${fulfillment.id}`);
+  await expect(administrator.page.getByRole('heading', { name: fulfillment.number })).toBeVisible();
+
+  for (let index = 0; index < fulfillment.steps.length; index += 1) {
+    const step = fulfillment.steps[index];
+    if (step === undefined) throw new Error('Fulfillment step snapshot changed unexpectedly');
+    await confirmFulfillmentAction(administrator.page, step.name, 'Start');
+    if (index === 1) {
+      await confirmFulfillmentAction(administrator.page, step.name, 'Complete', 'Failure');
+      await expect(
+        administrator.page
+          .locator('.fulfillment-step-node')
+          .filter({ hasText: step.name })
+          .getByText('FAILED', { exact: true }),
+      ).toBeVisible();
+
+      const exceptionCase = await awaitExceptionCase(administrator.page, step.id);
+      await administrator.page.goto(`/app/exceptions/${exceptionCase.id}`);
+      await expect(
+        administrator.page.getByRole('heading', { name: exceptionCase.number }),
+      ).toBeVisible();
+      await expect(administrator.page.getByText(/SIMULATED_ADAPTER_FAILURE/).first()).toBeVisible();
+      await confirmExceptionAction(
+        administrator.page,
+        'Acknowledge',
+        'Failure evidence reviewed by the fulfillment owner',
+      );
+      await confirmExceptionAction(
+        administrator.page,
+        'Begin investigation',
+        'Route dependency and retry prerequisites confirmed',
+      );
+      await confirmExceptionAction(
+        administrator.page,
+        'Choose recovery',
+        'Retry the failed source step with verified prerequisites',
+      );
+      await expect(administrator.page.getByText('RESOLVED', { exact: true })).toBeVisible();
+      await confirmExceptionAction(
+        administrator.page,
+        'Close case',
+        'Recovered source state and attempt evidence reviewed',
+      );
+      await expect(administrator.page.getByText('CLOSED', { exact: true })).toBeVisible();
+
+      await administrator.page.goto(`/app/fulfillment/${fulfillment.id}`);
+      await expect(
+        administrator.page
+          .locator('.fulfillment-step-node')
+          .filter({ hasText: step.name })
+          .getByText('READY', { exact: true }),
+      ).toBeVisible();
+      await confirmFulfillmentAction(administrator.page, step.name, 'Start');
+    }
+    await confirmFulfillmentAction(administrator.page, step.name, 'Complete');
+  }
+  await expect(administrator.page.getByText('COMPLETED', { exact: true }).first()).toBeVisible();
+  await expect(
+    administrator.page.getByText('Order confirmation', { exact: true }).last(),
+  ).toBeVisible();
+  await expect(administrator.page.getByText('Dispatch', { exact: true }).last()).toBeVisible();
+  await expect(
+    administrator.page.getByText('Signed delivery', { exact: true }).last(),
+  ).toBeVisible();
+
+  let completedBuyerBody: unknown;
+  await expect
+    .poll(
+      async () => {
+        const response = await authenticatedGet(
+          buyer.page,
+          `/api/v1/buyer/orders/${mappedOrder.id}`,
+        );
+        if (response.status() !== 200) return `HTTP_${response.status()}`;
+        completedBuyerBody = (await response.json()) as unknown;
+        return (completedBuyerBody as { status?: string }).status;
+      },
+      { timeout: 45_000 },
+    )
+    .toBe('FULFILLED');
+  expect(
+    collectObjectKeys(completedBuyerBody).filter((key) => forbiddenBuyerFields.has(key)),
+  ).toEqual([]);
+  await buyer.page.reload();
+  await expect(buyer.page.getByText('FULFILLED', { exact: true })).toBeVisible();
+  await expect(buyer.page.getByText('ORDER CONFIRMATION', { exact: true })).toBeVisible();
+  await expect(buyer.page.getByText('DISPATCH', { exact: true })).toBeVisible();
+  await expect(buyer.page.getByText('SIGNED DELIVERY', { exact: true })).toBeVisible();
+
   const harborManager = await login(browser, 'harbor.manager');
   const crossTenantStatus = await authenticatedGetStatus(
     harborManager.page,
     `/api/v1/orders/${mappedOrder.id}`,
   );
   expect(crossTenantStatus).toBe(404);
+  const crossTenantReservationStatus = await authenticatedGetStatus(
+    harborManager.page,
+    `/api/v1/inventory/reservations/by-order/${mappedOrder.id}`,
+  );
+  expect(crossTenantReservationStatus).toBe(404);
+  const crossTenantFulfillment = await authenticatedGet(
+    harborManager.page,
+    `/api/v1/fulfillment/plans/${fulfillment.id}`,
+  );
+  expect(crossTenantFulfillment.status()).toBe(403);
+  expect((await crossTenantFulfillment.json()) as { code?: string }).toMatchObject({
+    code: 'ACCESS_DENIED',
+  });
 
   expect(mappedOrder.browserErrors).toEqual([]);
   expect(otherOrder.browserErrors).toEqual([]);
   expect(sales.browserErrors).toEqual([]);
   expect(manager.browserErrors).toEqual([]);
   expect(buyer.browserErrors).toEqual([]);
+  expect(warehouse.browserErrors).toEqual([]);
+  expect(administrator.browserErrors).toEqual([]);
   expect(harborManager.browserErrors).toEqual([]);
   await Promise.all([
     sales.page.context().close(),
     manager.page.context().close(),
     buyer.page.context().close(),
+    warehouse.page.context().close(),
+    administrator.page.context().close(),
     harborManager.page.context().close(),
   ]);
 });

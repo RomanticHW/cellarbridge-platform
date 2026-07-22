@@ -20,8 +20,9 @@ export function SystemStatusPage() {
             System status
           </Typography.Title>
           <Typography.Paragraph type="secondary" className="page-introduction">
-            Identity, partner onboarding, catalog supply visibility, quotations, and immutable
-            trade-order review are available. Remaining business workflows stay planned until their
+            Identity, partner onboarding, catalog supply visibility, quotations, immutable
+            trade-order review, Inventory reservation, and Fulfillment orchestration are available.
+            Exception Center is implemented in review; remaining workflows stay planned until their
             complete vertical slices are verified.
           </Typography.Paragraph>
         </div>
@@ -42,6 +43,9 @@ export function SystemStatusPage() {
                     <Tag color="green">Catalog supply search available</Tag>
                     <Tag color="green">Quotation workflow available</Tag>
                     <Tag color="green">Trade-order review available</Tag>
+                    <Tag color="green">Inventory reservation available</Tag>
+                    <Tag color="green">Fulfillment orchestration available</Tag>
+                    <Tag color="gold">Exception Center in review</Tag>
                   </Space>
                 </Descriptions.Item>
               </Descriptions>

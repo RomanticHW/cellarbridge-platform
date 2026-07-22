@@ -7,7 +7,7 @@ ENV_FILE ?= $(if $(wildcard .env),.env,.env.example)
 .PHONY: help validate validate-docs validate-contracts validate-public validate-backend \
 	validate-frontend validate-compose test test-backend test-frontend test-migration-history \
 	dev-core stop-core smoke-core \
-	identity-e2e partner-e2e catalog-e2e quotation-e2e acceptance-e2e order-e2e \
+	identity-e2e partner-e2e catalog-e2e quotation-e2e acceptance-e2e order-e2e fulfillment-e2e exception-e2e \
 	catalog-benchmark generate-api-client
 
 help:
@@ -23,7 +23,9 @@ help:
 	  '  make catalog-e2e         Verify catalog search and local quote selection' \
 	  '  make quotation-e2e       Verify quotation routing, approval, issue, and preview' \
 	  '  make acceptance-e2e      Verify customer acceptance idempotency and refresh safety' \
-	  '  make order-e2e           Verify quote-to-order conversion and Buyer-safe access' \
+	  '  make order-e2e           Verify order conversion, Reservation operations, and Buyer-safe access' \
+	  '  make fulfillment-e2e     Verify route plans, dependency actions, milestones, and Buyer-safe access' \
+	  '  make exception-e2e       Verify failure, Exception recovery, source state, and reviewed closure' \
 	  '  make catalog-benchmark   Seed and benchmark PostgreSQL catalog search' \
 	  '  make generate-api-client Regenerate TypeScript API types from OpenAPI'
 
@@ -85,6 +87,12 @@ acceptance-e2e:
 
 order-e2e:
 	./scripts/trade_order_conversion_e2e.sh
+
+fulfillment-e2e:
+	./scripts/fulfillment_orchestration_e2e.sh
+
+exception-e2e:
+	./scripts/exception_center_e2e.sh
 
 catalog-benchmark:
 	./scripts/catalog_search_benchmark.sh

@@ -1,12 +1,12 @@
 openapi: 3.1.0
 info:
   title: CellarBridge API
-  version: 1.7.0
-  summary: Contract baseline for B2B wine quotation, order, inventory and fulfillment
+  version: 1.10.0
+  summary: Contract baseline for B2B wine quotation, order, inventory, fulfillment and exception recovery
   description: |
     This contract remains the design-first integration baseline for CellarBridge. All examples are synthetic.
     The authenticated `/me`, partner-onboarding, catalog supply-search, quotation and trade-order
-    endpoints are delivered as vertical slices; remaining business endpoints retain their approved contracts.
+    endpoints, Inventory Reservation operations, Fulfillment Plan operations, and Exception Center recovery are delivered as vertical slices; remaining business endpoints retain their approved contracts.
     Internal commercial fields and customer-portal fields intentionally use separate schemas.
   license:
     name: Apache-2.0
@@ -782,6 +782,7 @@ paths:
       tags: [Inventory]
       operationId: getInventoryReservation
       summary: Get reservation and allocation summary
+      x-requirements: [FR-INV-015, FR-INV-016]
       x-permissions: [inventory:read]
       parameters:
         - name: reservationId
@@ -791,10 +792,98 @@ paths:
       responses:
         '200':
           description: Reservation detail
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/InventoryReservationDetail' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
         '404': { $ref: '#/components/responses/NotFound' }
+  /inventory/reservations/by-order/{orderId}:
+    get:
+      tags: [Inventory]
+      operationId: getInventoryReservationByOrder
+      summary: Get the current tenant's Reservation for an order
+      x-requirements: [FR-INV-015, FR-INV-016]
+      x-permissions: [inventory:read]
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Reservation detail
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InventoryReservationDetail' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /inventory/reservations/{reservationId}/release:
+    post:
+      tags: [Inventory]
+      operationId: releaseInventoryReservation
+      summary: Idempotently release confirmed Reservation quantities
+      x-requirements: [UC-INV-003, FR-INV-015]
+      x-permissions: [inventory:reserve]
+      parameters:
+        - name: reservationId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InventoryReservationOperationRequest' }
+      responses:
+        '200':
+          description: Release completed or safely replayed
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+            Idempotency-Replayed: { $ref: '#/components/headers/IdempotencyReplayed' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InventoryReservationOperationResult' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /inventory/reservations/{reservationId}/consume:
+    post:
+      tags: [Inventory]
+      operationId: consumeInventoryReservation
+      summary: Idempotently consume confirmed Reservation quantities
+      x-requirements: [UC-INV-003, FR-INV-015]
+      x-permissions: [inventory:reserve]
+      parameters:
+        - name: reservationId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InventoryReservationOperationRequest' }
+      responses:
+        '200':
+          description: Consumption completed or safely replayed
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+            Idempotency-Replayed: { $ref: '#/components/headers/IdempotencyReplayed' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InventoryReservationOperationResult' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /fulfillment/plans:
     get:
       tags: [Fulfillment]
@@ -813,12 +902,23 @@ paths:
         - name: overdue
           in: query
           schema: { type: boolean }
+        - name: ownerRole
+          in: query
+          description: Return plans with unfinished work owned by this operational role.
+          schema: { type: string, pattern: '^[A-Z][A-Z0-9_]{2,59}$' }
+        - name: orderId
+          in: query
+          description: Restrict the board to one Trade Order.
+          schema: { type: string, format: uuid }
       responses:
         '200':
           description: Fulfillment plan page
           content:
             application/json:
               schema: { $ref: '#/components/schemas/FulfillmentPlanPage' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
   /fulfillment/plans/{planId}:
     get:
       tags: [Fulfillment]
@@ -836,6 +936,8 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/FulfillmentPlanDetail' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
   /fulfillment/plans/{planId}/steps/{stepId}/actions:
     post:
       tags: [Fulfillment]
@@ -859,11 +961,19 @@ paths:
       responses:
         '200':
           description: Step action result
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+            Idempotency-Replayed: { $ref: '#/components/headers/IdempotencyReplayed' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/FulfillmentStepActionResult' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '412': { $ref: '#/components/responses/VersionConflict' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
   /exceptions:
     get:
       tags: [Exceptions]
@@ -885,12 +995,21 @@ paths:
         - name: assigneeId
           in: query
           schema: { type: string, format: uuid }
+        - name: sourceType
+          in: query
+          schema: { type: string, pattern: '^[A-Z][A-Z0-9_]{1,79}$' }
+        - name: overdue
+          in: query
+          schema: { type: boolean }
       responses:
         '200':
           description: Exception page
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ExceptionPage' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
   /exceptions/{exceptionId}:
     get:
       tags: [Exceptions]
@@ -908,6 +1027,68 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ExceptionDetail' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
+  /exceptions/{exceptionId}/assignment:
+    post:
+      tags: [Exceptions]
+      operationId: assignException
+      summary: Assign an open exception case
+      x-requirements: [FR-EXC-002]
+      x-permissions: [exception:assign]
+      parameters:
+        - $ref: '#/components/parameters/ExceptionId'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExceptionAssignmentRequest' }
+      responses:
+        '200':
+          description: Assigned exception detail
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExceptionDetail' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/VersionConflict' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+  /exceptions/{exceptionId}/actions:
+    post:
+      tags: [Exceptions]
+      operationId: transitionException
+      summary: Acknowledge an exception or begin its investigation
+      x-requirements: [FR-EXC-002]
+      x-permissions: [exception:recover]
+      parameters:
+        - $ref: '#/components/parameters/ExceptionId'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExceptionLifecycleRequest' }
+      responses:
+        '200':
+          description: Updated exception detail
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExceptionDetail' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/VersionConflict' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
   /exceptions/{exceptionId}/recovery-attempts:
     post:
       tags: [Exceptions]
@@ -927,11 +1108,68 @@ paths:
       responses:
         '202':
           description: Recovery attempt accepted
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+            Idempotency-Replayed: { $ref: '#/components/headers/IdempotencyReplayed' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/RecoveryResult' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '412': { $ref: '#/components/responses/VersionConflict' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+  /exceptions/{exceptionId}/closure:
+    post:
+      tags: [Exceptions]
+      operationId: closeException
+      summary: Close a verified, false-positive or duplicate exception
+      x-requirements: [FR-EXC-004]
+      x-permissions: [exception:recover]
+      parameters:
+        - $ref: '#/components/parameters/ExceptionId'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExceptionClosureRequest' }
+      responses:
+        '200':
+          description: Closed exception detail
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExceptionDetail' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/VersionConflict' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+  /event-publications/failed:
+    get:
+      tags: [Exceptions]
+      operationId: listFailedEventPublications
+      summary: List masked failed local deliveries for controlled replay
+      x-requirements: [FR-EXC-004]
+      x-permissions: [event-publication:read]
+      parameters:
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Failed delivery page without commercial payload
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FailedEventDeliveryPage' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
   /receivables:
     get:
       tags: [Settlement]
@@ -2094,7 +2332,7 @@ components:
       additionalProperties: false
       required: [status, message]
       properties:
-        status: { type: string, enum: [PENDING, BLOCKED, NOT_STARTED] }
+        status: { type: string, enum: [PENDING, CONFIRMED, FAILED, BLOCKED, NOT_STARTED, READY, IN_PROGRESS, COMPLETED] }
         message: { type: string, minLength: 1, maxLength: 240 }
     OrderTimelineEntry:
       type: object
@@ -2217,7 +2455,7 @@ components:
       additionalProperties: false
       required: [status, message]
       properties:
-        status: { type: string, enum: [PENDING, BLOCKED, NOT_STARTED] }
+        status: { type: string, enum: [PENDING, CONFIRMED, FAILED, BLOCKED, NOT_STARTED, READY, IN_PROGRESS, COMPLETED] }
         message: { type: string, minLength: 1, maxLength: 240 }
     BuyerOrderTimelineEntry:
       type: object
@@ -2261,36 +2499,163 @@ components:
         status: { $ref: '#/components/schemas/OrderStatus' }
         version: { type: integer, format: int64 }
         processStatus: { type: string, enum: [ACCEPTED, IN_PROGRESS, COMPLETED, FAILED] }
-    InventoryReservationDetail:
+    InventoryReservationStatus:
+      type: string
+      enum: [PENDING, CONFIRMED, FAILED, RELEASED, CONSUMED]
+    InventoryReservationRequestedLine:
       type: object
-      required: [id, number, orderId, status, requestedLines, allocations, version]
+      additionalProperties: false
+      required: [orderLineId, skuId, quantity, quantityUnit]
+      properties:
+        orderLineId: { type: string, format: uuid }
+        skuId: { type: string, format: uuid }
+        quantity: { type: string, pattern: '^[0-9]+(\.[0-9]{1,6})?$' }
+        quantityUnit: { $ref: '#/components/schemas/QuantityUnit' }
+    InventoryReservationAllocation:
+      type: object
+      additionalProperties: false
+      required: [id, orderLineId, skuId, allocatedQuantity, releasedQuantity, consumedQuantity, remainingReservedQuantity, quantityUnit, supplyType, supplyPoolId, lotId, warehouseLabel, warehousePriority, warehouseVersion]
       properties:
         id: { type: string, format: uuid }
-        number: { type: string }
+        orderLineId: { type: string, format: uuid }
+        skuId: { type: string, format: uuid }
+        allocatedQuantity: { type: string, pattern: '^[0-9]+(\.[0-9]{1,6})?$' }
+        releasedQuantity: { type: string, pattern: '^[0-9]+(\.[0-9]{1,6})?$' }
+        consumedQuantity: { type: string, pattern: '^[0-9]+(\.[0-9]{1,6})?$' }
+        remainingReservedQuantity: { type: string, pattern: '^[0-9]+(\.[0-9]{1,6})?$' }
+        quantityUnit: { $ref: '#/components/schemas/QuantityUnit' }
+        supplyType: { $ref: '#/components/schemas/SupplyType' }
+        supplyPoolId:
+          description: Present only with inventory:read-exact and a current warehouse assignment.
+          type: [string, 'null']
+          format: uuid
+        lotId:
+          description: Present only with inventory:read-exact and a current warehouse assignment.
+          type: [string, 'null']
+          format: uuid
+        warehouseLabel:
+          description: Present only with inventory:read-exact and a current warehouse assignment.
+          type: [string, 'null']
+        warehousePriority:
+          description: Present only with inventory:read-exact and a current warehouse assignment.
+          type: [integer, 'null']
+          minimum: 0
+        warehouseVersion:
+          description: Present only with inventory:read-exact and a current warehouse assignment.
+          type: [integer, 'null']
+          format: int64
+          minimum: 0
+    InventoryReservationShortage:
+      type: object
+      additionalProperties: false
+      required: [orderLineId, skuId, requestedQuantity, availableQuantity, shortageQuantity, quantityUnit, failureCode]
+      properties:
+        orderLineId: { type: string, format: uuid }
+        skuId: { type: string, format: uuid }
+        requestedQuantity: { type: string }
+        availableQuantity: { type: string }
+        shortageQuantity: { type: string }
+        quantityUnit: { $ref: '#/components/schemas/QuantityUnit' }
+        failureCode: { type: string }
+    InventoryReservationAttempt:
+      type: object
+      additionalProperties: false
+      required: [attemptNumber, outcome, failureCode, startedAt, completedAt]
+      properties:
+        attemptNumber: { type: integer, minimum: 1 }
+        outcome: { type: string, enum: [CONFIRMED, FAILED] }
+        failureCode: { type: [string, 'null'] }
+        startedAt: { type: string, format: date-time }
+        completedAt: { type: string, format: date-time }
+    InventoryReservationOperationAudit:
+      type: object
+      additionalProperties: false
+      required: [commandId, action, outcome, reasonCode, previousState, newState, occurredAt]
+      properties:
+        commandId: { type: string, format: uuid }
+        action: { type: string, enum: [RELEASE, CONSUME] }
+        outcome: { type: string, enum: [COMPLETED, REJECTED] }
+        reasonCode: { type: string }
+        previousState: { $ref: '#/components/schemas/InventoryReservationStatus' }
+        newState: { $ref: '#/components/schemas/InventoryReservationStatus' }
+        occurredAt: { type: string, format: date-time }
+    InventoryReservationDetail:
+      type: object
+      additionalProperties: false
+      required: [id, orderId, status, failureCode, version, createdAt, updatedAt, requestedLines, allocations, shortages, attempts, operations, allowedActions]
+      properties:
+        id: { type: string, format: uuid }
         orderId: { type: string, format: uuid }
-        status: { type: string, enum: [PENDING, CONFIRMED, FAILED, PARTIALLY_CONSUMED, PARTIALLY_RELEASED, RELEASED, CONSUMED] }
+        status: { $ref: '#/components/schemas/InventoryReservationStatus' }
+        failureCode: { type: [string, 'null'] }
+        version: { type: integer, format: int64 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
         requestedLines:
           type: array
-          items:
-            type: object
-            required: [orderLineId, sku, requestedQuantity]
-            properties:
-              orderLineId: { type: string, format: uuid }
-              sku: { $ref: '#/components/schemas/SkuSnapshot' }
-              requestedQuantity: { $ref: '#/components/schemas/Quantity' }
-              shortageQuantity: { oneOf: [{ $ref: '#/components/schemas/Quantity' }, { type: 'null' }] }
+          items: { $ref: '#/components/schemas/InventoryReservationRequestedLine' }
         allocations:
           type: array
-          items:
-            type: object
-            required: [lotId, orderLineId, quantity, status]
-            properties:
-              lotId: { type: string, format: uuid }
-              lotCode: { type: string }
-              orderLineId: { type: string, format: uuid }
-              quantity: { $ref: '#/components/schemas/Quantity' }
-              status: { type: string }
-        version: { type: integer, format: int64 }
+          items: { $ref: '#/components/schemas/InventoryReservationAllocation' }
+        shortages:
+          type: array
+          items: { $ref: '#/components/schemas/InventoryReservationShortage' }
+        attempts:
+          type: array
+          items: { $ref: '#/components/schemas/InventoryReservationAttempt' }
+        operations:
+          type: array
+          items: { $ref: '#/components/schemas/InventoryReservationOperationAudit' }
+        allowedActions:
+          type: array
+          uniqueItems: true
+          items: { type: string, enum: [RELEASE, CONSUME] }
+    InventoryReservationOperationItem:
+      type: object
+      additionalProperties: false
+      required: [allocationId, quantity, quantityUnit]
+      properties:
+        allocationId: { type: string, format: uuid }
+        quantity: { type: string, pattern: '^[0-9]+(\.[0-9]{1,6})?$' }
+        quantityUnit: { $ref: '#/components/schemas/QuantityUnit' }
+    InventoryReservationOperationRequest:
+      type: object
+      additionalProperties: false
+      required: [allocations]
+      properties:
+        allocations:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: { $ref: '#/components/schemas/InventoryReservationOperationItem' }
+    InventoryReservationOperationBalance:
+      type: object
+      additionalProperties: false
+      required: [allocationId, releasedQuantity, consumedQuantity, remainingReservedQuantity, quantityUnit]
+      properties:
+        allocationId: { type: string, format: uuid }
+        releasedQuantity: { type: string }
+        consumedQuantity: { type: string }
+        remainingReservedQuantity: { type: string }
+        quantityUnit: { $ref: '#/components/schemas/QuantityUnit' }
+    InventoryReservationOperationResult:
+      type: object
+      additionalProperties: false
+      required: [commandId, reservationId, action, replayed, completed, code, message, reservationStatus, reservationVersion, completedAt, allocations]
+      properties:
+        commandId: { type: string, format: uuid }
+        reservationId: { type: string, format: uuid }
+        action: { type: string, enum: [RELEASE, CONSUME] }
+        replayed: { type: boolean }
+        completed: { type: boolean, const: true }
+        code: { type: string, const: COMPLETED }
+        message: { type: string }
+        reservationStatus: { $ref: '#/components/schemas/InventoryReservationStatus' }
+        reservationVersion: { type: integer, format: int64 }
+        completedAt: { type: string, format: date-time }
+        allocations:
+          type: array
+          items: { $ref: '#/components/schemas/InventoryReservationOperationBalance' }
     FulfillmentStatus:
       type: string
       enum: [PLANNED, READY, IN_PROGRESS, ON_HOLD, COMPLETED, CANCELLING, CANCELLATION_FAILED, CANCELLED]
@@ -2331,7 +2696,7 @@ components:
               type: array
               items:
                 type: object
-                required: [id, code, name, status, dependencies, public, version]
+                required: [id, code, name, status, dependencies, customerVisible, optional, skippable, version, allowedActions]
                 properties:
                   id: { type: string, format: uuid }
                   code: { type: string }
@@ -2346,18 +2711,35 @@ components:
                   dueAt: { type: [string, 'null'], format: date-time }
                   startedAt: { type: [string, 'null'], format: date-time }
                   completedAt: { type: [string, 'null'], format: date-time }
-                  public: { type: boolean }
+                  customerVisible: { type: boolean }
+                  optional: { type: boolean }
+                  skippable: { type: boolean }
+                  failureCode: { type: [string, 'null'] }
+                  safeMessage: { type: [string, 'null'] }
+                  allowedActions:
+                    type: array
+                    items: { type: string, enum: [START, COMPLETE, FAIL, RETRY, SKIP] }
+                  latestAdapterAttempt:
+                    oneOf:
+                      - type: object
+                        required: [scenario, outcome, reference, occurredAt]
+                        properties:
+                          scenario: { type: string, enum: [SUCCESS, FAILURE, DELAY] }
+                          outcome: { type: string, enum: [CONFIRMED, FAILED, DELAYED] }
+                          reference: { type: string }
+                          occurredAt: { type: string, format: date-time }
+                      - type: 'null'
                   version: { type: integer, format: int64 }
             milestones:
               type: array
               items:
                 type: object
-                required: [code, label, occurredAt, public]
+                required: [code, label, occurredAt, customerVisible]
                 properties:
                   code: { type: string }
                   label: { type: string }
                   occurredAt: { type: string, format: date-time }
-                  public: { type: boolean }
+                  customerVisible: { type: boolean }
             allowedActions:
               type: array
               items: { type: string }
@@ -2381,63 +2763,175 @@ components:
     ExceptionStatus:
       type: string
       enum: [OPEN, ASSIGNED, ACKNOWLEDGED, IN_PROGRESS, RECOVERY_PENDING, RESOLVED, CLOSED]
+    ExceptionCategory:
+      type: string
+      enum: [INVENTORY_SHORTAGE, FULFILLMENT_STEP_FAILED, FULFILLMENT_STEP_OVERDUE, EVENT_DELIVERY_FAILED]
+    ExceptionSeverity:
+      type: string
+      enum: [LOW, MEDIUM, HIGH, CRITICAL]
     ExceptionSummary:
       type: object
-      required: [id, number, type, severity, status, sourceType, sourceId, title, openedAt, version]
+      required: [id, number, category, severity, status, sourceType, sourceId, sourceNumber, summary, openedAt, version]
       properties:
         id: { type: string, format: uuid }
         number: { type: string }
-        type: { type: string }
-        severity: { type: string, enum: [LOW, MEDIUM, HIGH, CRITICAL] }
+        category: { $ref: '#/components/schemas/ExceptionCategory' }
+        severity: { $ref: '#/components/schemas/ExceptionSeverity' }
         status: { $ref: '#/components/schemas/ExceptionStatus' }
         sourceType: { type: string }
         sourceId: { type: string, format: uuid }
         sourceNumber: { type: string }
-        title: { type: string }
+        summary: { type: string }
         assigneeId: { type: [string, 'null'], format: uuid }
+        primaryCaseId: { type: [string, 'null'], format: uuid }
         openedAt: { type: string, format: date-time }
         dueAt: { type: [string, 'null'], format: date-time }
         version: { type: integer, format: int64 }
     ExceptionPage:
       type: object
-      required: [items, pageInfo]
+      required: [items, hasNext, pageSize]
       properties:
         items:
           type: array
           items: { $ref: '#/components/schemas/ExceptionSummary' }
-        pageInfo: { $ref: '#/components/schemas/PageInfo' }
+        nextCursor: { type: [string, 'null'] }
+        hasNext: { type: boolean }
+        pageSize: { type: integer, minimum: 1, maximum: 100 }
     ExceptionDetail:
-      allOf:
-        - $ref: '#/components/schemas/ExceptionSummary'
-        - type: object
-          required: [detectionFact, history, allowedRecoveryActions, allowedActions]
-          properties:
-            detectionFact: { type: object, additionalProperties: true }
-            history:
-              type: array
-              items: { type: object, additionalProperties: true }
-            allowedRecoveryActions:
-              type: array
-              items: { type: string }
-            allowedActions:
-              type: array
-              items: { type: string }
+      type: object
+      required: [summary, safeDetails, occurrences, history, recoveries, allowedRecoveryActions, allowedActions]
+      properties:
+        summary: { $ref: '#/components/schemas/ExceptionSummary' }
+        safeDetails: { type: object, additionalProperties: true }
+        occurrences:
+          type: array
+          items: { $ref: '#/components/schemas/ExceptionOccurrence' }
+        history:
+          type: array
+          items: { $ref: '#/components/schemas/ExceptionHistory' }
+        recoveries:
+          type: array
+          items: { $ref: '#/components/schemas/RecoveryAttempt' }
+        allowedRecoveryActions:
+          type: array
+          items: { $ref: '#/components/schemas/RecoveryAction' }
+        allowedActions:
+          type: array
+          items: { type: string }
+    ExceptionOccurrence:
+      type: object
+      required: [sourceEventId, eventType, detectedAt, evidence]
+      properties:
+        sourceEventId: { type: string, format: uuid }
+        eventType: { type: string }
+        detectedAt: { type: string, format: date-time }
+        evidence: { type: object, additionalProperties: true }
+    ExceptionHistory:
+      type: object
+      required: [action, actorType, newStatus, correlationId, occurredAt]
+      properties:
+        action: { type: string }
+        actorType: { type: string, enum: [SYSTEM, INTERNAL_USER] }
+        actorId: { type: [string, 'null'], format: uuid }
+        previousStatus:
+          oneOf:
+            - $ref: '#/components/schemas/ExceptionStatus'
+            - type: 'null'
+        newStatus: { $ref: '#/components/schemas/ExceptionStatus' }
+        reasonCode: { type: [string, 'null'] }
+        safeReason: { type: [string, 'null'] }
+        correlationId: { type: string, format: uuid }
+        occurredAt: { type: string, format: date-time }
+    RecoveryAction:
+      type: string
+      enum: [RETRY_RESERVATION, RETRY_FULFILLMENT_STEP, RESUME_FULFILLMENT_PLAN, REPLAY_PUBLICATION, MANUAL_ACKNOWLEDGE]
+    RecoveryAttempt:
+      type: object
+      required: [id, action, requesterId, inputSummary, requestedAt]
+      properties:
+        id: { type: string, format: uuid }
+        action: { $ref: '#/components/schemas/RecoveryAction' }
+        requesterId: { type: string, format: uuid }
+        inputSummary: { type: object, additionalProperties: true }
+        requestedAt: { type: string, format: date-time }
+        outcome:
+          oneOf:
+            - $ref: '#/components/schemas/RecoveryOutcome'
+            - type: 'null'
+    RecoveryOutcome:
+      type: object
+      required: [status, resultCode, safeResult, completedAt]
+      properties:
+        status: { type: string, enum: [SUCCEEDED, FAILED] }
+        resultCode: { type: string }
+        safeResult: { type: string }
+        sourceState: { type: [string, 'null'] }
+        completedAt: { type: string, format: date-time }
+    ExceptionAssignmentRequest:
+      type: object
+      required: [assigneeId, reason]
+      properties:
+        assigneeId: { type: string, format: uuid }
+        reason: { type: string, minLength: 5, maxLength: 500 }
+    ExceptionLifecycleRequest:
+      type: object
+      required: [action, reason]
+      properties:
+        action: { type: string, enum: [ACKNOWLEDGE, BEGIN_INVESTIGATION] }
+        reason: { type: string, minLength: 5, maxLength: 500 }
     RecoveryRequest:
       type: object
       required: [action, reason]
       properties:
-        action: { type: string, minLength: 2, maxLength: 100 }
+        action: { $ref: '#/components/schemas/RecoveryAction' }
         reason: { type: string, minLength: 5, maxLength: 500 }
         parameters: { type: object, additionalProperties: true }
     RecoveryResult:
       type: object
-      required: [exceptionId, attemptId, status, acceptedAt, replayed]
+      required: [exceptionId, attemptId, status, resultCode, safeResult, caseStatus, version, completedAt, replayed]
       properties:
         exceptionId: { type: string, format: uuid }
         attemptId: { type: string, format: uuid }
-        status: { type: string, enum: [ACCEPTED, IN_PROGRESS, SUCCEEDED, FAILED] }
-        acceptedAt: { type: string, format: date-time }
+        status: { type: string, enum: [SUCCEEDED, FAILED] }
+        resultCode: { type: string }
+        safeResult: { type: string }
+        sourceState: { type: [string, 'null'] }
+        caseStatus: { $ref: '#/components/schemas/ExceptionStatus' }
+        version: { type: integer, format: int64 }
+        completedAt: { type: string, format: date-time }
         replayed: { type: boolean }
+    ExceptionClosureRequest:
+      type: object
+      required: [reasonCode, reason]
+      properties:
+        reasonCode:
+          type: string
+          enum: [RECOVERY_VERIFIED, FALSE_POSITIVE, DUPLICATE]
+        reason: { type: string, minLength: 5, maxLength: 500 }
+        primaryCaseId: { type: [string, 'null'], format: uuid }
+    FailedEventDelivery:
+      type: object
+      required: [eventId, eventType, consumerName, status, attempts, errorCode, lastAttemptAt, version]
+      properties:
+        eventId: { type: string, format: uuid }
+        eventType: { type: string }
+        consumerName: { type: string }
+        status: { type: string, enum: [FAILED_RETRYABLE, FAILED_FINAL] }
+        attempts: { type: integer, minimum: 1 }
+        nextRetryAt: { type: [string, 'null'], format: date-time }
+        errorCode: { type: string }
+        lastAttemptAt: { type: string, format: date-time }
+        version: { type: integer, format: int64 }
+    FailedEventDeliveryPage:
+      type: object
+      required: [items, hasNext, pageSize]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/FailedEventDelivery' }
+        nextCursor: { type: [string, 'null'] }
+        hasNext: { type: boolean }
+        pageSize: { type: integer, minimum: 1, maximum: 100 }
     ReceivableStatus:
       type: string
       enum: [OPEN, PARTIALLY_PAID, PAID, OVERDUE]

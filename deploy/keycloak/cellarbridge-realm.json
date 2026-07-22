@@ -180,6 +180,23 @@
       ]
     },
     {
+      "id": "11000000-0000-4000-8000-000000000007",
+      "username": "north.operator",
+      "enabled": true,
+      "firstName": "North",
+      "lastName": "System Operator",
+      "email": "north.operator@example.test",
+      "emailVerified": true,
+      "attributes": { "tenant_code": ["north-cellars"] },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "CellarBridge-Demo-2026!",
+          "temporary": false
+        }
+      ]
+    },
+    {
       "id": "11000000-0000-4000-8000-000000000099",
       "username": "north.suspended",
       "enabled": true,

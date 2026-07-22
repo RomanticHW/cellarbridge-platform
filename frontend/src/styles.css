@@ -104,6 +104,21 @@ body {
   margin-block: 8px 4px;
 }
 
+.order-evidence-list {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.order-evidence-list li {
+  display: grid;
+  gap: 2px;
+  padding-block: 8px;
+  border-bottom: 1px solid #e3e8eb;
+}
+
 .order-filters {
   display: grid;
   grid-template-columns: minmax(280px, 520px);
@@ -442,5 +457,189 @@ body {
 
   .quote-selection {
     position: static;
+  }
+}
+.fulfillment-page,
+.fulfillment-page-stack {
+  width: 100%;
+}
+
+.fulfillment-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.fulfillment-heading h2 {
+  margin-top: 8px;
+  margin-bottom: 4px;
+}
+
+.fulfillment-stat {
+  min-width: 118px;
+  text-align: center;
+  color: #264234;
+  background: #f4f7f2;
+  border-color: #cdd9d0;
+}
+
+.fulfillment-filters {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 16px;
+  background: #f7f5ef;
+  border: 1px solid #ddd7c8;
+  border-radius: 10px;
+}
+
+.fulfillment-filters .ant-select {
+  min-width: min(440px, 70vw);
+}
+
+.fulfillment-step-graph {
+  display: grid;
+  gap: 0;
+}
+
+.fulfillment-step-node {
+  position: relative;
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 18px;
+  padding-bottom: 22px;
+}
+
+.fulfillment-step-node:not(:last-child)::before {
+  position: absolute;
+  top: 38px;
+  bottom: 0;
+  left: 25px;
+  width: 2px;
+  content: '';
+  background: #b8c9bd;
+}
+
+.fulfillment-step-index {
+  z-index: 1;
+  display: grid;
+  width: 52px;
+  height: 38px;
+  place-items: center;
+  color: #f5f2e9;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  background: #315c45;
+  border-radius: 20px 20px 8px 20px;
+}
+
+.fulfillment-step-body {
+  display: grid;
+  gap: 10px;
+  padding: 18px 20px;
+  background: #fff;
+  border: 1px solid #d9ded9;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgb(43 67 53 / 7%);
+}
+
+.fulfillment-dialog-fields,
+.fulfillment-dialog-fields label,
+.fulfillment-dialog-fields .ant-select {
+  width: 100%;
+}
+
+@media (max-width: 700px) {
+  .fulfillment-heading,
+  .fulfillment-filters {
+    flex-direction: column;
+  }
+}
+
+.exception-page,
+.exception-page-stack {
+  width: 100%;
+}
+
+.exception-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.exception-heading h2 {
+  margin-top: 8px;
+  margin-bottom: 4px;
+}
+
+.exception-metrics {
+  display: flex;
+  gap: 28px;
+  padding-top: 8px;
+}
+
+.exception-stat {
+  min-width: 118px;
+  color: #263e34;
+  text-align: center;
+  background: #f4f7f2;
+  border-color: #cdd9d0;
+}
+
+.exception-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: #f7f5ef;
+  border: 1px solid #ddd7c8;
+  border-radius: 10px;
+}
+
+.exception-filters .ant-select {
+  min-width: 210px;
+}
+
+.exception-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.exception-actions {
+  margin-top: 20px;
+}
+
+.safe-evidence {
+  max-width: min(560px, 68vw);
+  max-height: 240px;
+  padding: 12px;
+  overflow: auto;
+  color: #314238;
+  font-size: 12px;
+  background: #f4f6f2;
+  border: 1px solid #dbe2da;
+  border-radius: 8px;
+}
+
+.exception-dialog-fields,
+.exception-dialog-fields label,
+.exception-dialog-fields .ant-select {
+  width: 100%;
+}
+
+@media (max-width: 800px) {
+  .exception-heading,
+  .exception-filters,
+  .exception-metrics {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .exception-detail-grid {
+    grid-template-columns: 1fr;
   }
 }

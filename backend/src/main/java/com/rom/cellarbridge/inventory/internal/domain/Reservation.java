@@ -118,6 +118,51 @@ public record Reservation(
         now);
   }
 
+  public Reservation retryOutcome(Status target, String failure, Instant now) {
+    Objects.requireNonNull(target, "target");
+    Objects.requireNonNull(now, "now");
+    if (status != Status.FAILED || target != Status.CONFIRMED && target != Status.FAILED) {
+      throw new IllegalStateException(
+          "Illegal Reservation retry outcome: " + status + " -> " + target);
+    }
+    return new Reservation(
+        id,
+        tenantId,
+        orderId,
+        requestHash,
+        supplyDecisionHash,
+        routeCode,
+        target,
+        failure,
+        lines,
+        version + 1,
+        createdAt,
+        now);
+  }
+
+  public Reservation recordOperation(Status finalStatus, Instant now) {
+    Objects.requireNonNull(now, "now");
+    if (status != Status.CONFIRMED) {
+      throw new IllegalStateException("Only a confirmed Reservation accepts operations");
+    }
+    if (finalStatus != null && finalStatus != Status.RELEASED && finalStatus != Status.CONSUMED) {
+      throw new IllegalArgumentException("Operation final status must be RELEASED or CONSUMED");
+    }
+    return new Reservation(
+        id,
+        tenantId,
+        orderId,
+        requestHash,
+        supplyDecisionHash,
+        routeCode,
+        finalStatus == null ? Status.CONFIRMED : finalStatus,
+        null,
+        lines,
+        version + 1,
+        createdAt,
+        now);
+  }
+
   public enum Status {
     PENDING,
     CONFIRMED,

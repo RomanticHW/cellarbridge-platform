@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cellarbridge.dev/schemas/events/fulfillment-step-overdue-v1.schema.json",
+  "title": "FulfillmentStepOverdueV1",
+  "allOf": [
+    { "$ref": "event-envelope.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "type": { "const": "cellarbridge.fulfillment.step-overdue.v1" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["planId", "planNumber", "orderId", "orderNumber", "stepId", "stepCode", "dueAt", "detectedAt"],
+          "properties": {
+            "planId": { "type": "string", "format": "uuid" },
+            "planNumber": { "type": "string" },
+            "orderId": { "type": "string", "format": "uuid" },
+            "orderNumber": { "type": "string" },
+            "stepId": { "type": "string", "format": "uuid" },
+            "stepCode": { "type": "string" },
+            "dueAt": { "type": "string", "format": "date-time" },
+            "detectedAt": { "type": "string", "format": "date-time" }
+          }
+        }
+      }
+    }
+  ]
+}

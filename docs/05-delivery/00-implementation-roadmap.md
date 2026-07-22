@@ -45,7 +45,11 @@ Design Baseline
 
 每个任务的可执行 Prompt 位于私有控制仓库，公共仓库只保存可长期维护的设计与实现证据。
 
-Task 08 当前保持 **Blocked**：必须先合并 Task 07A 的 `integrity-core` 与 `inventory-readiness` 两个准备 PR，不能从第一个 PR 的设计完成推断库存预占已经开始。
+Task 08 已为 **Available**：A1/A2/A2C、B1/B2、C1/C2 已按顺序完成原子预占、订单结果、幂等 release/consume、内部 API、Order workbench 与真实后端 E2E。
+
+Task 09 已为 **Available**：V18 路线模板、不可变计划快照、依赖动作、SLA、模拟适配器、Trade Order 联动、Fulfillment 工作台、客户安全里程碑和契约已完成合并门禁。
+
+Task 10 已为 **Available**：去重异常、分派与状态流转、源状态验证恢复、失败 publication 掩码视图与受控重放、React 工作台和自动验证已通过合并门禁。
 
 ## 3. 纵向切片定义
 

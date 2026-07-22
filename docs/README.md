@@ -112,9 +112,11 @@ The documentation is organized from evidence to delivery. Each layer narrows the
 - [Quotation and trade-planning runbook](05-delivery/16-quotation-trade-planning-runbook.md)
 - [Customer quotation acceptance runbook](05-delivery/17-customer-quotation-acceptance-runbook.md)
 - [Trade order conversion runbook](05-delivery/18-trade-order-conversion-runbook.md)
+- [Fulfillment orchestration runbook](05-delivery/19-fulfillment-orchestration-runbook.md)
+- [Exception Center and recovery runbook](05-delivery/20-exception-center-runbook.md)
 
 ## Change control
 
 `docs/design-baseline.yaml` identifies the approved baseline. A behavior change must update its requirement, domain, contract, test, and implementation status together. Architecture changes require an ADR before code changes.
 
-Task 07C follows [ADR-016](03-architecture/adr/ADR-016-route-supply-decision-readiness-layers.md): Planning, Quotation freeze, and [Propagation](03-architecture/adr/ADR-018-pre-1-0-supply-decision-event-propagation.md) are available in the current baseline. Task 08 is designed-not-implemented and remains blocked.
+Task 07C follows [ADR-016](03-architecture/adr/ADR-016-route-supply-decision-readiness-layers.md): Planning, Quotation freeze, and [Propagation](03-architecture/adr/ADR-018-pre-1-0-supply-decision-event-propagation.md) are available. Task 08 Inventory reservation, Task 09 Fulfillment orchestration, and Task 10 Exception Center are available, including source-verified recovery and controlled event replay.

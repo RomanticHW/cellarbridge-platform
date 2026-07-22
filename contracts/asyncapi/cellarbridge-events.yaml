@@ -1,7 +1,7 @@
 asyncapi: 3.0.0
 info:
   title: CellarBridge Integration Events
-  version: 1.1.0-design
+  version: 1.3.0-design
   description: |
     Versioned integration-event contract for the CellarBridge full profile.
     Delivery semantics are at-least-once; every consumer must deduplicate by event id.
@@ -47,6 +47,30 @@ channels:
     messages:
       inventoryReservationFailed:
         $ref: '#/components/messages/InventoryReservationFailedV1'
+  fulfillmentPlanCreated:
+    address: cellarbridge.fulfillment.plan-created.v1
+    description: A route-bound, versioned fulfillment plan snapshot was created.
+    messages:
+      fulfillmentPlanCreated:
+        $ref: '#/components/messages/FulfillmentPlanCreatedV1'
+  fulfillmentStepStarted:
+    address: cellarbridge.fulfillment.step-started.v1
+    description: A fulfillment step started after all required dependencies completed.
+    messages:
+      fulfillmentStepStarted:
+        $ref: '#/components/messages/FulfillmentStepStartedV1'
+  fulfillmentStepOverdue:
+    address: cellarbridge.fulfillment.step-overdue.v1
+    description: SLA evaluation marked an active fulfillment step overdue.
+    messages:
+      fulfillmentStepOverdue:
+        $ref: '#/components/messages/FulfillmentStepOverdueV1'
+  publicMilestoneReached:
+    address: cellarbridge.fulfillment.public-milestone-reached.v1
+    description: A customer-safe fulfillment milestone was reached.
+    messages:
+      publicMilestoneReached:
+        $ref: '#/components/messages/PublicMilestoneReachedV1'
   fulfillmentStepFailed:
     address: cellarbridge.fulfillment.step-failed.v1
     description: A fulfillment step failed and may require an exception case.
@@ -125,6 +149,51 @@ operations:
     summary: Order, exception and reporting consume the event.
     messages:
       - $ref: '#/channels/inventoryReservationFailed/messages/inventoryReservationFailed'
+  sendFulfillmentPlanCreated:
+    action: send
+    channel:
+      $ref: '#/channels/fulfillmentPlanCreated'
+    messages:
+      - $ref: '#/channels/fulfillmentPlanCreated/messages/fulfillmentPlanCreated'
+  receiveFulfillmentPlanCreated:
+    action: receive
+    channel:
+      $ref: '#/channels/fulfillmentPlanCreated'
+    summary: Trade Order consumes the plan-created fact idempotently.
+    messages:
+      - $ref: '#/channels/fulfillmentPlanCreated/messages/fulfillmentPlanCreated'
+  sendFulfillmentStepStarted:
+    action: send
+    channel:
+      $ref: '#/channels/fulfillmentStepStarted'
+    messages:
+      - $ref: '#/channels/fulfillmentStepStarted/messages/fulfillmentStepStarted'
+  receiveFulfillmentStepStarted:
+    action: receive
+    channel:
+      $ref: '#/channels/fulfillmentStepStarted'
+    summary: Trade Order consumes step starts to expose in-progress state.
+    messages:
+      - $ref: '#/channels/fulfillmentStepStarted/messages/fulfillmentStepStarted'
+  sendFulfillmentStepOverdue:
+    action: send
+    channel:
+      $ref: '#/channels/fulfillmentStepOverdue'
+    messages:
+      - $ref: '#/channels/fulfillmentStepOverdue/messages/fulfillmentStepOverdue'
+  sendPublicMilestoneReached:
+    action: send
+    channel:
+      $ref: '#/channels/publicMilestoneReached'
+    messages:
+      - $ref: '#/channels/publicMilestoneReached/messages/publicMilestoneReached'
+  receivePublicMilestoneReached:
+    action: receive
+    channel:
+      $ref: '#/channels/publicMilestoneReached'
+    summary: Trade Order projects customer-safe milestone text.
+    messages:
+      - $ref: '#/channels/publicMilestoneReached/messages/publicMilestoneReached'
   sendFulfillmentStepFailed:
     action: send
     channel:
@@ -353,6 +422,42 @@ components:
         $ref: '#/components/schemas/EventHeaders'
       payload:
         $ref: '../schemas/events/inventory-reservation-failed-v1.schema.json'
+    FulfillmentPlanCreatedV1:
+      name: FulfillmentPlanCreatedV1
+      title: Fulfillment plan created
+      correlationId:
+        location: $message.payload#/correlationId
+      headers:
+        $ref: '#/components/schemas/EventHeaders'
+      payload:
+        $ref: '../schemas/events/fulfillment-plan-created-v1.schema.json'
+    FulfillmentStepStartedV1:
+      name: FulfillmentStepStartedV1
+      title: Fulfillment step started
+      correlationId:
+        location: $message.payload#/correlationId
+      headers:
+        $ref: '#/components/schemas/EventHeaders'
+      payload:
+        $ref: '../schemas/events/fulfillment-step-started-v1.schema.json'
+    FulfillmentStepOverdueV1:
+      name: FulfillmentStepOverdueV1
+      title: Fulfillment step overdue
+      correlationId:
+        location: $message.payload#/correlationId
+      headers:
+        $ref: '#/components/schemas/EventHeaders'
+      payload:
+        $ref: '../schemas/events/fulfillment-step-overdue-v1.schema.json'
+    PublicMilestoneReachedV1:
+      name: PublicMilestoneReachedV1
+      title: Public fulfillment milestone reached
+      correlationId:
+        location: $message.payload#/correlationId
+      headers:
+        $ref: '#/components/schemas/EventHeaders'
+      payload:
+        $ref: '../schemas/events/public-milestone-reached-v1.schema.json'
     FulfillmentStepFailedV1:
       name: FulfillmentStepFailedV1
       title: Fulfillment step failed

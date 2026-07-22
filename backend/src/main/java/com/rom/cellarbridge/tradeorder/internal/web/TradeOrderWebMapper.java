@@ -75,7 +75,7 @@ final class TradeOrderWebMapper {
             order.acceptedAt(),
             order.snapshotHash()),
         internalReservation(order),
-        notStarted("Fulfillment begins after reservation succeeds"),
+        fulfillment(order),
         notStarted("Settlement begins after fulfillment"),
         view.timeline().stream().map(TradeOrderWebMapper::internalTimeline).toList(),
         List.of());
@@ -106,7 +106,7 @@ final class TradeOrderWebMapper {
                 snapshot.route().code(), snapshot.route().estimatedDeliveryDate()),
             order.acceptedAt()),
         buyerReservation(order),
-        notStarted("Fulfillment begins after reservation succeeds"),
+        fulfillment(order),
         notStarted("Settlement begins after fulfillment"),
         view.timeline().stream().map(TradeOrderWebMapper::buyerTimeline).toList(),
         List.of());
@@ -180,6 +180,16 @@ final class TradeOrderWebMapper {
   }
 
   private static ProcessResponse internalReservation(TradeOrder order) {
+    if (reservationConfirmed(order.status())) {
+      return new ProcessResponse("CONFIRMED", "Inventory reservation is confirmed");
+    }
+    if (order.status() == TradeOrderStatus.RESERVATION_FAILED) {
+      return new ProcessResponse(
+          "FAILED",
+          order.supplyDecisionStatus() == TradeOrderSupplyDecisionStatus.LEGACY_UNVERIFIED
+              ? "Inventory reservation failed because verified supply evidence is missing."
+              : "Inventory reservation failed; review the controlled Reservation summary.");
+    }
     if (order.supplyDecisionStatus() == TradeOrderSupplyDecisionStatus.LEGACY_UNVERIFIED) {
       return new ProcessResponse(
           "BLOCKED", "Verified supply decision is missing; inventory reservation cannot start.");
@@ -188,6 +198,12 @@ final class TradeOrderWebMapper {
   }
 
   private static ProcessResponse buyerReservation(TradeOrder order) {
+    if (reservationConfirmed(order.status())) {
+      return new ProcessResponse("CONFIRMED", "Inventory reservation is confirmed.");
+    }
+    if (order.status() == TradeOrderStatus.RESERVATION_FAILED) {
+      return new ProcessResponse("FAILED", "Inventory reservation requires internal review.");
+    }
     if (order.supplyDecisionStatus() == TradeOrderSupplyDecisionStatus.LEGACY_UNVERIFIED) {
       return new ProcessResponse("BLOCKED", "Inventory reservation requires manual review.");
     }
@@ -227,6 +243,22 @@ final class TradeOrderWebMapper {
 
   private static ProcessResponse notStarted(String message) {
     return new ProcessResponse("NOT_STARTED", message);
+  }
+
+  private static ProcessResponse fulfillment(TradeOrder order) {
+    return switch (order.status()) {
+      case READY_FOR_FULFILLMENT -> new ProcessResponse("READY", "Fulfillment plan is ready");
+      case IN_FULFILLMENT -> new ProcessResponse("IN_PROGRESS", "Fulfillment is in progress");
+      case FULFILLED -> new ProcessResponse("COMPLETED", "Fulfillment is completed");
+      default -> notStarted("Fulfillment begins after reservation succeeds");
+    };
+  }
+
+  private static boolean reservationConfirmed(TradeOrderStatus status) {
+    return status == TradeOrderStatus.RESERVED
+        || status == TradeOrderStatus.READY_FOR_FULFILLMENT
+        || status == TradeOrderStatus.IN_FULFILLMENT
+        || status == TradeOrderStatus.FULFILLED;
   }
 
   private static MoneyResponse money(BigDecimal amount, String currency) {
