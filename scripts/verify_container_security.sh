@@ -20,7 +20,6 @@ for image in "$backend_image" "$frontend_image"; do
   printf 'Verified non-root runtime: %s (%s)\n' "$image" "$configured_user"
 done
 
-# Distroless deliberately has no shell. Start a minimal process through each runtime instead of
-# weakening the backend image by adding one only for inspection.
-docker run --rm --entrypoint /usr/bin/java "$backend_image" -version >/dev/null
+# Start a minimal process through each runtime in addition to checking its configured user.
+docker run --rm --entrypoint /usr/lib/jvm/java-21-openjdk/bin/java "$backend_image" -version >/dev/null
 docker run --rm --entrypoint sh "$frontend_image" -c 'test "$(id -u)" -ne 0'
