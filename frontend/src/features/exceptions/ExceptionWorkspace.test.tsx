@@ -152,6 +152,56 @@ describe('exception workspace', () => {
     expect(screen.queryByText(/commercial-secret/i)).not.toBeInTheDocument();
   });
 
+  it('paginates the queue, renders an unset deadline and hides technical delivery access', async () => {
+    const criticalCase: ExceptionSummary = {
+      ...summary,
+      id: '81000000-0000-4000-8000-000000000010',
+      number: 'EXC-202607-000010',
+      severity: 'CRITICAL',
+      status: 'OPEN',
+      dueAt: null,
+    };
+    const closedCase: ExceptionSummary = {
+      ...summary,
+      id: '81000000-0000-4000-8000-000000000011',
+      number: 'EXC-202607-000011',
+      severity: 'LOW',
+      status: 'CLOSED',
+    };
+    const queueUser = {
+      ...currentUser,
+      permissions: ['exception:read'],
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const request = incoming(input);
+      const url = new URL(request.url);
+      if (url.pathname.endsWith('/me')) return Promise.resolve(response(queueUser));
+      if (url.searchParams.get('cursor') === 'next-page') {
+        return Promise.resolve(
+          response({ items: [closedCase], nextCursor: null, hasNext: false, pageSize: 50 }),
+        );
+      }
+      return Promise.resolve(
+        response({
+          items: [criticalCase],
+          nextCursor: 'next-page',
+          hasNext: true,
+          pageSize: 50,
+        }),
+      );
+    });
+    await router.navigate('/app/exceptions');
+    renderApplication();
+
+    expect(await screen.findByRole('link', { name: criticalCase.number })).toBeVisible();
+    expect(screen.getByText('Not set')).toBeVisible();
+    expect(screen.queryByRole('tab', { name: 'Failed publications' })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Load next page' }));
+    expect(await screen.findByRole('link', { name: closedCase.number })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Load next page' })).not.toBeInTheDocument();
+  });
+
   it('renders immutable evidence and submits a versioned recovery command', async () => {
     const requests: Request[] = [];
     vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
