@@ -79,7 +79,7 @@ export async function actOnFulfillmentStep(
   version: number,
   action: FulfillmentAction,
   reason?: string,
-  scenario?: 'SUCCESS' | 'FAILURE' | 'DELAY',
+  scenario?: 'SUCCESS' | 'FAILURE' | 'DELAY' | 'TIMEOUT',
 ): Promise<FulfillmentActionResult> {
   const idempotencyKey = `fulfillment-ui-${crypto.randomUUID()}`;
   const { data, error, response } = await apiClient.POST(

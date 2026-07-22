@@ -247,18 +247,36 @@ class FulfillmentOrchestrationIntegrationTest extends PostgresIntegrationTestSup
               "DELAY");
       assertThat(delayed.stepStatus()).isEqualTo(FulfillmentStepStatus.IN_PROGRESS);
       plan = service.get(planId);
+      long timeoutExpectedVersion = plan.summary().version();
+      String timeoutKey = key("adapter", "timeout");
       ActionResult failed =
           service.act(
               planId,
               step.id(),
-              plan.summary().version(),
-              key("adapter", "failure"),
+              timeoutExpectedVersion,
+              timeoutKey,
               Action.COMPLETE,
               null,
-              "FAILURE");
+              "TIMEOUT");
+      ActionResult replayed =
+          service.act(
+              planId,
+              step.id(),
+              timeoutExpectedVersion,
+              timeoutKey,
+              Action.COMPLETE,
+              null,
+              "TIMEOUT");
       assertThat(failed.stepStatus()).isEqualTo(FulfillmentStepStatus.FAILED);
-      assertThat(service.get(planId).steps().getFirst().latestAdapterAttempt().outcome())
-          .isEqualTo("FAILED");
+      assertThat(replayed.replayed()).isTrue();
+      assertThat(replayed.stepStatus()).isEqualTo(FulfillmentStepStatus.FAILED);
+      assertThat(adapterAttempts(planId)).isEqualTo(2);
+      assertThat(service.get(planId).steps().getFirst().latestAdapterAttempt())
+          .satisfies(
+              attempt -> {
+                assertThat(attempt.scenario()).isEqualTo("TIMEOUT");
+                assertThat(attempt.outcome()).isEqualTo("FAILED");
+              });
     }
 
     UUID overdueOrder = UUID.randomUUID();

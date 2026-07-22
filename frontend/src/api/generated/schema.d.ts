@@ -1781,7 +1781,7 @@ export interface components {
                 allowedActions: ("START" | "COMPLETE" | "FAIL" | "RETRY" | "SKIP")[];
                 latestAdapterAttempt?: {
                     /** @enum {string} */
-                    scenario: "SUCCESS" | "FAILURE" | "DELAY";
+                    scenario: "SUCCESS" | "FAILURE" | "DELAY" | "TIMEOUT";
                     /** @enum {string} */
                     outcome: "CONFIRMED" | "FAILED" | "DELAYED";
                     reference: string;

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: CellarBridge API
-  version: 1.12.0
+  version: 1.13.0
   summary: Contract baseline for B2B wine quotation, fulfillment, exception recovery and settlement
   description: |
     This contract remains the design-first integration baseline for CellarBridge. All examples are synthetic.
@@ -3136,7 +3136,7 @@ components:
                       - type: object
                         required: [scenario, outcome, reference, occurredAt]
                         properties:
-                          scenario: { type: string, enum: [SUCCESS, FAILURE, DELAY] }
+                          scenario: { type: string, enum: [SUCCESS, FAILURE, DELAY, TIMEOUT] }
                           outcome: { type: string, enum: [CONFIRMED, FAILED, DELAYED] }
                           reference: { type: string }
                           occurredAt: { type: string, format: date-time }

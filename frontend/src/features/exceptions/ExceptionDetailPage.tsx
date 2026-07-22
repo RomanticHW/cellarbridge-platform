@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
+  App as AntApp,
   Button,
   Card,
   Descriptions,
@@ -11,7 +12,6 @@ import {
   Tag,
   Timeline,
   Typography,
-  message,
 } from 'antd';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
@@ -38,6 +38,7 @@ function label(value: string) {
 }
 
 export function ExceptionDetailPage() {
+  const { message } = AntApp.useApp();
   const { exceptionId = '' } = useParams();
   const session = useAuthSession();
   const accessToken = session.accessToken ?? '';

@@ -14,10 +14,10 @@
 |---|---|---|---|
 | PostgreSQL 不可用 | 所有写/大部分读 | readiness false，503，不缓存写 | DB 恢复后重试安全命令 |
 | Keycloak 不可用 | 新登录/刷新失败 | 已有有效 JWT 在验证可用时继续；不绕过认证 | IDP 恢复 |
-| Redis 不可用（Planned full profile） | 缓存 miss | 降级到 DB，记录指标 | 自动恢复，不丢事实 |
-| Kafka 不可用（Planned full profile） | 外部事件延迟 | 独立 external outbox 积压，核心本地事务可提交 | publisher 重试 |
+| Redis 不可用（当前未部署） | 无运行时影响 | Core 正确性不依赖 Redis；profile 验证拓扑和依赖中不存在 Redis | 若以后引入，需新增降级与恢复证据 |
+| Kafka 不可用（当前未部署） | 无运行时影响 | 当前使用 PostgreSQL local publication/Inbox，并验证积压、重复与恢复 | 若以后引入 external outbox，需新增 broker outage 证据 |
 | OTEL/Prometheus 不可用（Planned） | 可观测性下降 | 业务不失败；导出有界缓冲 | 恢复后继续 |
-| 模拟外部适配器超时（Planned fulfillment） | 履约步骤不确定 | attempt 失败/未知，进入异常 | 查询状态/幂等重试 |
+| 模拟外部适配器超时（demo only） | 履约步骤失败 | 持久化 `SIMULATED_ADAPTER_TIMEOUT`，进入异常且不返回虚假成功 | 源状态验证后幂等重试/恢复 |
 | 应用进程崩溃 | 处理中断 | DB 事务回滚；已提交 publication 重启恢复 | 重启/多实例 |
 
 ## 3. 超时与重试
@@ -70,15 +70,16 @@ P1 只在模拟外部适配器中演示：
 
 ## 8. 故障注入
 
-本地演示提供受控 profile：
+自动化测试提供受控 fault fixture：
 
-- publisher 延迟/失败；
-- adapter timeout/500；
-- consumer 第 N 次失败；
-- DB transaction 中点抛错；
+- publication backlog/duplicate 与 consumer 事务失败；
+- adapter delay/failure/timeout；
+- 真实 PostgreSQL deadlock 与有界重试；
+- projector duplicate/out-of-order/rebuild；
+- Keycloak 暂停、JWK cache 验证与恢复；
 - clock 前移触发逾期。
 
-故障开关仅 demo/test profile，生产配置不暴露管理端点。
+适配器非成功场景仅 demo profile 开启，并继续受 `FULFILLMENT_OPERATE` 权限保护；其他注入存在于测试或隔离 Compose profile，生产配置不暴露管理端点。详细证据见 `docs/evidence/resilience/report.md`。
 
 ## 9. 对账与 stuck 检测
 

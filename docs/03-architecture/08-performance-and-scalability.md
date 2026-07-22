@@ -119,3 +119,5 @@ Redis 不可用时 core 正确性继续，性能下降并记录指标。
 ## 10. 性能报告
 
 每次报告包含：commit、环境、CPU/RAM、容器限制、数据规模、脚本、warm-up、持续时间、P50/P95/P99、吞吐、错误、DB plan、GC 和结论。只发布可重现结果。
+
+Task 14 已提供 `smoke`（目标 10 分钟）和 `full`（目标 30 分钟）两个版本化 profile。确定性生成器、正确性绑定的 Maven/PostgreSQL harness、CI smoke 与人工 full workflow 见 `docs/05-delivery/24-performance-resilience-runbook.md`；结果保存在 ignored 的 `target/performance-evidence/`，公开结论见 `docs/evidence/performance/report.md`。

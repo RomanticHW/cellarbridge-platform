@@ -80,8 +80,9 @@
 
 ## 9. 生成与重置
 
-- deterministic Faker/Java generator seed `20260713`；
+- demo seed 继续使用既有确定性 SQL；Task 14 evidence generator 使用 schema `cellarbridge.synthetic-dataset.v1`、seed `140726` 与 SHA-256 manifest；
 - base fixtures 与 benchmark data 分开；
+- `performance/profiles/smoke.json` 和 `full.json` 分别固定 10/30 分钟证据规模，输出 gzip JSONL 到 ignored 的 `target/performance-evidence/`；
 - `make demo-reset` 只在 profile=demo、本地 host、明确确认；
 - reset 重建 demo tenant，不触及其他 DB；
 - CI fixture 由测试独立创建。

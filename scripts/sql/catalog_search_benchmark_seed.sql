@@ -47,7 +47,7 @@ SELECT md5('catalog-benchmark-product-' || sequence)::uuid,
             ELSE ARRAY['benchmark', 'cellar'] END,
        '2026-07-13T00:00:00Z', :'actor_id'::uuid,
        '2026-07-13T00:00:00Z', :'actor_id'::uuid, 0
-  FROM generate_series(1, 4000) AS sequence;
+  FROM generate_series(1, :product_count) AS sequence;
 
 INSERT INTO catalog.sku
     (id, tenant_id, product_id, code, vintage_code, volume_ml, units_per_case,
@@ -70,7 +70,7 @@ SELECT md5('catalog-benchmark-sku-' || product_sequence || '-' || variant)::uuid
        '2026-07-13T00:00:00Z', NULL,
        '2026-07-13T00:00:00Z', :'actor_id'::uuid,
        '2026-07-13T00:00:00Z', :'actor_id'::uuid, 1
-  FROM generate_series(1, 4000) AS product_sequence
+  FROM generate_series(1, :product_count) AS product_sequence
  CROSS JOIN generate_series(1, 3) AS variant;
 
 INSERT INTO inventory.warehouse
@@ -128,7 +128,7 @@ SELECT :'tenant_id'::uuid,
        '2026-07-13T00:00:00Z', 1,
        '2026-07-13T00:00:00Z', :'actor_id'::uuid,
        '2026-07-13T00:00:00Z', :'actor_id'::uuid, 0
-  FROM generate_series(1, 4000) AS product_sequence
+  FROM generate_series(1, :product_count) AS product_sequence
  CROSS JOIN (VALUES
      (1, 1, 'CASE'), (1, 1, 'BOTTLE'), (1, 2, 'CASE'),
      (2, 1, 'CASE'), (2, 2, 'CASE'), (2, 4, 'CASE'),
@@ -148,7 +148,7 @@ SELECT md5('catalog-benchmark-lot-' || product_sequence || '-' || variant || '-'
        '2026-07-13T00:00:00Z', '2026-07-01T00:00:00Z',
        '2026-07-13T00:00:00Z', :'actor_id'::uuid,
        '2026-07-13T00:00:00Z', :'actor_id'::uuid, 0
-  FROM generate_series(1, 4000) AS product_sequence
+  FROM generate_series(1, :product_count) AS product_sequence
  CROSS JOIN (VALUES
      (1, 1, 'CASE'), (1, 1, 'BOTTLE'), (1, 2, 'CASE'),
      (2, 1, 'CASE'), (2, 2, 'CASE'), (2, 4, 'CASE'),

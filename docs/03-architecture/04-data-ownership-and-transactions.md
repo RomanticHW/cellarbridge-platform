@@ -2,7 +2,7 @@
 
 ## 1. Schema 所有权
 
-下表是当前与目标模块共同遵守的 ownership map，不是现有物理表清单。V2～V21 已实现
+下表是当前与目标模块共同遵守的 ownership map，不是现有物理表清单。V2～V22 已实现
 Identity、Partner、Catalog、Inventory、Quotation/Trade Planning、Trade Order、Fulfillment、
 Exception Center、Settlement、Audit/Reporting 与 `platform_event`。
 
@@ -94,7 +94,7 @@ WHERE tenant_id = :tenant_id
 
 ## 7. 迁移
 
-- 当前仓库 migration 从 V2 到 V21 使用简单递增版本；V8/V9 是冻结的多 owner 历史协调例外；
+- 当前仓库 migration 从 V2 到 V22 使用简单递增版本；V8/V9 是冻结的多 owner 历史协调例外；
 - 从 V10 起，一个文件只允许修改一个 owner Schema；跨模块任务拆为多个连续、前向兼容的 migration；
 - ownership manifest 已覆盖全部 V2+ 文件并记录 SHA-256；V10+ 另由高信号语句 scanner 和 PostgreSQL catalog test 验证，历史差异仍需 PR 基线门禁/评审；
 - 合并后不可修改；

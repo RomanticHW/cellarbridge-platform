@@ -379,13 +379,13 @@ async function confirmFulfillmentAction(
   page: Page,
   stepName: string,
   action: 'Start' | 'Complete' | 'Retry',
-  scenario: 'Success' | 'Failure' = 'Success',
+  scenario: 'Success' | 'Failure' | 'Timeout' = 'Success',
 ) {
   const step = page.locator('.fulfillment-step-node').filter({ hasText: stepName });
   await step.getByRole('button', { name: action, exact: true }).click();
-  if (action === 'Complete' && scenario === 'Failure') {
+  if (action === 'Complete' && scenario !== 'Success') {
     await page.getByLabel('Simulation outcome').click();
-    await page.getByText('Failure', { exact: true }).last().click();
+    await page.getByText(scenario, { exact: true }).last().click();
   }
   const responsePromise = page.waitForResponse(
     (response) =>
@@ -536,7 +536,7 @@ test('converts accepted quotations once, operates Reservation, and enforces orde
     if (step === undefined) throw new Error('Fulfillment step snapshot changed unexpectedly');
     await confirmFulfillmentAction(administrator.page, step.name, 'Start');
     if (index === 1) {
-      await confirmFulfillmentAction(administrator.page, step.name, 'Complete', 'Failure');
+      await confirmFulfillmentAction(administrator.page, step.name, 'Complete', 'Timeout');
       await expect(
         administrator.page
           .locator('.fulfillment-step-node')
@@ -549,7 +549,7 @@ test('converts accepted quotations once, operates Reservation, and enforces orde
       await expect(
         administrator.page.getByRole('heading', { name: exceptionCase.number }),
       ).toBeVisible();
-      await expect(administrator.page.getByText(/SIMULATED_ADAPTER_FAILURE/).first()).toBeVisible();
+      await expect(administrator.page.getByText(/SIMULATED_ADAPTER_TIMEOUT/).first()).toBeVisible();
       await confirmExceptionAction(
         administrator.page,
         'Acknowledge',

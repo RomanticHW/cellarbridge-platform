@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "cellarbridge.performance-profile.v1",
+  "name": "smoke",
+  "seed": 140726,
+  "durationBudgetMinutes": 10,
+  "counts": {
+    "products": 500,
+    "skus": 1500,
+    "inventoryLots": 10000,
+    "partners": 100,
+    "quotations": 5000,
+    "orders": 3000,
+    "events": 20000
+  },
+  "benchmark": {
+    "catalogProducts": 500,
+    "catalogWarmups": 3,
+    "catalogRuns": 15,
+    "routeWarmups": 1000,
+    "routeIterations": 5000,
+    "eventBacklog": 100
+  },
+  "faults": {
+    "identityOutage": false
+  }
+}

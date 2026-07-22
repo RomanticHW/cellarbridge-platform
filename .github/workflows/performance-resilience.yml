@@ -1,0 +1,94 @@
+name: Performance and resilience evidence
+
+on:
+  workflow_call:
+    inputs:
+      profile:
+        required: false
+        type: string
+        default: smoke
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'contracts/**'
+      - 'deploy/**'
+      - 'frontend/e2e/keycloak-outage.evidence.ts'
+      - 'frontend/playwright.keycloak-outage.config.ts'
+      - 'performance/**'
+      - 'scripts/catalog_search_benchmark.sh'
+      - 'scripts/keycloak_outage_evidence.sh'
+      - 'scripts/performance_evidence.sh'
+      - 'scripts/sql/catalog_search_benchmark_seed.sql'
+      - 'pom.xml'
+      - 'Makefile'
+      - '.github/workflows/performance-resilience.yml'
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Evidence profile
+        required: true
+        type: choice
+        default: smoke
+        options: [smoke, full]
+
+permissions:
+  contents: read
+
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Verify deterministic evidence helpers
+        run: python -m unittest -v performance.test_generate_dataset performance.test_render_summary
+
+      - name: Set up pnpm for the full outage profile
+        if: inputs.profile == 'full'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.12.0
+
+      - name: Set up Node.js for the full outage profile
+        if: inputs.profile == 'full'
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24.18.0'
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install browser dependencies for the full outage profile
+        if: inputs.profile == 'full'
+        working-directory: frontend
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install --with-deps chromium
+
+      - name: Run correctness-backed evidence profile
+        env:
+          EVIDENCE_PROFILE: ${{ inputs.profile || 'smoke' }}
+        run: ./scripts/performance_evidence.sh "${EVIDENCE_PROFILE}"
+
+      - name: Upload evidence artifacts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: performance-resilience-${{ inputs.profile || 'smoke' }}
+          path: target/performance-evidence/${{ inputs.profile || 'smoke' }}/
+          if-no-files-found: error
+          retention-days: 14

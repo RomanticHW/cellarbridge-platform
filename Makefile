@@ -10,7 +10,7 @@ FULL_ENV_FILE ?= .env
 	validate-frontend validate-compose validate-full-compose test test-backend test-frontend test-migration-history \
 	dev-core stop-core dev-full stop-full smoke-core verify-container-security \
 	identity-e2e partner-e2e catalog-e2e quotation-e2e acceptance-e2e order-e2e fulfillment-e2e exception-e2e settlement-e2e reporting-e2e \
-	catalog-benchmark generate-api-client
+	catalog-benchmark performance-smoke performance-full generate-api-client
 
 help:
 	@printf '%s\n' \
@@ -33,6 +33,8 @@ help:
 	  '  make settlement-e2e      Verify fulfillment-triggered receivables, payments, and reversal' \
 	  '  make reporting-e2e       Verify projected work, dashboard, audit, and timeline views' \
 	  '  make catalog-benchmark   Seed and benchmark PostgreSQL catalog search' \
+	  '  make performance-smoke   Run the correctness-backed 10-minute evidence profile' \
+	  '  make performance-full    Run the 30-minute profile including identity outage' \
 	  '  make generate-api-client Regenerate TypeScript API types from OpenAPI'
 
 validate: validate-docs validate-contracts validate-public validate-backend validate-frontend validate-compose validate-full-compose
@@ -124,6 +126,12 @@ reporting-e2e:
 
 catalog-benchmark:
 	./scripts/catalog_search_benchmark.sh
+
+performance-smoke:
+	./scripts/performance_evidence.sh smoke
+
+performance-full:
+	./scripts/performance_evidence.sh full
 
 generate-api-client:
 	cd frontend && $(PNPM) generate:api
