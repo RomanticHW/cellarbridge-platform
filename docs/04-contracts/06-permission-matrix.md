@@ -63,6 +63,14 @@ Task 04 的稳定权限码与字段规则：
 - Buyer 即使拥有有限 `catalog:read`，也不因此获得内部 `inventory:read` 或供给页访问；
 - Sales/Manager 只看数量带，Trade/Warehouse/Tenant Admin 仅在显式授予 exact 权限后看授权范围精确值。
 
+Task 11 的稳定结算权限码与字段规则：
+
+- `settlement:read` 只建立租户内读边界；Buyer 额外固定为身份映射的 `partnerId`，请求不能指定其他组织；
+- `settlement:read-commercial-sensitive` 才允许内部角色读取金额、外部付款参考号、actor 和冲正原因；
+- `settlement:record-payment` 与 `settlement:reverse-payment` 独立授权，Buyer 即使可读也不能写；
+- Finance Specialist 和 Tenant Administrator 拥有结算写权限；Auditor 默认只读且金额掩码；
+- System Operator 不拥有 `settlement:read`，技术事件权限不推导商业应收访问。
+
 ## 4. 字段矩阵
 
 | 字段类别 | 内部普通 | 商业敏感权限 | Buyer | System Ops | Audit |
@@ -74,6 +82,7 @@ Task 04 的稳定权限码与字段规则：
 | 内部路径评分 | Sales/Manager/Ops | 是 | 否 | 否 | 摘要 |
 | 公开里程碑 | 是 | 是 | 自己 | 技术 | 是 |
 | 内部异常评论 | 关联角色 | 是 | 否 | 技术错误摘要 | 按授权 |
+| 应收金额/付款参考号/冲正原因 | 否/摘要 | 是 | 自己组织金额；不返回付款明细 | 否 | 默认掩码/按授权 |
 | token/secret | 否 | 否 | 否 | 否 | 否 |
 
 ## 5. 验收

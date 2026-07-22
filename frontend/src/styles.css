@@ -643,3 +643,68 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+.settlement-page {
+  max-width: 1240px;
+  margin: 0 auto;
+}
+
+.settlement-page-stack,
+.settlement-dialog-fields {
+  width: 100%;
+}
+
+.settlement-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 20px 0 8px;
+  border-bottom: 1px solid rgb(38 57 48 / 14%);
+}
+
+.settlement-kicker {
+  color: #8a5b22;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.settlement-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+}
+
+.settlement-stat {
+  min-width: 150px;
+  color: #293f34;
+  font-weight: 650;
+}
+
+.settlement-filters {
+  display: flex;
+  margin-bottom: 16px;
+}
+
+.settlement-filters .ant-select {
+  min-width: 280px;
+}
+
+.settlement-dialog-fields label {
+  display: grid;
+  gap: 6px;
+  color: #31483d;
+  font-weight: 600;
+}
+
+.settlement-dialog-fields .ant-select {
+  width: 100%;
+}
+
+@media (max-width: 680px) {
+  .settlement-heading {
+    flex-direction: column;
+  }
+}

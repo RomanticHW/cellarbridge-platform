@@ -27,6 +27,7 @@ public enum PermissionCode {
   EXCEPTION_ASSIGN("exception:assign"),
   EXCEPTION_RECOVER("exception:recover"),
   SETTLEMENT_READ("settlement:read"),
+  SETTLEMENT_READ_COMMERCIAL_SENSITIVE("settlement:read-commercial-sensitive"),
   SETTLEMENT_RECORD_PAYMENT("settlement:record-payment"),
   SETTLEMENT_REVERSE_PAYMENT("settlement:reverse-payment"),
   REPORTING_READ("reporting:read"),

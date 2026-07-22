@@ -654,7 +654,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List receivables */
+        /** List tenant-scoped receivables; Buyer identities are restricted to their mapped organization */
         get: operations["listReceivables"];
         put?: never;
         post?: never;
@@ -1952,8 +1952,14 @@ export interface components {
             /** Format: uuid */
             orderId: string;
             orderNumber: string;
-            originalAmount: components["schemas"]["Money"];
-            outstandingAmount: components["schemas"]["Money"];
+            /** Format: uuid */
+            partnerId: string;
+            partnerNumber: string;
+            partnerName: string;
+            /** @description Null when the actor lacks commercial amount visibility. */
+            originalAmount: components["schemas"]["Money"] | null;
+            /** @description Null when the actor lacks commercial amount visibility. */
+            outstandingAmount: components["schemas"]["Money"] | null;
             /** Format: date */
             dueDate: string;
             status: components["schemas"]["ReceivableStatus"];
@@ -1969,19 +1975,40 @@ export interface components {
             id: string;
             /** @enum {string} */
             type: "PAYMENT" | "REVERSAL";
-            amount: components["schemas"]["Money"];
+            amount: components["schemas"]["Money"] | null;
             externalReference: string;
             /** Format: uuid */
             reversedPaymentId?: string | null;
             reason?: string | null;
+            /** @enum {string|null} */
+            method?: "BANK_TRANSFER" | "CASH_SIMULATION" | "OTHER_SIMULATION" | null;
             /** Format: date */
             occurredOn: string;
             /** Format: date-time */
             recordedAt: string;
+            /** Format: uuid */
+            actorId?: string | null;
+            reversibleAmount?: components["schemas"]["Money"] | null;
+        };
+        ReceivableHistory: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            action: "RECEIVABLE_CREATED" | "PAYMENT_RECORDED" | "PAYMENT_REVERSED" | "MARKED_OVERDUE";
+            previousStatus: components["schemas"]["ReceivableStatus"] | null;
+            newStatus: components["schemas"]["ReceivableStatus"];
+            amount: components["schemas"]["Money"] | null;
+            /** Format: uuid */
+            actorId: string | null;
+            reason: string | null;
+            /** Format: date-time */
+            occurredAt: string;
         };
         ReceivableDetail: components["schemas"]["ReceivableSummary"] & {
             payments: components["schemas"]["PaymentRecord"][];
+            history: components["schemas"]["ReceivableHistory"][];
             allowedActions: string[];
+            commercialAmountVisible: boolean;
         };
         RecordPaymentRequest: {
             amount: components["schemas"]["Money"];
@@ -1991,6 +2018,10 @@ export interface components {
             method: "BANK_TRANSFER" | "CASH_SIMULATION" | "OTHER_SIMULATION";
             externalReference: string;
             note?: string;
+        };
+        ReversePaymentRequest: {
+            amount: components["schemas"]["Money"];
+            reason: string;
         };
         Dashboard: {
             /** Format: date */
@@ -3479,6 +3510,9 @@ export interface operations {
                     "application/json": components["schemas"]["ReceivablePage"];
                 };
             };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
         };
     };
     getReceivable: {
@@ -3502,6 +3536,8 @@ export interface operations {
                     "application/json": components["schemas"]["ReceivableDetail"];
                 };
             };
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -3542,8 +3578,13 @@ export interface operations {
                     "application/json": components["schemas"]["ReceivableDetail"];
                 };
             };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
+            404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             412: components["responses"]["VersionConflict"];
+            428: components["responses"]["PreconditionRequired"];
         };
     };
     reversePayment: {
@@ -3561,22 +3602,27 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    reason: string;
-                };
+                "application/json": components["schemas"]["ReversePaymentRequest"];
             };
         };
         responses: {
             /** @description Reversal recorded */
             200: {
                 headers: {
+                    "Idempotency-Replayed": components["headers"]["IdempotencyReplayed"];
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["ReceivableDetail"];
                 };
             };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["AuthenticationRequired"];
+            403: components["responses"]["AccessDenied"];
+            404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            412: components["responses"]["VersionConflict"];
+            428: components["responses"]["PreconditionRequired"];
         };
     };
     getDashboard: {

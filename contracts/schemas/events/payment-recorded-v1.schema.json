@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cellarbridge.dev/schemas/events/payment-recorded-v1.schema.json",
+  "title": "PaymentRecordedV1",
+  "allOf": [
+    { "$ref": "event-envelope.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "type": { "const": "cellarbridge.settlement.payment-recorded.v1" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "receivableId", "receivableNumber", "orderId", "orderNumber", "paymentId",
+            "amount", "currency", "method", "externalReference", "occurredOn", "recordedAt",
+            "actorId", "outstandingAmount", "receivableStatus"
+          ],
+          "properties": {
+            "receivableId": { "type": "string", "format": "uuid" },
+            "receivableNumber": { "type": "string" },
+            "orderId": { "type": "string", "format": "uuid" },
+            "orderNumber": { "type": "string" },
+            "paymentId": { "type": "string", "format": "uuid" },
+            "amount": { "type": "string", "pattern": "^[0-9]+(\\.[0-9]{1,4})?$" },
+            "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+            "method": { "enum": ["BANK_TRANSFER", "CASH_SIMULATION", "OTHER_SIMULATION"] },
+            "externalReference": { "type": "string" },
+            "occurredOn": { "type": "string", "format": "date" },
+            "recordedAt": { "type": "string", "format": "date-time" },
+            "actorId": { "type": "string", "format": "uuid" },
+            "outstandingAmount": { "type": "string", "pattern": "^[0-9]+(\\.[0-9]{1,4})?$" },
+            "receivableStatus": { "enum": ["OPEN", "PARTIALLY_PAID", "PAID", "OVERDUE"] }
+          }
+        }
+      }
+    }
+  ]
+}

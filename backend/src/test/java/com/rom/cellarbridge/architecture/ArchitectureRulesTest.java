@@ -38,6 +38,7 @@ class ArchitectureRulesTest {
           "trade_order",
           "fulfillment",
           "exception_center",
+          "settlement",
           "platform_event");
   private static final ArchRule DOMAIN_ISOLATION =
       noClasses()
@@ -355,7 +356,8 @@ class ArchitectureRulesTest {
                 + "REFERENCES|EXECUTE\\s+(?:FUNCTION|PROCEDURE))\\s+(?:IF\\s+(?:NOT\\s+)?EXISTS\\s+)?"
                 + "(?:ONLY\\s+)?([\\w.]+)|\\bCREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+"
                 + "(?:IF\\s+NOT\\s+EXISTS\\s+)?\\S+\\s+ON\\s+(?:ONLY\\s+)?([\\w.]+)|"
-                + "\\bCREATE\\s+(?:CONSTRAINT\\s+)?TRIGGER\\s+\\S+.*?\\bON\\s+([\\w.]+)");
+                + "\\bCREATE\\s+(?:CONSTRAINT\\s+)?TRIGGER\\s+\\S+.*?\\bON\\s+([\\w.]+)|"
+                + "\\bCREATE\\s+RULE\\s+\\S+\\s+AS\\s+ON\\s+(?:UPDATE|DELETE)\\s+TO\\s+([\\w.]+)");
     for (String statement : structural.split(";")) {
       if (statement.isBlank()) {
         continue;
@@ -368,7 +370,9 @@ class ArchitectureRulesTest {
         String target =
             matches.group(1) != null
                 ? matches.group(1)
-                : matches.group(2) != null ? matches.group(2) : matches.group(3);
+                : matches.group(2) != null
+                    ? matches.group(2)
+                    : matches.group(3) != null ? matches.group(3) : matches.group(4);
         if (statement.matches("(?is)^CREATE\\s+SCHEMA\\b.*")) {
           assertThat(target).as("migration target %s", target).isEqualToIgnoringCase(owner);
         } else {

@@ -21,8 +21,8 @@ export function SystemStatusPage() {
           </Typography.Title>
           <Typography.Paragraph type="secondary" className="page-introduction">
             Identity, partner onboarding, catalog supply visibility, quotations, immutable
-            trade-order review, Inventory reservation, and Fulfillment orchestration are available.
-            Exception Center is implemented in review; remaining workflows stay planned until their
+            trade-order review, Inventory reservation, Fulfillment orchestration, Exception Center,
+            and Settlement workspace are available. Remaining workflows stay planned until their
             complete vertical slices are verified.
           </Typography.Paragraph>
         </div>
@@ -45,7 +45,8 @@ export function SystemStatusPage() {
                     <Tag color="green">Trade-order review available</Tag>
                     <Tag color="green">Inventory reservation available</Tag>
                     <Tag color="green">Fulfillment orchestration available</Tag>
-                    <Tag color="gold">Exception Center in review</Tag>
+                    <Tag color="green">Exception Center available</Tag>
+                    <Tag color="green">Settlement workspace available</Tag>
                   </Space>
                 </Descriptions.Item>
               </Descriptions>

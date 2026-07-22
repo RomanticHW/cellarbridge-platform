@@ -49,8 +49,8 @@ flowchart LR
     ORD -->|Order snapshot/event| FUL
     FUL -->|Failure/Overdue facts| EXC
     EXC -->|Recovery command through public API| FUL
-    ORD -->|Receivable trigger event| SET
-    FUL -->|Milestones| SET
+    ORD -->|TradeOrderCreatedV1 snapshot| SET
+    FUL -->|FulfillmentCompletedV1 trigger| SET
     PAR -.events.-> AUD
     QUO -.events.-> AUD
     ORD -.events.-> AUD
@@ -78,7 +78,8 @@ flowchart LR
 | Trade Order | Fulfillment | Conformist Snapshot | `OrderFulfillmentSnapshot` | 履约保存执行所需的订单快照 |
 | Fulfillment | Exception Center | Published Event | `FulfillmentStepFailedV1` | 异常拥有处理工作，不拥有步骤状态 |
 | Exception Center | Fulfillment | Public Command | `RetryStep`, `RescheduleStep` | 恢复通过源模块执行 |
-| Order/Fulfillment | Settlement | Published Event | `ReceivableRequestedV1` | 结算不读取订单内部表 |
+| Trade Order | Settlement | Conformist Snapshot | `TradeOrderCreatedV1` | 结算保存客户、币种、金额和付款条款快照，不读取订单内部表 |
+| Fulfillment | Settlement | Published Event | `FulfillmentCompletedV1` | 当前版本化触发策略以履约完成创建唯一应收 |
 | All | Audit & Reporting | Event Consumer | versioned events | 读模型最终一致、幂等 |
 
 ## 4. 语义所有权

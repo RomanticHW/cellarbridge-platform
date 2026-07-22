@@ -1,12 +1,13 @@
 openapi: 3.1.0
 info:
   title: CellarBridge API
-  version: 1.10.0
-  summary: Contract baseline for B2B wine quotation, order, inventory, fulfillment and exception recovery
+  version: 1.11.0
+  summary: Contract baseline for B2B wine quotation, fulfillment, exception recovery and settlement
   description: |
     This contract remains the design-first integration baseline for CellarBridge. All examples are synthetic.
     The authenticated `/me`, partner-onboarding, catalog supply-search, quotation and trade-order
-    endpoints, Inventory Reservation operations, Fulfillment Plan operations, and Exception Center recovery are delivered as vertical slices; remaining business endpoints retain their approved contracts.
+    endpoints, Inventory Reservation operations, Fulfillment Plan operations, Exception Center recovery,
+    and Settlement receivable operations are delivered as vertical slices; remaining business endpoints retain their approved contracts.
     Internal commercial fields and customer-portal fields intentionally use separate schemas.
   license:
     name: Apache-2.0
@@ -1174,7 +1175,8 @@ paths:
     get:
       tags: [Settlement]
       operationId: listReceivables
-      summary: List receivables
+      summary: List tenant-scoped receivables; Buyer identities are restricted to their mapped organization
+      x-requirements: [FR-SET-001, FR-SET-002]
       x-permissions: [settlement:read]
       parameters:
         - $ref: '#/components/parameters/PageSize'
@@ -1191,6 +1193,9 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ReceivablePage' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
   /receivables/{receivableId}:
     get:
       tags: [Settlement]
@@ -1208,6 +1213,8 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ReceivableDetail' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
   /receivables/{receivableId}/payments:
     post:
       tags: [Settlement]
@@ -1239,6 +1246,11 @@ paths:
               schema: { $ref: '#/components/schemas/ReceivableDetail' }
         '409': { $ref: '#/components/responses/Conflict' }
         '412': { $ref: '#/components/responses/VersionConflict' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
   /receivables/{receivableId}/payments/{paymentId}/reversal:
     post:
       tags: [Settlement]
@@ -1258,18 +1270,22 @@ paths:
         required: true
         content:
           application/json:
-            schema:
-              type: object
-              required: [reason]
-              properties:
-                reason: { type: string, minLength: 5, maxLength: 500 }
+            schema: { $ref: '#/components/schemas/ReversePaymentRequest' }
       responses:
         '200':
           description: Reversal recorded
+          headers:
+            Idempotency-Replayed: { $ref: '#/components/headers/IdempotencyReplayed' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ReceivableDetail' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/AccessDenied' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/VersionConflict' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
   /dashboard:
     get:
       tags: [Reporting]
@@ -2937,14 +2953,25 @@ components:
       enum: [OPEN, PARTIALLY_PAID, PAID, OVERDUE]
     ReceivableSummary:
       type: object
-      required: [id, number, orderId, orderNumber, originalAmount, outstandingAmount, dueDate, status, version]
+      required: [id, number, orderId, orderNumber, partnerId, partnerNumber, partnerName, originalAmount, outstandingAmount, dueDate, status, version]
       properties:
         id: { type: string, format: uuid }
         number: { type: string }
         orderId: { type: string, format: uuid }
         orderNumber: { type: string }
-        originalAmount: { $ref: '#/components/schemas/Money' }
-        outstandingAmount: { $ref: '#/components/schemas/Money' }
+        partnerId: { type: string, format: uuid }
+        partnerNumber: { type: string }
+        partnerName: { type: string }
+        originalAmount:
+          oneOf:
+            - $ref: '#/components/schemas/Money'
+            - type: 'null'
+          description: Null when the actor lacks commercial amount visibility.
+        outstandingAmount:
+          oneOf:
+            - $ref: '#/components/schemas/Money'
+            - type: 'null'
+          description: Null when the actor lacks commercial amount visibility.
         dueDate: { type: string, format: date }
         status: { $ref: '#/components/schemas/ReceivableStatus' }
         version: { type: integer, format: int64 }
@@ -2962,24 +2989,57 @@ components:
       properties:
         id: { type: string, format: uuid }
         type: { type: string, enum: [PAYMENT, REVERSAL] }
-        amount: { $ref: '#/components/schemas/Money' }
+        amount:
+          oneOf:
+            - $ref: '#/components/schemas/Money'
+            - type: 'null'
         externalReference: { type: string }
         reversedPaymentId: { type: [string, 'null'], format: uuid }
         reason: { type: [string, 'null'] }
+        method:
+          type: [string, 'null']
+          enum: [BANK_TRANSFER, CASH_SIMULATION, OTHER_SIMULATION, null]
         occurredOn: { type: string, format: date }
         recordedAt: { type: string, format: date-time }
+        actorId: { type: [string, 'null'], format: uuid }
+        reversibleAmount:
+          oneOf:
+            - $ref: '#/components/schemas/Money'
+            - type: 'null'
+    ReceivableHistory:
+      type: object
+      required: [id, action, previousStatus, newStatus, amount, actorId, reason, occurredAt]
+      properties:
+        id: { type: string, format: uuid }
+        action: { type: string, enum: [RECEIVABLE_CREATED, PAYMENT_RECORDED, PAYMENT_REVERSED, MARKED_OVERDUE] }
+        previousStatus:
+          oneOf:
+            - $ref: '#/components/schemas/ReceivableStatus'
+            - type: 'null'
+        newStatus: { $ref: '#/components/schemas/ReceivableStatus' }
+        amount:
+          oneOf:
+            - $ref: '#/components/schemas/Money'
+            - type: 'null'
+        actorId: { type: [string, 'null'], format: uuid }
+        reason: { type: [string, 'null'] }
+        occurredAt: { type: string, format: date-time }
     ReceivableDetail:
       allOf:
         - $ref: '#/components/schemas/ReceivableSummary'
         - type: object
-          required: [payments, allowedActions]
+          required: [payments, history, allowedActions, commercialAmountVisible]
           properties:
             payments:
               type: array
               items: { $ref: '#/components/schemas/PaymentRecord' }
+            history:
+              type: array
+              items: { $ref: '#/components/schemas/ReceivableHistory' }
             allowedActions:
               type: array
               items: { type: string }
+            commercialAmountVisible: { type: boolean }
     RecordPaymentRequest:
       type: object
       required: [amount, occurredOn, method, externalReference]
@@ -2989,6 +3049,12 @@ components:
         method: { type: string, enum: [BANK_TRANSFER, CASH_SIMULATION, OTHER_SIMULATION] }
         externalReference: { type: string, minLength: 3, maxLength: 100 }
         note: { type: string, maxLength: 500 }
+    ReversePaymentRequest:
+      type: object
+      required: [amount, reason]
+      properties:
+        amount: { $ref: '#/components/schemas/Money' }
+        reason: { type: string, minLength: 5, maxLength: 500 }
     Dashboard:
       type: object
       required: [from, to, generatedAt, projectionLagSeconds, metrics, charts]

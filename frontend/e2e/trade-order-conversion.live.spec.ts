@@ -279,6 +279,18 @@ interface ExceptionCaseSummary {
   version: number;
 }
 
+interface ReceivableDetail {
+  id: string;
+  number: string;
+  orderId: string;
+  originalAmount: { amount: string; currency: string } | null;
+  outstandingAmount: { amount: string; currency: string } | null;
+  status: string;
+  version: number;
+  payments: { id: string; type: string; externalReference: string }[];
+  commercialAmountVisible: boolean;
+}
+
 async function awaitFulfillmentPlan(page: Page, orderId: string): Promise<FulfillmentPlan> {
   let planId: string | undefined;
   await expect
@@ -318,6 +330,26 @@ async function awaitExceptionCase(page: Page, sourceId: string): Promise<Excepti
     .toBe('OPEN');
   if (exceptionCase === undefined) throw new Error('Exception Case was not created');
   return exceptionCase;
+}
+
+async function awaitReceivable(page: Page, orderId: string): Promise<ReceivableDetail> {
+  let receivableId: string | undefined;
+  await expect
+    .poll(
+      async () => {
+        const response = await authenticatedGet(page, '/api/v1/receivables?pageSize=100');
+        if (response.status() !== 200) return `HTTP_${response.status()}`;
+        const body = (await response.json()) as { items?: { id: string; orderId: string }[] };
+        receivableId = body.items?.find((item) => item.orderId === orderId)?.id;
+        return receivableId === undefined ? 'MISSING' : 'READY';
+      },
+      { timeout: 45_000 },
+    )
+    .toBe('READY');
+  if (receivableId === undefined) throw new Error('Receivable was not created');
+  const response = await authenticatedGet(page, `/api/v1/receivables/${receivableId}`);
+  expect(response.status()).toBe(200);
+  return (await response.json()) as ReceivableDetail;
 }
 
 async function confirmExceptionAction(
@@ -561,6 +593,115 @@ test('converts accepted quotations once, operates Reservation, and enforces orde
     administrator.page.getByText('Signed delivery', { exact: true }).last(),
   ).toBeVisible();
 
+  const finance = await login(browser, 'north.finance');
+  const receivable = await awaitReceivable(finance.page, mappedOrder.id);
+  expect(receivable.status).toBe('OPEN');
+  expect(receivable.originalAmount).not.toBeNull();
+  expect(receivable.outstandingAmount).toEqual(receivable.originalAmount);
+  await finance.page.goto(`/app/receivables/${receivable.id}`);
+  await expect(finance.page.getByRole('heading', { name: receivable.number })).toBeVisible();
+  await expect(finance.page.getByText('Recorded financial evidence only')).toBeVisible();
+
+  await finance.page.getByRole('button', { name: 'Record payment', exact: true }).click();
+  const partialDialog = finance.page.getByRole('dialog', { name: 'Record external payment' });
+  await partialDialog.getByRole('textbox', { name: 'Payment amount' }).fill('1.0000');
+  await partialDialog
+    .getByRole('textbox', { name: 'External reference' })
+    .fill(`E2E-PARTIAL-${Date.now()}`);
+  const partialResponsePromise = finance.page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      /\/api\/v1\/receivables\/[0-9a-f-]{36}\/payments$/.test(new URL(response.url()).pathname),
+  );
+  await partialDialog.getByRole('button', { name: 'Record payment' }).click();
+  const partialResponse = await partialResponsePromise;
+  expect(partialResponse.status()).toBe(201);
+  expect(partialResponse.request().headers()['if-match']).toBe('"0"');
+  expect(partialResponse.request().headers()['idempotency-key']).toMatch(
+    /^payment-ui-[0-9a-f-]{36}$/,
+  );
+  const partial = (await partialResponse.json()) as ReceivableDetail;
+  expect(partial.status).toBe('PARTIALLY_PAID');
+  expect(partial.outstandingAmount?.amount).not.toBe(receivable.originalAmount?.amount);
+  await expect(finance.page.getByText('PARTIALLY PAID', { exact: true }).first()).toBeVisible();
+  await expect(partialDialog).toBeHidden();
+
+  await finance.page.getByRole('button', { name: 'Record payment', exact: true }).click();
+  const fullDialog = finance.page.getByRole('dialog', { name: 'Record external payment' });
+  await fullDialog
+    .getByRole('textbox', { name: 'External reference' })
+    .fill(`E2E-FULL-${Date.now()}`);
+  const fullResponsePromise = finance.page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      /\/api\/v1\/receivables\/[0-9a-f-]{36}\/payments$/.test(new URL(response.url()).pathname),
+  );
+  await fullDialog.getByRole('button', { name: 'Record payment' }).click();
+  const fullResponse = await fullResponsePromise;
+  expect(fullResponse.status()).toBe(201);
+  const paid = (await fullResponse.json()) as ReceivableDetail;
+  expect(paid.status).toBe('PAID');
+  expect(paid.outstandingAmount?.amount).toBe('0.0000');
+  await expect(finance.page.getByText('PAID', { exact: true }).first()).toBeVisible();
+
+  const reversiblePayment = paid.payments.find((payment) => payment.type === 'PAYMENT');
+  if (reversiblePayment === undefined) throw new Error('Payment evidence was not returned');
+  const paymentRow = finance.page
+    .locator('.ant-table-row')
+    .filter({ hasText: reversiblePayment.externalReference });
+  await paymentRow.getByRole('button', { name: 'Reverse' }).click();
+  const reversalDialog = finance.page.getByRole('dialog', { name: 'Reverse payment evidence' });
+  await reversalDialog.getByRole('textbox', { name: 'Reversal amount' }).fill('0.5000');
+  await reversalDialog
+    .getByRole('textbox', { name: 'Reversal reason' })
+    .fill('End-to-end bank reconciliation correction');
+  await reversalDialog
+    .getByRole('checkbox', { name: /I reviewed the payment, amount, and reason/ })
+    .check();
+  const reversalResponsePromise = finance.page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      /\/api\/v1\/receivables\/[0-9a-f-]{36}\/payments\/[0-9a-f-]{36}\/reversal$/.test(
+        new URL(response.url()).pathname,
+      ),
+  );
+  await reversalDialog.getByRole('button', { name: 'Confirm reversal' }).click();
+  const reversalResponse = await reversalResponsePromise;
+  expect(reversalResponse.status()).toBe(200);
+  expect(reversalResponse.request().headers()['if-match']).toBe(`"${paid.version}"`);
+  expect(reversalResponse.request().headers()['idempotency-key']).toMatch(
+    /^reversal-ui-[0-9a-f-]{36}$/,
+  );
+  const reversed = (await reversalResponse.json()) as ReceivableDetail;
+  expect(reversed.status).toBe('PARTIALLY_PAID');
+  expect(reversed.payments.filter((payment) => payment.type === 'REVERSAL')).toHaveLength(1);
+
+  const buyerReceivable = await authenticatedGet(
+    buyer.page,
+    `/api/v1/receivables/${receivable.id}`,
+  );
+  expect(buyerReceivable.status()).toBe(200);
+  expect((await buyerReceivable.json()) as Partial<ReceivableDetail>).toMatchObject({
+    orderId: mappedOrder.id,
+    payments: [],
+    commercialAmountVisible: true,
+  });
+
+  const auditor = await login(browser, 'north.auditor');
+  const auditorResponse = await authenticatedGet(
+    auditor.page,
+    `/api/v1/receivables/${receivable.id}`,
+  );
+  expect(auditorResponse.status()).toBe(200);
+  expect((await auditorResponse.json()) as Partial<ReceivableDetail>).toMatchObject({
+    originalAmount: null,
+    outstandingAmount: null,
+    commercialAmountVisible: false,
+  });
+
+  const systemOperator = await login(browser, 'north.operator');
+  expect(await authenticatedGetStatus(systemOperator.page, '/api/v1/receivables')).toBe(403);
+
   let completedBuyerBody: unknown;
   await expect
     .poll(
@@ -604,6 +745,9 @@ test('converts accepted quotations once, operates Reservation, and enforces orde
   expect((await crossTenantFulfillment.json()) as { code?: string }).toMatchObject({
     code: 'ACCESS_DENIED',
   });
+  expect(
+    await authenticatedGetStatus(harborManager.page, `/api/v1/receivables/${receivable.id}`),
+  ).toBe(404);
 
   expect(mappedOrder.browserErrors).toEqual([]);
   expect(otherOrder.browserErrors).toEqual([]);
@@ -612,6 +756,9 @@ test('converts accepted quotations once, operates Reservation, and enforces orde
   expect(buyer.browserErrors).toEqual([]);
   expect(warehouse.browserErrors).toEqual([]);
   expect(administrator.browserErrors).toEqual([]);
+  expect(finance.browserErrors).toEqual([]);
+  expect(auditor.browserErrors).toEqual([]);
+  expect(systemOperator.browserErrors).toEqual([]);
   expect(harborManager.browserErrors).toEqual([]);
   await Promise.all([
     sales.page.context().close(),
@@ -619,6 +766,9 @@ test('converts accepted quotations once, operates Reservation, and enforces orde
     buyer.page.context().close(),
     warehouse.page.context().close(),
     administrator.page.context().close(),
+    finance.page.context().close(),
+    auditor.page.context().close(),
+    systemOperator.page.context().close(),
     harborManager.page.context().close(),
   ]);
 });

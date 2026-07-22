@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cellarbridge.dev/schemas/events/receivable-overdue-v1.schema.json",
+  "title": "ReceivableOverdueV1",
+  "allOf": [
+    { "$ref": "event-envelope.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "type": { "const": "cellarbridge.settlement.receivable-overdue.v1" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "receivableId", "receivableNumber", "orderId", "orderNumber", "dueDate",
+            "outstandingAmount", "currency", "markedAt"
+          ],
+          "properties": {
+            "receivableId": { "type": "string", "format": "uuid" },
+            "receivableNumber": { "type": "string" },
+            "orderId": { "type": "string", "format": "uuid" },
+            "orderNumber": { "type": "string" },
+            "dueDate": { "type": "string", "format": "date" },
+            "outstandingAmount": { "type": "string", "pattern": "^[0-9]+(\\.[0-9]{1,4})?$" },
+            "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+            "markedAt": { "type": "string", "format": "date-time" }
+          }
+        }
+      }
+    }
+  ]
+}

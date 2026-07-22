@@ -2,7 +2,9 @@
 
 ## 1. Schema 所有权
 
-下表是当前与目标模块共同遵守的 ownership map，不是现有物理表清单。V2～V9 已实现 Identity、Partner、Catalog/Inventory supply、Quotation/Trade Planning、Trade Order 与 `platform_event`；Fulfillment、Exception、Settlement、Audit/Reporting 的代表表仍为 Designed。
+下表是当前与目标模块共同遵守的 ownership map，不是现有物理表清单。V2～V20 已实现
+Identity、Partner、Catalog、Inventory、Quotation/Trade Planning、Trade Order、Fulfillment、
+Exception Center、Settlement 与 `platform_event`；Audit/Reporting 的代表表仍为 Designed。
 
 | Schema | 所有者 | 代表表 |
 |---|---|---|
@@ -15,7 +17,7 @@
 | `trade_order` | trade-order | trade_order, order_line, cancellation |
 | `fulfillment` | fulfillment | template, plan, step, dependency, milestone, adapter_attempt |
 | `exception_center` | exception-center | exception_case, assignment, note, recovery_attempt |
-| `settlement` | settlement | receivable, payment_record |
+| `settlement` | settlement | trigger_policy, order_snapshot, receivable, payment_record, payment_reversal, receivable_history |
 | `audit_reporting` | audit-reporting | audit_entry, timeline_projection, metric_projection, checkpoint |
 | `platform_event` | platform event support | publication, inbox；external_outbox 为 Planned full profile |
 
@@ -58,7 +60,9 @@
 
 ## 5. 库存 SQL 语义
 
-状态：**Task 08 C1 implemented in review**。B1 已编排订单级原子预占；C1 在 Reservation 行锁和确定性 Allocation 顺序下，以 NESTED savepoint 编排 release/consume、append-only Movement、命令幂等结果与审计。公开 API/UI/E2E 仍属于 C2，不能据此声明完整能力 Available。
+状态：**Available**。B1 已编排订单级原子预占；C1 在 Reservation 行锁和确定性 Allocation
+顺序下，以 NESTED savepoint 编排 release/consume、append-only Movement、命令幂等结果与审计；
+C2 已补齐公开 API、UI 与真实 E2E。
 
 示意：
 
@@ -90,7 +94,7 @@ WHERE tenant_id = :tenant_id
 
 ## 7. 迁移
 
-- 当前仓库 migration 从 V2 到 V9 使用简单递增版本；V8/V9 是冻结的多 owner 历史协调例外；
+- 当前仓库 migration 从 V2 到 V20 使用简单递增版本；V8/V9 是冻结的多 owner 历史协调例外；
 - 从 V10 起，一个文件只允许修改一个 owner Schema；跨模块任务拆为多个连续、前向兼容的 migration；
 - ownership manifest 已覆盖全部 V2+ 文件并记录 SHA-256；V10+ 另由高信号语句 scanner 和 PostgreSQL catalog test 验证，历史差异仍需 PR 基线门禁/评审；
 - 合并后不可修改；

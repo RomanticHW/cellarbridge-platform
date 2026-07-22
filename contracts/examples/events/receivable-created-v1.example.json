@@ -17,11 +17,15 @@
     "receivableNumber": "REC-202607-000001",
     "orderId": "51000000-0000-4000-8000-000000000001",
     "orderNumber": "ORD-202607-000001",
+    "partnerId": "53000000-0000-4000-8000-000000000001",
+    "partnerNumber": "PAR-202607-000001",
     "originalAmount": "128400.00",
     "currency": "CNY",
     "dueDate": "2026-09-13",
     "createdAt": "2026-08-14T09:00:01Z",
     "triggerType": "FULFILLMENT_COMPLETED",
-    "triggerId": "71000000-0000-4000-8000-000000000001"
+    "triggerId": "71000000-0000-4000-8000-000000000001",
+    "triggerPolicyCode": "DEMO-FULFILLMENT-COMPLETED",
+    "triggerPolicyVersion": 1
   }
 }

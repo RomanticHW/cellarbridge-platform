@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cellarbridge.dev/schemas/events/receivable-paid-v1.schema.json",
+  "title": "ReceivablePaidV1",
+  "allOf": [
+    { "$ref": "event-envelope.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "type": { "const": "cellarbridge.settlement.receivable-paid.v1" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "receivableId", "receivableNumber", "orderId", "orderNumber", "originalAmount",
+            "currency", "paidAt"
+          ],
+          "properties": {
+            "receivableId": { "type": "string", "format": "uuid" },
+            "receivableNumber": { "type": "string" },
+            "orderId": { "type": "string", "format": "uuid" },
+            "orderNumber": { "type": "string" },
+            "originalAmount": { "type": "string", "pattern": "^[0-9]+(\\.[0-9]{1,4})?$" },
+            "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+            "paidAt": { "type": "string", "format": "date-time" }
+          }
+        }
+      }
+    }
+  ]
+}
