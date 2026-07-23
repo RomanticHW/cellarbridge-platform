@@ -51,6 +51,7 @@ services:
       CELLARBRIDGE_DB_USERNAME: ${POSTGRES_USER:-cellarbridge}
       CELLARBRIDGE_DB_PASSWORD: ${POSTGRES_PASSWORD:-cellarbridge_local}
       CELLARBRIDGE_COMMIT: ${CELLARBRIDGE_COMMIT:-local}
+      CELLARBRIDGE_MCP_ENABLED: ${CELLARBRIDGE_MCP_ENABLED:-true}
       SPRING_PROFILES_ACTIVE: demo
       CELLARBRIDGE_SECURITY_ISSUER: ${OIDC_AUTHORITY:-http://localhost:8081/realms/cellarbridge}
       CELLARBRIDGE_SECURITY_JWK_SET_URI: http://keycloak:8080/realms/cellarbridge/protocol/openid-connect/certs

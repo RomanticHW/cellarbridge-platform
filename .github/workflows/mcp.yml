@@ -1,0 +1,48 @@
+name: MCP protocol and security
+
+on:
+  workflow_call:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'deploy/**'
+      - 'scripts/mcp_*.sh'
+      - 'scripts/mcp_*.py'
+      - '.env.example'
+      - 'pom.xml'
+      - 'Makefile'
+      - '.github/workflows/mcp.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  conformance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24.18.0'
+
+      - name: Validate MCP verification scripts
+        run: |
+          shellcheck scripts/mcp_smoke.sh
+          python3 -m py_compile scripts/mcp_auth_proxy.py
+
+      - name: Verify real OIDC and official MCP conformance
+        run: make mcp-conformance
+
+      - name: Upload MCP conformance evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: mcp-conformance
+          path: target/mcp-conformance/
+          if-no-files-found: error
+          retention-days: 30

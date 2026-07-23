@@ -45,6 +45,9 @@ jobs:
   audit-reporting:
     uses: ./.github/workflows/audit-reporting.yml
 
+  mcp:
+    uses: ./.github/workflows/mcp.yml
+
   performance-resilience:
     uses: ./.github/workflows/performance-resilience.yml
 
@@ -74,6 +77,7 @@ jobs:
         customer-quotation-acceptance,
         trade-order-conversion,
         audit-reporting,
+        mcp,
         performance-resilience,
         release-readiness,
         migration-history,
@@ -92,6 +96,7 @@ jobs:
           ACCEPTANCE_RESULT: ${{ needs['customer-quotation-acceptance'].result }}
           ORDER_RESULT: ${{ needs['trade-order-conversion'].result }}
           REPORTING_RESULT: ${{ needs['audit-reporting'].result }}
+          MCP_RESULT: ${{ needs.mcp.result }}
           PERFORMANCE_RESULT: ${{ needs['performance-resilience'].result }}
           RELEASE_RESULT: ${{ needs['release-readiness'].result }}
           MIGRATION_RESULT: ${{ needs['migration-history'].result }}
@@ -107,6 +112,7 @@ jobs:
           test "${ACCEPTANCE_RESULT}" = "success"
           test "${ORDER_RESULT}" = "success"
           test "${REPORTING_RESULT}" = "success"
+          test "${MCP_RESULT}" = "success"
           test "${PERFORMANCE_RESULT}" = "success"
           test "${RELEASE_RESULT}" = "success"
           test "${MIGRATION_RESULT}" = "success"

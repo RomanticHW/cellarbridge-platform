@@ -1,6 +1,20 @@
 spring:
   application:
     name: cellarbridge-backend
+  ai:
+    mcp:
+      server:
+        enabled: ${CELLARBRIDGE_MCP_ENABLED:true}
+        name: cellarbridge-operations
+        version: ${cellarbridge.build.commit}
+        instructions: Authenticated read-only operations interface. Every result remains subject to CellarBridge tenant, role, ownership, and field-level authorization.
+        type: SYNC
+        protocol: STATELESS
+        capabilities:
+          completion: false
+        streamable-http:
+          mcp-endpoint: /mcp
+          disallow-delete: true
   datasource:
     url: ${CELLARBRIDGE_DB_URL:jdbc:postgresql://localhost:5432/cellarbridge}
     username: ${CELLARBRIDGE_DB_USERNAME:cellarbridge}

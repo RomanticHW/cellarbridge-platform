@@ -11,7 +11,7 @@ DEMO_PROFILE ?= core
 	validate-frontend validate-compose validate-full-compose test test-backend test-frontend test-migration-history \
 	dev-core stop-core dev-full stop-full smoke-core verify-container-security \
 	demo demo-reset stop-demo demo-e2e smoke-full \
-	identity-e2e partner-e2e catalog-e2e quotation-e2e acceptance-e2e order-e2e fulfillment-e2e exception-e2e settlement-e2e reporting-e2e \
+	identity-e2e partner-e2e catalog-e2e quotation-e2e acceptance-e2e order-e2e fulfillment-e2e exception-e2e settlement-e2e reporting-e2e mcp-smoke mcp-conformance \
 	catalog-benchmark performance-smoke performance-full generate-api-client
 
 help:
@@ -39,6 +39,8 @@ help:
 	  '  make exception-e2e       Verify failure, Exception recovery, source state, and reviewed closure' \
 	  '  make settlement-e2e      Verify fulfillment-triggered receivables, payments, and reversal' \
 	  '  make reporting-e2e       Verify projected work, dashboard, audit, and timeline views' \
+	  '  make mcp-smoke           Verify real OIDC authentication and the read-only MCP surface' \
+	  '  make mcp-conformance     Run pinned official MCP server conformance scenarios' \
 	  '  make catalog-benchmark   Seed and benchmark PostgreSQL catalog search' \
 	  '  make performance-smoke   Run the correctness-backed 10-minute evidence profile' \
 	  '  make performance-full    Run the 30-minute profile including identity outage' \
@@ -146,6 +148,12 @@ settlement-e2e:
 
 reporting-e2e:
 	./scripts/audit_reporting_e2e.sh
+
+mcp-smoke:
+	./scripts/mcp_smoke.sh
+
+mcp-conformance:
+	./scripts/mcp_smoke.sh --conformance
 
 catalog-benchmark:
 	./scripts/catalog_search_benchmark.sh
