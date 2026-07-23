@@ -5,3 +5,4 @@ minimumReleaseAge: 1440
 minimumReleaseAgeStrict: true
 minimumReleaseAgeExclude:
   - antd@6.5.1
+  - '@vitejs/plugin-react@6.0.4'
