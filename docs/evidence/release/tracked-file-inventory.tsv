@@ -51,6 +51,7 @@ backend/src/main/java/com/rom/cellarbridge/auditreporting/internal/application/P
 backend/src/main/java/com/rom/cellarbridge/auditreporting/internal/infrastructure/JdbcAuditReportingStore.java	source
 backend/src/main/java/com/rom/cellarbridge/auditreporting/internal/infrastructure/JdbcProjectionEventSource.java	source
 backend/src/main/java/com/rom/cellarbridge/auditreporting/internal/mcp/ReportingMcpProvider.java	source
+backend/src/main/java/com/rom/cellarbridge/auditreporting/internal/mcp/ReportingMcpSchemas.java	source
 backend/src/main/java/com/rom/cellarbridge/auditreporting/internal/web/AuditReportingController.java	source
 backend/src/main/java/com/rom/cellarbridge/auditreporting/internal/web/AuditReportingExceptionHandler.java	source
 backend/src/main/java/com/rom/cellarbridge/auditreporting/package-info.java	source
@@ -226,9 +227,14 @@ backend/src/main/java/com/rom/cellarbridge/platform/internal/SafeTelemetryIdenti
 backend/src/main/java/com/rom/cellarbridge/platform/internal/mcp/McpToolConfiguration.java	source
 backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpCallSupport.java	source
 backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpCapabilitySupport.java	source
+backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpFreshnessEvidence.java	source
+backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpInputValidation.java	source
 backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpReadEnvelope.java	source
 backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpReadPayload.java	source
+backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpResponseProperties.java	source
 backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpSafeException.java	source
+backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpSchemaSupport.java	source
+backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpWarning.java	source
 backend/src/main/java/com/rom/cellarbridge/platform/mcp/package-info.java	source
 backend/src/main/java/com/rom/cellarbridge/platform/package-info.java	source
 backend/src/main/java/com/rom/cellarbridge/quotation/QuotationAcceptedV1.java	source
@@ -347,6 +353,7 @@ backend/src/test/java/com/rom/cellarbridge/architecture/fixture/domain/IllegalWe
 backend/src/test/java/com/rom/cellarbridge/auditreporting/internal/application/AuditCursorCodecTest.java	test
 backend/src/test/java/com/rom/cellarbridge/auditreporting/internal/application/AuditReportingIntegrationTest.java	test
 backend/src/test/java/com/rom/cellarbridge/catalog/CatalogSearchApiIntegrationTest.java	test
+backend/src/test/java/com/rom/cellarbridge/catalog/internal/application/CatalogCursorCodecTest.java	test
 backend/src/test/java/com/rom/cellarbridge/catalog/internal/domain/CatalogDomainTest.java	test
 backend/src/test/java/com/rom/cellarbridge/exceptioncenter/internal/application/ExceptionCenterIntegrationTest.java	test
 backend/src/test/java/com/rom/cellarbridge/fulfillment/internal/application/FulfillmentOrchestrationIntegrationTest.java	test
@@ -396,6 +403,7 @@ backend/src/test/java/com/rom/cellarbridge/platform/internal/LocalEventDeliveryT
 backend/src/test/java/com/rom/cellarbridge/platform/internal/TradeOrderConversionIntegrationTest.java	test
 backend/src/test/java/com/rom/cellarbridge/platform/internal/TradeOrderCreatedReservationIntegrationTest.java	test
 backend/src/test/java/com/rom/cellarbridge/platform/internal/TradeOrderReservationOutcomeIntegrationTest.java	test
+backend/src/test/java/com/rom/cellarbridge/platform/mcp/McpPlatformContractTest.java	test
 backend/src/test/java/com/rom/cellarbridge/quotation/CustomerQuotationApiIntegrationTest.java	test
 backend/src/test/java/com/rom/cellarbridge/quotation/QuotationApiIntegrationTest.java	test
 backend/src/test/java/com/rom/cellarbridge/quotation/QuotationSupplyDecisionV13MigrationIntegrationTest.java	test
