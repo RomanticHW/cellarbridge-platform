@@ -6,3 +6,5 @@ This is an independent technical demonstration. Chengdu Fine West International 
 No third-party logo, customer record, price list, inventory record, order record, or proprietary implementation is included in the public repository. Demonstration data is synthetic.
 
 Observability support uses Micrometer, OpenTelemetry and CycloneDX libraries distributed under the Apache License 2.0. The optional full profile runs unmodified upstream Grafana and Tempo containers, which are distributed separately under the GNU Affero General Public License v3.0; their source and notices remain available from the respective upstream projects. PostgreSQL, Keycloak, Prometheus, nginx and other container images retain their own upstream licenses and notices.
+
+The authenticated MCP server uses Spring AI MCP modules and NetworkNT JSON Schema Validator distributed under the Apache License 2.0, and the Model Context Protocol Java SDK distributed under the MIT License. CellarBridge does not bundle a model-provider SDK, model weights, RAG integration or a vector database.

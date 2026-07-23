@@ -4,7 +4,9 @@
 
 主要资产：客户资料、报价价格、内部成本/毛利、库存、订单、付款记录、审计证据、身份令牌。
 
-主要威胁：跨租户读取、水平/垂直越权、客户门户 token 泄露、日志泄露、重复命令、恶意输入、依赖漏洞、演示管理接口暴露、事件伪造。
+主要威胁：跨租户读取、水平/垂直越权、客户门户 token 泄露、MCP 客户端转发或泄露
+Bearer Token、浏览器跨源访问、日志泄露、重复命令、恶意输入、依赖漏洞、演示管理接口暴露、
+事件伪造。
 
 本设计不声称替代正式生产威胁建模，但在实现阶段维护简化 STRIDE 清单。
 
@@ -27,6 +29,17 @@
 - 绑定报价/客户和允许动作；
 - 不写日志、URL analytics 或 referrer；
 - 接受动作仍要求幂等和状态校验。
+
+### MCP 智能客户端
+
+- `/mcp` 是与 REST API 同进程的 OAuth 2.0 Resource Server 入口，使用相同 issuer、audience、
+  签名和时效验证；
+- 当前版本不实现 MCP 自有 OAuth discovery/registration。Agent Host 通过现有 Keycloak
+  OIDC Authorization Code + PKCE 获得 API audience 的 Bearer Token；
+- 服务不接受 query、resource URI 或 tool 参数中的 token，也不在响应、日志、trace 或证据中
+  输出 token；
+- 每次 STATELESS 请求独立认证，不建立服务器 session，也不接受客户端声明 tenant 或 actor；
+- 生产 Agent Host 必须保护 token 存储、限制工具批准范围并遵循组织的数据治理策略。
 
 ## 3. 授权模型
 
@@ -51,6 +64,8 @@ P1 采用共享数据库、共享 schema 表、每行 `tenant_id`，同时按模
 5. 事件包含 tenant 并验证消费者上下文；
 6. 双租户集成测试覆盖 ID 猜测、筛选、分页、导出、时间线；
 7. 管理操作不能无意跨租户。
+8. MCP tool/resource 参数不包含 `tenantId` 或 `actorId`，服务只使用认证上下文；
+9. MCP 的 ID 猜测、其他租户筛选和分页 cursor 均执行与 REST 相同的 tenant-first 查询。
 
 可选 hardening 使用 PostgreSQL RLS，但不作为 P1 唯一隔离机制；引入需 ADR 和连接池上下文验证。
 
@@ -96,6 +111,9 @@ administration:manage-access
 - 防止 CSV/公式注入（如提供导出）；
 - 错误不返回堆栈/SQL；
 - Rate limit 用于登录外部边界/公开 token，不能代替授权。
+- `/mcp` 只允许 `POST`/预检，使用专用最小 CORS header 列表与显式 Origin 白名单；
+- MCP 响应使用 `Cache-Control: no-store`，错误不回显内部异常、SQL、对象存在性或用户输入；
+- tools 的协议 annotations 全部声明只读、非破坏、幂等、封闭世界。
 
 ## 8. 秘密与供应链
 
@@ -117,6 +135,8 @@ administration:manage-access
 - token 出现在日志/trace；
 - 输入边界、SQL 注入由参数化查询保障并测试；
 - 依赖和容器扫描。
+- MCP 未认证、错误 Origin、能力清单漂移、危险工具提示、租户/角色/字段越权和安全错误；
+- 真实 OIDC Authorization Code + PKCE smoke，以及官方 server conformance 场景。
 
 ## 10. 演示账户
 

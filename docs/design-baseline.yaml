@@ -10,6 +10,7 @@ baseline:
   implementation_present: true
   current_openapi_contract: "1.13.0"
   current_asyncapi_contract: "1.5.0"
+  current_mcp_protocol: "2025-11-25"
   current_database_migration: 22
   current_route_policy: ROUTE-2026-03
   route_input_summary_schema: 3
@@ -25,6 +26,8 @@ baseline:
   observability_security: available
   performance_resilience: available
   public_release: available
+  mcp_operations: available
+  agent_workflows: available
   architecture_style: domain-oriented-modular-monolith
   primary_scenario: b2b-quotation-to-order-to-fulfillment
   data_policy: synthetic-only
@@ -53,6 +56,9 @@ technology:
     persistence: spring-jdbc-sql-first
     postgresql: "18.4"
     keycloak: "26.7.0"
+    spring_ai_mcp: "2.0.0"
+    mcp_java_sdk: "2.0.0"
+    mcp_transport: stateless-streamable-http
     node: "24 LTS"
     react: "19.2"
     vite: "8.1.4"
@@ -68,6 +74,8 @@ technology:
   not_installed:
     kafka: external-channel-not-required
     redis: correctness-path-does-not-use-cache
+    model_provider_sdk: intentionally-not-installed
+    rag_vector_store: intentionally-not-installed
 quality_gates:
   architecture_verification: required
   domain_unit_tests: required
@@ -75,6 +83,8 @@ quality_gates:
   concurrency_tests: required
   tenant_isolation_tests: required
   contract_validation: required
+  mcp_protocol_conformance: required
+  mcp_tenant_security: required
   e2e_demo_path: required
 change_control:
   architecture_change_requires_adr: true

@@ -2,7 +2,7 @@
 
 ## 1. 冻结日期与原则
 
-冻结日期：2026-07-13。版本来自各项目官方发布页面，并在仓库初始化时再次验证兼容性和可获得性。若任一组合存在兼容问题，必须通过 ADR 调整，不得静默改版本。
+冻结日期：2026-07-13。版本来自各项目官方发布页面，并在仓库初始化时再次验证兼容性和可获得性。若任一组合存在兼容问题，必须通过 ADR 调整，不得静默改版本。2026-07-23 依据 ADR-026 增补经过认证的只读 MCP 基线。
 
 ## 2. 后端
 
@@ -16,8 +16,15 @@
 | Spring Data JPA | 与 Boot BOM | Planned / optional | 未来有证据的简单聚合 | 当前未安装；引入条件见 ADR-012 |
 | Flyway | Boot compatible | Available | 数据库迁移 | 版本化、可审阅 |
 | Maven Wrapper | 锁定 | Available | 构建 | Java 企业常见、审阅友好 |
+| Spring AI MCP Server WebMVC Starter / BOM | 2.0.0 | Available | 同进程、无状态 Streamable HTTP MCP server | 复用 Spring MVC 生命周期与官方 MCP Java SDK；边界见 ADR-026 |
+| Model Context Protocol Java SDK | 2.0.0（传递依赖） | Available | MCP 协议、Tool/Resource/Prompt server primitives | 由 starter 管理，不直接实现或 fork 协议 |
+| NetworkNT JSON Schema Validator | 3.0.6 | Available | MCP output schema 运行时校验 | 显式覆盖 Boot BOM 中不兼容的 1.x 版本，使用 MCP SDK 所需 Jackson 3/dialect API |
 
 Java 21 而非更新非 LTS：作品核心是稳定工程；Boot 4 需要在 Task 01 验证 Java 最低要求和依赖兼容。若 Boot 4 生态依赖阻塞，备选是受支持的 Boot 3.5.x，但必须 ADR 记录。
+
+MCP 依赖只用于 server integration。当前不引入 Chat/Embedding Model、模型供应商 SDK、
+Vector Store、RAG 或模型执行循环。Spring AI 与 NetworkNT JSON Schema Validator 使用
+Apache-2.0，官方 MCP Java SDK 使用 MIT；依赖树、SBOM、许可证与安全扫描继续作为发布门禁。
 
 ## 3. 数据与基础设施
 
@@ -75,6 +82,8 @@ Java 21 而非更新非 LTS：作品核心是稳定工程；Boot 4 需要在 Tas
 - Vite: https://vite.dev/
 - Node release schedule: https://nodejs.org/en/about/previous-releases
 - Keycloak downloads: https://www.keycloak.org/downloads
+- Spring AI MCP Server: https://docs.spring.io/spring-ai/reference/api/mcp/mcp-server-boot-starter-docs.html
+- Model Context Protocol Java SDK: https://github.com/modelcontextprotocol/java-sdk
 - Apache Kafka: https://kafka.apache.org/
 - Redis: https://redis.io/
 - OpenTelemetry: https://opentelemetry.io/
