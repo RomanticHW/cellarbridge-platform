@@ -42,21 +42,28 @@ public final class CorrelationIdFilter extends OncePerRequestFilter {
     response.setHeader(HEADER_NAME, correlationId);
     Span current = tracer.currentSpan();
     boolean ownsSpan = current == null || current.isNoop();
+    boolean mcp = "/mcp".equals(request.getRequestURI());
     Span requestSpan =
         ownsSpan
-            ? tracer
-                .nextSpan()
-                .name("cellarbridge.http.request")
-                .tag("http.request.method", request.getMethod())
-                .tag("cellarbridge.correlation_id", correlationId)
-                .start()
+            ? mcp
+                ? tracer
+                    .nextSpan()
+                    .name("cellarbridge.http.request")
+                    .tag("http.request.method", request.getMethod())
+                    .start()
+                : tracer
+                    .nextSpan()
+                    .name("cellarbridge.http.request")
+                    .tag("http.request.method", request.getMethod())
+                    .tag("cellarbridge.correlation_id", correlationId)
+                    .start()
             : current;
 
     try (MDC.MDCCloseable ignored = MDC.putCloseable(MDC_KEY, correlationId);
         Tracer.SpanInScope spanScope = tracer.withSpan(requestSpan)) {
       filterChain.doFilter(request, response);
     } catch (ServletException | IOException | RuntimeException failure) {
-      requestSpan.error(failure);
+      if (!mcp) requestSpan.error(failure);
       throw failure;
     } finally {
       if (ownsSpan) {

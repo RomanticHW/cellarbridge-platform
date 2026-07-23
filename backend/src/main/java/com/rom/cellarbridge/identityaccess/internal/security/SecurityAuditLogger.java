@@ -31,6 +31,15 @@ public final class SecurityAuditLogger {
   private void write(
       String securityEvent, String errorCode, String subjectHash, String tenantHash) {
     String correlationId = MDC.get(CorrelationIdFilter.MDC_KEY);
+    if (MDC.get(TenantContextFilter.SUBJECT_HASH_MDC_KEY) == null
+        || MDC.get(TenantContextFilter.TENANT_HASH_MDC_KEY) == null) {
+      LOGGER.warn(
+          "securityEvent={} correlationId={} errorCode={}",
+          securityEvent,
+          correlationId == null ? "unavailable" : correlationId,
+          errorCode);
+      return;
+    }
     LOGGER.warn(
         "securityEvent={} subjectHash={} tenantHash={} correlationId={} errorCode={}",
         securityEvent,

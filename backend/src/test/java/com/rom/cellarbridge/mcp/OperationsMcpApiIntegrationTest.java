@@ -47,7 +47,12 @@ import tools.jackson.databind.json.JsonMapper;
 
 @Testcontainers
 @ActiveProfiles({"test", "demo"})
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(
+    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+    properties = {
+      "cellarbridge.mcp.security.allowed-hosts=127.0.0.1:*,localhost:*",
+      "cellarbridge.mcp.security.rate-capacity=10000"
+    })
 class OperationsMcpApiIntegrationTest extends PostgresIntegrationTestSupport {
 
   private static final String NORTH_SALES = "mcp-north-sales";
@@ -82,6 +87,28 @@ class OperationsMcpApiIntegrationTest extends PostgresIntegrationTestSupport {
     RpcResponse missing = rpc(null, "tools/list", Map.of());
     assertThat(missing.status()).isEqualTo(401);
     assertThat(missing.raw()).contains("\"code\":\"AUTHENTICATION_REQUIRED\"");
+    assertThat(missing.headers().firstValue("www-authenticate").orElse(""))
+        .contains(
+            "resource_metadata=\"https://mcp.cellarbridge.example/.well-known/oauth-protected-resource/mcp\"")
+        .contains("scope=\"mcp:read\"");
+
+    HttpResponse<String> metadata =
+        http.send(
+            HttpRequest.newBuilder(
+                    URI.create(
+                        "http://127.0.0.1:" + port + "/.well-known/oauth-protected-resource/mcp"))
+                .GET()
+                .build(),
+            HttpResponse.BodyHandlers.ofString());
+    assertThat(metadata.statusCode()).isEqualTo(200);
+    assertThat(json.readTree(metadata.body()))
+        .isEqualTo(
+            json.readTree(
+                """
+                {"resource":"https://mcp.cellarbridge.example/mcp",
+                 "authorization_servers":["http://localhost:8081/realms/cellarbridge"],
+                 "bearer_methods_supported":["header"],"scopes_supported":["mcp:read"]}
+                """));
 
     for (String invalid : List.of("expired-token-marker", "wrong-audience-marker")) {
       RpcResponse response = rpc(invalid, "tools/list", Map.of());
@@ -90,6 +117,11 @@ class OperationsMcpApiIntegrationTest extends PostgresIntegrationTestSupport {
           .contains("\"code\":\"INVALID_ACCESS_TOKEN\"")
           .doesNotContain(invalid);
     }
+    RpcResponse unmapped = rpc("mcp-unmapped", "tools/list", Map.of());
+    assertThat(unmapped.status()).isEqualTo(403);
+    assertThat(unmapped.raw())
+        .contains("\"code\":\"ACCESS_DENIED\"")
+        .doesNotContain("insufficient_scope", "subjectHash", "tenantHash");
 
     HttpRequest denied =
         request()
@@ -706,6 +738,8 @@ class OperationsMcpApiIntegrationTest extends PostgresIntegrationTestSupport {
                 jwt(token, "11000000-0000-4000-8000-000000000006", "north-cellars");
             case HARBOR_MANAGER ->
                 jwt(token, "22000000-0000-4000-8000-000000000001", "harbor-cellars");
+            case "mcp-unmapped" ->
+                jwt(token, "99000000-0000-4000-8000-000000000001", "north-cellars");
             case "expired-token-marker", "wrong-audience-marker" ->
                 throw new BadJwtException("Token is invalid");
             default -> throw new BadJwtException("Token is invalid");
@@ -723,9 +757,12 @@ class OperationsMcpApiIntegrationTest extends PostgresIntegrationTestSupport {
           .header("alg", "RS256")
           .issuer("http://localhost:8081/realms/cellarbridge")
           .subject(subject)
-          .audience(List.of("cellarbridge-api"))
+          .audience(List.of("https://mcp.cellarbridge.example/mcp"))
           .issuedAt(now.minusSeconds(30))
           .expiresAt(now.plusSeconds(300))
+          .claim("resource", "https://mcp.cellarbridge.example/mcp")
+          .claim("azp", "cellarbridge-mcp-host")
+          .claim("scope", "mcp:read")
           .claim("tenant_code", tenantCode)
           .build();
     }

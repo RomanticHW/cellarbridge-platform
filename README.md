@@ -10,21 +10,21 @@
 > through `/mcp` without broader access than the application; timeline ownership that cannot be
 > proven fails closed. Envelope 2.0 adds strict per-tool output schemas, complete signed-cursor
 > pagination, Reporting source-watermark and Supply observation-age evidence, stable warning codes,
-> and bounded responses.
+> and bounded responses. RFC 9728 discovery, dedicated resource/client/scope, Code + S256 PKCE and
+> repository-owned RFC 8707 enforcement fail closed; runtime controls bound shared MCP demand.
 >
-> **当前 main — 已提供面向 AI Agent（智能体）的认证只读 MCP。** 兼容 MCP 的 AI Agent
-> 可通过 `/mcp` 安全读取身份、供给、工作项、经营看板、时间线与审计证据，不会扩大应用权限；
-> 无法证明对象归属的 timeline 会 fail closed。Envelope 2.0 进一步提供逐 Tool
-> 强类型输出、签名 cursor 完整翻页、Reporting source-watermark 与 Supply 观测年龄证据、
-> 稳定 warning code 和有界响应。
+> **当前 main — 已提供面向 AI Agent（智能体）的认证只读 MCP。** 兼容 MCP 的 AI Agent 可通过
+> `/mcp` 读取身份、供给、工作项、看板、时间线与审计证据且不扩大权限；无法证明归属即 fail closed。
+> Envelope 2.0 提供强类型输出、签名 cursor 完整翻页、真实 freshness、稳定 warning 与有界响应。
+> RFC 9728 发现、专用 resource/client/scope、授权码 + S256 PKCE 和仓库内 RFC 8707 强制绑定
+> 在业务访问前 fail closed；请求体、限流、并发、超时与数据库边界约束共享运行时的 MCP 需求。
 >
-> **Release boundary / 发布边界：** The published `v1.0.0` tag predates the MCP capability and does
-> not contain it. The `v1.0.0` demonstration release still starts a deterministic synthetic-data
-> environment; the checked reviewer journey continues from customer activation and quotation
-> through atomic reservation, failure recovery, receivable/payment evidence, dashboard and audit.
+> **Release boundary / 发布边界：** The published `v1.0.0` tag predates MCP and does not contain it.
+> That demonstration release still starts a deterministic synthetic-data environment; its checked
+> journey runs from customer activation and quotation through atomic reservation, failure recovery,
+> receivable/payment evidence, dashboard and audit.
 > 已发布的 `v1.0.0` 标签早于 MCP 能力，不包含本功能。
-> See the [release notes](docs/05-delivery/25-release-notes-v1.0.0.md) and
-> [reviewer guide](docs/reviewer-guide.md).
+> See the [release notes](docs/05-delivery/25-release-notes-v1.0.0.md) and [reviewer guide](docs/reviewer-guide.md).
 
 ## MCP protocol quick check / MCP 协议快速检查
 
@@ -96,7 +96,7 @@ flowchart LR
 | Exception center                                   | Deduplicates shortages, delays, failed steps, and terminal delivery failures into owned work with source-verified recovery                  | Available      |
 | Receivables and payment records                    | Creates one versioned fulfillment-triggered receivable and preserves idempotent, immutable payment/reversal evidence without a real gateway | Available      |
 | Audit trail and operational read models            | Supports immutable evidence, unified timelines, actionable work queues, and permission-filtered dashboards                                  | Available      |
-| Authenticated MCP and agent workflows               | Gives compatible agent hosts a typed, paginated and evidence-aware read-only interface to identity, supply, work, dashboards, timelines, and audit | Available      |
+| Production-secured MCP and agent workflows          | Adds standards discovery, dedicated PKCE/resource binding, typed bounded reads, bounded overload controls and safe diagnostics for compatible agent hosts | Available      |
 | Observability and security evidence                 | Links HTTP requests to local events, exposes low-cardinality operational metrics, and provides repeatable threat/SBOM/container checks       | Available      |
 | Performance and resilience evidence                 | Records versioned datasets, SQL/JVM percentiles, concurrency invariants, bounded recovery, and controlled identity-outage evidence            | Available      |
 
@@ -133,7 +133,7 @@ flowchart TB
 
     subgraph CorePlatform[Available core services]
         PG[(PostgreSQL)]
-        KC[Keycloak / OIDC]
+        KC[Keycloak / OIDC<br/>resource-binding extension]
     end
 
     subgraph OptionalPlatform[Optional platform services]
@@ -144,6 +144,8 @@ flowchart TB
     end
 
     UI -->|OIDC + REST| API
+    AGENT -->|Authorization Code + S256 + resource| KC
+    KC -->|dedicated resource-bound token| AGENT
     AGENT -->|Bearer token + /mcp| MCP
     API --> IAM
     API --> PAR
@@ -203,17 +205,14 @@ fixed workflow instructions and never execute tools by themselves.
 | Machine-readable result contract | Envelope `2.0`; strict JSON Schema 2020-12 output per tool; structured warning codes and safe errors |
 | Complete bounded reads | Signed cursors for supply, work items, timeline, and audit; 15-minute default TTL; 256 KiB/1,000 nested collection-item default budget |
 | Truthful freshness | Reporting uses source watermark/checkpoint evidence; supply reports `OBSERVATION_AGE/UNKNOWN` instead of claiming projector health |
+| OAuth boundary and runtime controls | RFC 9728 metadata/challenges; dedicated HTTPS resource, audience, `mcp:read` scope and public host client; real Code + S256 PKCE; RFC 8707 authorization/token/refresh binding; body, token-bucket, bulkhead, request/SQL timeout, low-cardinality metrics and separate MCP health |
 
-This interface deliberately cannot submit or approve quotations, reserve or release inventory,
-advance fulfillment, recover exceptions, record payments, reverse transactions, rebuild
-projections, or perform any other write. CellarBridge does not bundle a model, model-provider SDK,
-autonomous approval loop, RAG, vector database, persistent conversation memory, or complete MCP
-OAuth discovery. The operator supplies a compatible host and model and provides an access token for
-the existing `cellarbridge-api` audience. See the
-[MCP capability contract](docs/04-contracts/10-mcp-capability-contract.md) and
-[runbook](docs/05-delivery/26-mcp-agent-runbook.md). The real-OIDC smoke and five applicable
-official conformance scenarios are recorded in the
-[MCP verification evidence](docs/evidence/mcp/conformance-summary.md).
+This interface cannot submit or approve quotations, reserve or release inventory, advance
+fulfillment, recover exceptions, record payments, reverse transactions, rebuild projections, or
+perform any other write. CellarBridge bundles no model, provider SDK, autonomous approval loop, RAG,
+vector database or persistent memory; DCR, token exchange and credential forwarding are unsupported.
+Keycloak 26.7 needs the repository provider and otherwise fails closed; the operator supplies the host/model. See the
+[capability contract](docs/04-contracts/10-mcp-capability-contract.md), [runbook](docs/05-delivery/26-mcp-agent-runbook.md), and [evidence](docs/evidence/mcp/conformance-summary.md).
 
 ### 6. Technology baseline
 
@@ -225,7 +224,7 @@ official conformance scenarios are recorded in the
 | Data          | PostgreSQL 18, Flyway, schema-per-module ownership, JSONB only for snapshots and event envelopes                                                                      |
 | Messaging     | Current: custom transactional local publication and Consumer Inbox. Kafka 4.3 is a planned full-profile external channel                                              |
 | Cache         | Redis 8 is planned for a future full profile and is not part of the current runtime                                                                                   |
-| Identity      | Keycloak 26, OIDC Authorization Code with PKCE, JWT resource server                                                                                                   |
+| Identity      | Keycloak 26, OIDC Authorization Code + S256 PKCE, dedicated MCP client/resource/scope, repository-owned RFC 8707 provider, separate JWT resource-server validation |
 | Frontend      | Current: React 19.2, TypeScript, Vite 8, React Router, TanStack Query, Ant Design, React Hook Form, Zod, ECharts 6                                                    |
 | Quality       | JUnit, AssertJ, Testcontainers, ArchUnit, Spring Modulith verification, Vitest, Testing Library, Playwright                                                           |
 | Observability | Current: Actuator/Micrometer, OpenTelemetry/OTLP, ECS JSON logs, Tempo, Prometheus, Grafana, versioned dashboards and alert examples                                      |
@@ -249,6 +248,8 @@ Current versions and planned targets are recorded separately in [the technology 
 application services as the REST boundary. They cannot accept tenant, actor, role, permission,
 partner, or warehouse scope from tool arguments. Strict schemas, signed cursor pagination,
 freshness evidence, bounded queries and bounded serialization make complete reads machine-checkable.
+Dedicated OAuth binding keeps API and agent tokens distinct; admission controls bound MCP overload on
+the shared runtime, while safe metrics and MCP health never turn identities or payloads into labels.
 
 **Reviewer-friendly operation.** The target release provides synthetic demo data, role-based demo accounts, a deterministic walkthrough, one-command local startup, health checks, API documentation, dashboards, and a concise technical review path.
 
@@ -388,7 +389,7 @@ also available.
 | Exception Center and recovery slice                | Available |
 | Settlement receivables and payments slice          | Available |
 | Audit and reporting slice                          | Available |
-| Authenticated read-only MCP and agent workflows    | Available |
+| Production-secured read-only MCP and agent workflows | Available |
 | Observability and security evidence                | Available |
 | Performance evidence                               | Available |
 | Public demo release                                | Available |
@@ -396,10 +397,10 @@ also available.
 The implementation roadmap is maintained in [docs/05-delivery/00-implementation-roadmap.md](docs/05-delivery/00-implementation-roadmap.md). The README must be updated as each capability becomes executable; planned work must never be presented as completed work.
 
 The current main line includes MCP; the immutable `v1.0.0` release does not. The product remains
-deliberately bounded: payments and carriers are simulated; PostgreSQL local
-publication is the deployed event path; Kafka and Redis are absent; reporting is eventually
-consistent; MCP is read-only and reuses the API Bearer audience; and the recorded single-host
-performance measurements are not production SLAs.
+bounded: payments and carriers are simulated; PostgreSQL local publication is deployed; Kafka and
+Redis are absent; reporting is eventually consistent; single-host results are not production SLAs.
+MCP is read-only with a dedicated resource/audience/scope/client, and the repository-owned Keycloak
+provider is an explicit deployment and rollback boundary.
 
 ### 12. Disclaimer
 
@@ -454,7 +455,7 @@ flowchart LR
 | 异常中心                    | 将缺货、延迟、节点失败和最终投递失败去重为工作项，并执行源状态验证恢复               | 可运行   |
 | 应收与付款记录              | 通过版本化履约触发创建唯一应收，并保存幂等、不可变的付款与冲正事实，不接真实支付网关 | 可运行   |
 | 审计与经营读模型            | 提供不可变证据、统一时间线、工作队列和权限过滤经营看板                               | 可运行   |
-| 认证 MCP 与智能工作流       | 为兼容 MCP 的智能客户端提供强类型、可完整翻页且带证据语义的身份、供给、工作项、看板、时间线和审计只读入口 | 可运行   |
+| 生产安全 MCP 与智能工作流   | 为兼容智能客户端提供标准发现、专用 PKCE/resource 绑定、强类型有界读取、有界过载控制与安全诊断 | 可运行   |
 | 可观测性与安全证据          | 将 HTTP 请求关联到本地事件，提供低基数指标、威胁模型、SBOM 与容器安全复验             | 可运行   |
 | 性能与韧性证据              | 记录版本化数据集、分位数、并发不变量、受控故障和恢复结果                             | 可运行   |
 
@@ -465,6 +466,8 @@ flowchart LR
 ```mermaid
 flowchart LR
     HOST[兼容 MCP 的智能客户端<br/>模型由使用方选择] -->|Bearer Token + /mcp| MCP[同进程只读 MCP<br/>无状态 Streamable HTTP]
+    HOST -->|授权码 + S256 PKCE + resource| KC[Keycloak<br/>仓库内 resource-binding 扩展]
+    KC -->|专用 resource-bound Token| HOST
     UI[React 运营台与客户门户] -->|OIDC + REST| API[REST / OpenAPI]
     MCP --> IAM[身份与租户上下文]
     MCP --> SUPPLY[Catalog / Inventory 应用服务]
@@ -503,15 +506,12 @@ Prompt 只是固定工作步骤，不会自行执行 Tool。
 | 可机器消费的结果合同 | Envelope `2.0`；逐 Tool 的严格 JSON Schema 2020-12；结构化 warning code 与安全错误 |
 | 完整且有界的读取 | 供给、工作项、时间线、审计均使用签名 cursor；默认 TTL 15 分钟；默认 256 KiB/1,000 个嵌套集合元素预算 |
 | 诚实的新鲜度 | Reporting 使用 source watermark/checkpoint；Supply 返回 `OBSERVATION_AGE/UNKNOWN`，不伪称 projector 健康 |
+| OAuth 边界与运行控制 | RFC 9728 metadata/challenge；专用 HTTPS resource、audience、`mcp:read` scope 与 public host client；真实授权码 + S256 PKCE；RFC 8707 授权/换令牌/刷新绑定；请求体、token-bucket、bulkhead、请求/SQL 超时、低基数指标与独立 MCP health |
 
-这个接口不能提交或审批报价，不能预占或释放库存，不能推进履约、恢复异常、登记付款、执行冲正、
-重建投影或完成任何其他写操作。CellarBridge 不内置模型、模型供应商 SDK、自主审批循环、RAG、
-向量数据库或持久对话记忆，也尚未提供完整 MCP OAuth 自动发现。使用方需要自行选择兼容的客户端
-与模型，并为现有 `cellarbridge-api` audience 提供访问令牌。完整边界见
-[MCP 能力合同](docs/04-contracts/10-mcp-capability-contract.md)和
-[MCP 与智能客户端运行手册](docs/05-delivery/26-mcp-agent-runbook.md)。真实 OIDC smoke 与五个
-适用官方 conformance 场景的结果见
-[MCP 验证证据](docs/evidence/mcp/conformance-summary.md)。
+这个接口不能审批报价、操作库存、推进履约、恢复异常、登记或冲正付款、重建投影或执行其他写操作。
+CellarBridge 不内置模型、供应商 SDK、自主审批、RAG、向量库或持久记忆，也不支持 DCR/token exchange/credential forwarding。
+Keycloak 26.7 必须显式启用仓库内 provider，否则 MCP 令牌边界 fail closed；使用方自行选择客户端与模型。详见
+[MCP 能力合同](docs/04-contracts/10-mcp-capability-contract.md)、[运行手册](docs/05-delivery/26-mcp-agent-runbook.md)和 [验证证据](docs/evidence/mcp/conformance-summary.md)。
 
 ### 6. 技术栈基线
 
@@ -523,7 +523,7 @@ Prompt 只是固定工作步骤，不会自行执行 Tool。
 | 数据     | PostgreSQL 18、Flyway、按模块划分 Schema；JSONB 仅用于快照和事件信封                                                           |
 | 消息     | 当前：自定义事务性本地发布与 Consumer Inbox；Kafka 4.3 是计划中的 full profile 外部通道                                        |
 | 缓存     | Redis 8 属于未来 full profile 计划，当前运行环境未安装                                                                         |
-| 身份     | Keycloak 26、OIDC 授权码模式与 PKCE、后端 JWT Resource Server                                                                  |
+| 身份     | Keycloak 26、OIDC 授权码 + S256 PKCE、专用 MCP client/resource/scope、仓库内 RFC 8707 provider、独立 JWT Resource Server 校验 |
 | 前端     | 当前：React 19.2、TypeScript、Vite 8、React Router、TanStack Query、Ant Design、React Hook Form、Zod、ECharts 6                |
 | 测试     | JUnit、AssertJ、Testcontainers、ArchUnit、Spring Modulith Verification、Vitest、Testing Library、Playwright                    |
 | 可观测性 | 当前：Actuator/Micrometer、OpenTelemetry/OTLP、ECS JSON、Tempo、Prometheus、Grafana、版本化看板和告警示例                     |
@@ -545,7 +545,8 @@ Prompt 只是固定工作步骤，不会自行执行 Tool。
 
 **智能客户端没有越权后门。** MCP 适配器调用与 REST 相同的权限感知应用服务，Tool 参数不能接收
 tenant、actor、role、permission、Partner 或仓库范围。严格 schema、签名 cursor、freshness
-evidence、有界查询与有界序列化，让完整读取可以被机器校验。
+evidence、有界查询与有界序列化，让完整读取可以被机器校验。专用 OAuth 区分 API 与智能客户端
+Token，准入控制约束共享运行时过载；安全指标与 MCP health 不以身份或业务 payload 为维度。
 
 **方便运行与评审。** 目标版本将提供合成演示数据、分角色账号、固定演示脚本、一键启动、健康检查、接口文档、指标看板和技术评审路径，使评审者能够在有限时间内验证关键能力。
 
@@ -670,16 +671,16 @@ README 只保留一份可执行请求，见
 | 异常中心与恢复切片         | 可运行 |
 | 应收与付款结算切片         | 可运行 |
 | 审计与经营报表切片         | 可运行 |
-| 认证只读 MCP 与智能工作流  | 可运行 |
+| 生产安全只读 MCP 与智能工作流 | 可运行 |
 | 可观测性与安全证据         | 可运行 |
 | 性能与故障证据             | 可运行 |
 | 公开演示版本               | 可运行 |
 
 实现路线见 [docs/05-delivery/00-implementation-roadmap.md](docs/05-delivery/00-implementation-roadmap.md)。每完成一个可执行能力，都必须同步更新 README；尚未完成的内容不得包装成已经交付的功能。
 
-版本边界保持明确：当前主线包含 MCP，不可变的 `v1.0.0` 发布不包含。付款和承运商为模拟适配器；
-已部署事件路径是 PostgreSQL 本地 publication；未引入 Kafka/Redis；报表最终一致；MCP 只读并复用
-现有 API Bearer audience；单机性能结果不代表生产 SLA。
+版本边界保持明确：当前主线包含 MCP，不可变的 `v1.0.0` 不包含。付款与承运商为模拟适配器；
+事件路径是 PostgreSQL 本地 publication；无 Kafka/Redis；报表最终一致；MCP 只读并使用专用
+resource/audience/scope/client；仓库内 Keycloak provider 是部署与回滚边界；单机结果不是生产 SLA。
 
 ### 12. 非官方声明
 

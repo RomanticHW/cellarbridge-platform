@@ -49,10 +49,12 @@ jobs:
         run: |
           docker build --file backend/Dockerfile --tag cellarbridge/backend:ci .
           docker build --file frontend/Dockerfile --tag cellarbridge/frontend:ci .
+          docker build --file deploy/keycloak/Dockerfile --tag cellarbridge/keycloak:ci .
 
       - name: Verify non-root runtime identities
         run: |
           BACKEND_IMAGE=cellarbridge/backend:ci FRONTEND_IMAGE=cellarbridge/frontend:ci \
+            KEYCLOAK_IMAGE=cellarbridge/keycloak:ci \
             ./scripts/verify_container_security.sh
 
       - name: Prepare report directory
@@ -74,6 +76,13 @@ jobs:
           output-file: security-reports/frontend.cdx.json
           upload-artifact: false
 
+      - name: Generate Keycloak CycloneDX SBOM
+        uses: anchore/sbom-action@v0.24.0
+        with:
+          image: cellarbridge/keycloak:ci
+          format: cyclonedx-json
+          output-file: security-reports/keycloak.cdx.json
+          upload-artifact: false
       - name: Scan backend image
         uses: anchore/scan-action@v7
         with:
@@ -82,7 +91,6 @@ jobs:
           severity-cutoff: high
           output-format: json
           output-file: security-reports/backend-grype.json
-
       - name: Scan frontend image
         uses: anchore/scan-action@v7
         with:
@@ -91,6 +99,15 @@ jobs:
           severity-cutoff: high
           output-format: json
           output-file: security-reports/frontend-grype.json
+
+      - name: Scan Keycloak image
+        uses: anchore/scan-action@v7
+        with:
+          image: cellarbridge/keycloak:ci
+          fail-build: true
+          severity-cutoff: high
+          output-format: json
+          output-file: security-reports/keycloak-grype.json
 
       - name: Upload machine-readable reports
         if: always()

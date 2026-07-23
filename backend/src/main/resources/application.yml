@@ -4,7 +4,7 @@ spring:
   ai:
     mcp:
       server:
-        enabled: ${CELLARBRIDGE_MCP_ENABLED:true}
+        enabled: ${CELLARBRIDGE_MCP_ENABLED:false}
         name: cellarbridge-operations
         version: ${cellarbridge.build.commit}
         instructions: Authenticated read-only operations interface. Every result remains subject to CellarBridge tenant, role, ownership, and field-level authorization.
@@ -19,6 +19,9 @@ spring:
     url: ${CELLARBRIDGE_DB_URL:jdbc:postgresql://localhost:5432/cellarbridge}
     username: ${CELLARBRIDGE_DB_USERNAME:cellarbridge}
     password: ${CELLARBRIDGE_DB_PASSWORD}
+    hikari:
+      maximum-pool-size: ${CELLARBRIDGE_DB_POOL_SIZE:10}
+      connection-timeout: ${CELLARBRIDGE_DB_CONNECTION_TIMEOUT_MS:2000}
   flyway:
     enabled: true
     locations: classpath:db/migration
@@ -57,6 +60,8 @@ management:
       probes:
         enabled: true
       show-details: never
+      group.mcp.include: mcpRuntime
+      status.order: DOWN,OUT_OF_SERVICE,DISABLED,MISCONFIGURED,AUTHORIZATION_SERVER_UNAVAILABLE,RATE_LIMITED,BULKHEAD_SATURATED,DOWNSTREAM_TIMEOUT,UNKNOWN,UP
   endpoints:
     web:
       exposure:
@@ -76,11 +81,28 @@ logging:
         errorCode: none
   level:
     root: INFO
+    io.modelcontextprotocol: OFF
+    org.springframework.ai.mcp.server: OFF
 
 cellarbridge:
   build:
     commit: ${CELLARBRIDGE_COMMIT:local}
   mcp:
+    security:
+      resource: ${CELLARBRIDGE_MCP_RESOURCE:}
+      audience: ${CELLARBRIDGE_MCP_AUDIENCE:}
+      scope: ${CELLARBRIDGE_MCP_SCOPE:mcp:read}
+      allowed-clients: ${CELLARBRIDGE_MCP_ALLOWED_CLIENTS:}
+      allowed-origins: ${CELLARBRIDGE_MCP_ALLOWED_ORIGINS:}
+      allowed-hosts: ${CELLARBRIDGE_MCP_ALLOWED_HOSTS:}
+      max-request-bytes: ${CELLARBRIDGE_MCP_MAX_REQUEST_BYTES:65536}
+      rate-capacity: ${CELLARBRIDGE_MCP_RATE_CAPACITY:30}
+      rate-refill-per-second: ${CELLARBRIDGE_MCP_RATE_REFILL_PER_SECOND:10}
+      max-concurrency: ${CELLARBRIDGE_MCP_MAX_CONCURRENCY:8}
+      max-client-concurrency: ${CELLARBRIDGE_MCP_MAX_CLIENT_CONCURRENCY:4}
+      rest-connection-reserve: ${CELLARBRIDGE_MCP_REST_CONNECTION_RESERVE:2}
+      request-timeout: ${CELLARBRIDGE_MCP_REQUEST_TIMEOUT:PT5S}
+      statement-timeout: ${CELLARBRIDGE_MCP_STATEMENT_TIMEOUT:PT3S}
     response:
       max-bytes: ${CELLARBRIDGE_MCP_MAX_RESPONSE_BYTES:262144}
       max-collection-items: ${CELLARBRIDGE_MCP_MAX_COLLECTION_ITEMS:1000}

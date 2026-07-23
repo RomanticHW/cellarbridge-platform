@@ -10,9 +10,12 @@ import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataAccessException;
+import org.springframework.dao.QueryTimeoutException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.TransactionTimedOutException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -23,16 +26,24 @@ public final class McpCallSupport {
   private static final Logger LOGGER = LoggerFactory.getLogger(McpCallSupport.class);
   private final JsonMapper json;
   private final McpResponseProperties responseProperties;
+  private final McpReadExecutor executor;
 
   public McpCallSupport(JsonMapper json, McpResponseProperties responseProperties) {
+    this(json, responseProperties, null);
+  }
+
+  @Autowired
+  McpCallSupport(
+      JsonMapper json, McpResponseProperties responseProperties, McpReadExecutor executor) {
     this.json = json;
     this.responseProperties = responseProperties;
+    this.executor = executor;
   }
 
   public McpReadEnvelope read(String sourceKind, Supplier<McpReadPayload> operation) {
     String correlationId = correlationId();
     try {
-      McpReadPayload payload = operation.get();
+      McpReadPayload payload = executor == null ? operation.get() : executor.execute(operation);
       return new McpReadEnvelope(
           SCHEMA_VERSION,
           sourceKind,
@@ -67,6 +78,13 @@ public final class McpCallSupport {
           "VALIDATION_FAILED",
           false,
           "The request arguments are invalid.");
+    } catch (QueryTimeoutException | TransactionTimedOutException exception) {
+      return error(
+          sourceKind,
+          correlationId,
+          "DOWNSTREAM_TIMEOUT",
+          true,
+          "The operation exceeded its execution deadline.");
     } catch (DataAccessException exception) {
       LOGGER.warn(
           "mcpCallFailed sourceKind={} correlationId={} errorCode=DEPENDENCY_UNAVAILABLE",

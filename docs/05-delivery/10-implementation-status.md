@@ -42,7 +42,7 @@ Status date: **2026-07-23**
 | Exception Center and recovery                    | Available                   | V19 去重 case/occurrence/history/recovery/work-item；库存失败、履约失败/逾期与技术投递检测；源状态验证的库存重试、履约重试/恢复和 publication 重放；权限/租户/掩码边界；OpenAPI 1.10/generated client；React queue/detail；PostgreSQL、组件与真实 Playwright 证据             |
 | Settlement receivables and payments              | Available                   | V20 版本化触发策略、订单商业快照、唯一应收、`numeric(19,4)` 余额、不可变付款/多次部分冲正、逾期批锁、可靠事件；OpenAPI 1.11/AsyncAPI 1.4/generated client；Finance/Buyer/Auditor/System Operator 边界；React queue/detail/dialog；PostgreSQL、组件与真实 OIDC Playwright 证据 |
 | Audit/reporting dashboards                       | Available                   | V21 generation/inbox/checkpoint、不可变 audit、安全 timeline、乱序保护与 pending；dashboard/work queue/audit API；OpenAPI 1.12/AsyncAPI 1.5/generated client；ECharts cards/tooltip/table fallback；PostgreSQL、组件与真实 OIDC Playwright 证据                               |
-| Authenticated read-only MCP and agent workflows  | Available                   | `/mcp` 上的 STATELESS Streamable HTTP；6 tools、1 fixed resource + 2 templates、3 prompts；Envelope 2.0 与逐 Tool 严格 `outputSchema`；4 个集合 Tool 的 HMAC/TTL cursor；256 KiB/1,000 元素预算；Reporting source-watermark 与 Supply `OBSERVATION_AGE/UNKNOWN` freshness；复用 OIDC、权限、租户与字段脱敏；`McpPlatformContractTest`、`OperationsMcpApiIntegrationTest`、`AuditReportingIntegrationTest`、真实 OIDC smoke、官方 conformance 5/5 场景与 `docs/evidence/mcp/conformance-summary.md` |
+| Production-secured read-only MCP and agent workflows | Available                | `/mcp` STATELESS Streamable HTTP；6/3/3 能力、Envelope 2.0、严格 schema/cursor/freshness/预算；RFC 9728 metadata/challenge；专用 resource/audience/scope/client；仓库内 Keycloak provider 强制真实 Code + S256 PKCE 的 RFC 8707 authorization/token/refresh 绑定；API/MCP token 隔离；Host/Origin/body/rate/bulkhead/request/SQL timeout、低基数指标与独立 health；真实 OIDC production-security smoke、官方 conformance 与安全容器门禁 |
 | Architecture fitness functions                   | Partially available         | Modulith、domain/controller/public-contract、Catalog/Inventory 单位、migration 与性能 smoke 门禁已执行；shared-kernel 和更广运行门禁仍按 fitness status 分为 Partially available/Planned                                                                                     |
 | OTel/Tempo/Prometheus/Grafana full profile       | Available                   | ADR-025、Micrometer/OTLP、event span links、scheduler/adapter observations、ECS JSON、versioned provisioning/dashboard/alerts 与 full compose；Kafka/Redis 未引入                                                                                                            |
 | ECharts dashboards                               | Available                   | ECharts 6 模块化加载、ARIA/decal、tooltip、可访问名称与表格 fallback；loading/empty/error/stale 状态                                                                                                                                                                          |
@@ -53,8 +53,9 @@ Status date: **2026-07-23**
 ## 3. 声明
 
 当前 `main` 在 v1.0.0 业务闭环之上增加了认证只读 MCP：六个 Tool 使用 Envelope 2.0
-严格 schema、签名 cursor、结构化 warning、freshness evidence 和全局结果预算。接口没有写
-工具、模型提供商 SDK、RAG 或向量库，也不绕过既有权限与租户边界。已发布标签 `v1.0.0`
+严格 schema、签名 cursor、结构化 warning、freshness evidence 和全局结果预算，并以专用
+OAuth resource/client/scope、RFC 8707 provider 与运行隔离保护真实 Host。接口没有写工具、
+模型提供商 SDK、RAG 或向量库，也不绕过既有权限与租户边界。已发布标签 `v1.0.0`
 早于 Task 16，固定的 tag、release notes 和资产不包含 MCP。
 
 当前业务基线已在 Quotation、Current/Legacy Event 和 Trade Order 中保存一致决策证据；Inventory、Fulfillment、Exception、Settlement 与 Audit/Reporting 均可运行。trace/metric/log、安全供应链门禁以及带环境、seed、分位数和不变量断言的性能/故障证据可复验。结算模块仍只记录经授权录入的外部付款事实；报表最终一致，页面显示 `dataAsOf` 与 projection status。当前实现不引入 Kafka、Redis、独立仓库、搜索引擎或 BI 平台。

@@ -1,10 +1,22 @@
 spring:
+  ai:
+    mcp:
+      server:
+        enabled: ${CELLARBRIDGE_MCP_ENABLED:true}
   datasource:
     password: ${CELLARBRIDGE_DB_PASSWORD:cellarbridge_local}
   flyway:
     locations: classpath:db/migration,classpath:db/demo
 
 cellarbridge:
+  mcp:
+    security:
+      resource: ${CELLARBRIDGE_MCP_RESOURCE:https://mcp.cellarbridge.example/mcp}
+      audience: ${CELLARBRIDGE_MCP_AUDIENCE:https://mcp.cellarbridge.example/mcp}
+      scope: ${CELLARBRIDGE_MCP_SCOPE:mcp:read}
+      allowed-clients: ${CELLARBRIDGE_MCP_ALLOWED_CLIENTS:cellarbridge-mcp-host}
+      allowed-origins: ${CELLARBRIDGE_MCP_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
+      allowed-hosts: ${CELLARBRIDGE_MCP_ALLOWED_HOSTS:localhost:8080,127.0.0.1:8080}
   partner:
     cursor-secret: ${CELLARBRIDGE_PARTNER_CURSOR_SECRET:local-demo-partner-cursor-key-change-me}
   catalog:

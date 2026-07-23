@@ -163,9 +163,11 @@ sequenceDiagram
 - 客户门户使用独立 audience/角色和受控公开 token；
 - 敏感日志、事件和 API 最小化；
 - 双租户集成测试为发布门槛。
-- `/mcp` 复用同一 JWT audience、TenantContext、权限码、所有权和字段投影；
+- `/mcp` 使用专用 canonical resource/audience、`mcp:read` scope 与 public host client，
+  同时复用 TenantContext、权限码、所有权和字段投影；
 - MCP 不接受 `tenantId`/`actorId` 参数，专用 Origin/CORS 白名单拒绝不受信浏览器来源；
-- MCP tools 全部只读，错误使用安全 envelope，响应禁止缓存。
+- RFC 9728 metadata/challenge 与仓库内 Keycloak provider 强制 RFC 8707 授权码/换令牌/刷新绑定；
+- MCP tools 全部只读，流量/超时/数据库隔离有界，错误使用安全 envelope，响应禁止缓存。
 
 ## 10. 质量证据
 

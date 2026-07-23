@@ -3,20 +3,21 @@
 ## 1. 当前边界
 
 CellarBridge 在同一 Spring Boot 后端的 `/mcp` 暴露经过认证、只读、权限感知的 MCP
-能力。它使用无状态 Streamable HTTP，复用现有 `cellarbridge-api` Bearer token 和
-TenantContext。
+能力。它使用无状态 Streamable HTTP、专用 canonical MCP resource/audience、`mcp:read`
+scope 与预登记 `cellarbridge-mcp-host`，并继续复用 TenantContext 与业务权限。
 
 当前只有六个 Tool、一个固定 Resource、两个 Resource Template 和三个 Prompt。Envelope 2.0
 提供严格 Tool schema、四个集合 Tool 的签名 cursor、可解释 freshness 与响应预算。
 
 当前仍没有写操作、自动审批、内置模型、RAG、
-持久对话记忆或完整 OAuth discovery。MCP 客户端必须自行提供兼容协议的 host 与模型（如需），
-服务端不会代替用户执行交易动作。
+持久对话记忆、动态客户端注册、token exchange 或 credential forwarding。MCP 客户端必须
+自行提供兼容协议的 host 与模型（如需），服务端不会代替用户执行交易动作。
 
 ## 2. 前置条件与启动
 
-需要 Java 21、Docker、可用的本地 PostgreSQL/Keycloak 演示环境，以及 audience 包含
-`cellarbridge-api` 的有效 access token。
+需要 Java 21、Docker 及可用的本地 PostgreSQL/Keycloak 演示环境。MCP token 必须来自
+`cellarbridge-mcp-host` 的真实 Authorization Code + S256 PKCE 流程，并绑定配置的 HTTPS
+resource；普通 `cellarbridge-api` token 会被 `/mcp` 拒绝。
 
 ```bash
 CELLARBRIDGE_MCP_ENABLED=true make dev-core
@@ -24,8 +25,67 @@ curl --fail --silent --show-error \
   http://localhost:8080/actuator/health/readiness
 ```
 
-`CELLARBRIDGE_MCP_ENABLED` 默认 `true`。需要临时关闭 MCP 时，以 `false` 重启后端；关闭
-MCP 不影响 REST、事件消费或报表投影。
+`CELLARBRIDGE_MCP_ENABLED` 生产安全默认 `false`；demo/test 与 Compose 显式启用。需要临时
+关闭 MCP 时，以 `false` 重启后端；关闭不影响 REST、事件消费或报表投影。
+
+启用时至少显式配置 `CELLARBRIDGE_MCP_RESOURCE`/`AUDIENCE`（必须相同且为 canonical HTTPS
+URI）、`SCOPE`、`ALLOWED_CLIENTS`、`ALLOWED_HOSTS` 与 `ALLOWED_ORIGINS`。还可收紧
+`MAX_REQUEST_BYTES`、`RATE_CAPACITY`/`RATE_REFILL_PER_SECOND`、`MAX_CONCURRENCY`/
+`MAX_CLIENT_CONCURRENCY`、`REST_CONNECTION_RESERVE`、`DB_POOL_SIZE`、`REQUEST_TIMEOUT`
+和 `STATEMENT_TIMEOUT`。启动取值必须满足
+`MAX_CONCURRENCY + REST_CONNECTION_RESERVE <= DB_POOL_SIZE`；否则 `/mcp` 以 503 fail
+closed、MCP health 为 `MISCONFIGURED`，主应用不退出。该不变量只为共享 Hikari pool 留出
+非 MCP headroom，不是独立连接池或 REST 专属槽位。
+
+### 生产域名与存量 realm
+
+一次生产变更必须原子同步：`CELLARBRIDGE_MCP_RESOURCE` 与 `AUDIENCE` 使用同一个外部
+canonical HTTPS `/mcp` URI；`cellarbridge-mcp.attributes.resource_url` 与之相同；TLS 终止点
+证书可信，`ALLOWED_HOSTS` 是真实外部 authority；host client 的 redirect URI/web origins
+使用精确 HTTPS 值。任一核验失败都保持 MCP 关闭，禁止从 Host/Forwarded 推导上述 URI。
+
+`--import-realm` 只初始化不存在的 realm，不升级存量 realm。保持 MCP 关闭，先部署含 provider
+且启用两个 SPI flag 的 Keycloak image。再用 secret manager 提供的短期、最小权限管理员身份
+登录（下列命令会交互式读取密码），按 scope、完整 profile/policy 集合、client 的顺序幂等升级：
+
+```bash
+set -euo pipefail
+KC="${KEYCLOAK_HOME:?}/bin/kcadm.sh"; KC_REALM="${KC_REALM:-cellarbridge}"
+: "${KC_URL:?} ${KC_ADMIN:?} ${CB_MCP_RESOURCE:?} ${CB_MCP_REDIRECT_URI:?} ${CB_MCP_HOST_ORIGIN:?}"
+KCADM_CONFIG="$(mktemp)"; trap 'rm -f "$KCADM_CONFIG"' EXIT
+"$KC" config credentials --config "$KCADM_CONFIG" --server "$KC_URL" --realm master --user "$KC_ADMIN"
+REALM_JSON=deploy/keycloak/cellarbridge-realm.json
+scope_doc() { jq '.clientScopes[]|select(.name=="mcp:read")' "$REALM_JSON"; }
+scope_id="$("$KC" get client-scopes -r "$KC_REALM" --config "$KCADM_CONFIG" |
+  jq -r 'map(select(.name=="mcp:read"))[0].id//empty')"
+if [[ -n "$scope_id" ]]; then scope_doc|"$KC" update "client-scopes/$scope_id" -r "$KC_REALM" --config "$KCADM_CONFIG" -f -;
+else scope_doc|"$KC" create client-scopes -r "$KC_REALM" --config "$KCADM_CONFIG" -f -; fi
+"$KC" get client-policies/profiles -r "$KC_REALM" --config "$KCADM_CONFIG" |
+  jq --slurpfile d "$REALM_JSON" '.profiles=([.profiles[]?|select(.name!="cellarbridge-mcp-resource-profile")]+[$d[0].clientProfiles.profiles[0]])' |
+  "$KC" update client-policies/profiles -r "$KC_REALM" --config "$KCADM_CONFIG" -f -
+"$KC" get client-policies/policies -r "$KC_REALM" --config "$KCADM_CONFIG" |
+  jq --slurpfile d "$REALM_JSON" '.policies=([.policies[]?|select(.name!="cellarbridge-mcp-resource-policy")]+[$d[0].clientPolicies.policies[0]])' |
+  "$KC" update client-policies/policies -r "$KC_REALM" --config "$KCADM_CONFIG" -f -
+desired() { jq --arg id "$1" --arg r "$CB_MCP_RESOURCE" --arg u "$CB_MCP_REDIRECT_URI" --arg o "$CB_MCP_HOST_ORIGIN" \
+  '.clients[]|select(.clientId==$id)|if $id=="cellarbridge-mcp" then .attributes.resource_url=$r else .redirectUris=[$u]|.webOrigins=[$o]|del(.rootUrl,.baseUrl) end' "$REALM_JSON"; }
+upsert() { local id; id="$("$KC" get clients -r "$KC_REALM" -q "clientId=$1" --fields id --config "$KCADM_CONFIG"|jq -r '.[0].id//empty')";
+  if [[ -n "$id" ]]; then desired "$1"|"$KC" update "clients/$id" -r "$KC_REALM" --config "$KCADM_CONFIG" -f -;
+  else desired "$1"|"$KC" create clients -r "$KC_REALM" --config "$KCADM_CONFIG" -f -; fi; }
+upsert cellarbridge-mcp; upsert cellarbridge-mcp-host
+"$KC" get client-scopes -r "$KC_REALM" --config "$KCADM_CONFIG" | jq -e 'any(.name=="mcp:read")'
+"$KC" get client-policies/profiles -r "$KC_REALM" --config "$KCADM_CONFIG" |
+  jq -e 'any(.profiles[]; .name=="cellarbridge-mcp-resource-profile" and any(.executors[]; .executor=="cellarbridge-mcp-resource-binding"))'
+"$KC" get client-policies/policies -r "$KC_REALM" --config "$KCADM_CONFIG" |
+  jq -e 'any(.policies[]; .name=="cellarbridge-mcp-resource-policy" and .enabled==true and .mode=="STRICT" and any(.profiles[]; .=="cellarbridge-mcp-resource-profile"))'
+"$KC" get clients -r "$KC_REALM" -q clientId=cellarbridge-mcp --config "$KCADM_CONFIG" |
+  jq -e --arg r "$CB_MCP_RESOURCE" '.[0].attributes.resource_url==$r'
+"$KC" get clients -r "$KC_REALM" -q clientId=cellarbridge-mcp-host --config "$KCADM_CONFIG" |
+  jq -e --arg u "$CB_MCP_REDIRECT_URI" --arg o "$CB_MCP_HOST_ORIGIN" '.[0]|.redirectUris==[$u] and .webOrigins==[$o] and .attributes["cellarbridge.mcp.resource-enforced"]=="true"'
+```
+
+随后以真实 Host/TLS 读取 protected-resource metadata，并执行 Code + S256 的正确 resource 正向
+与错误 resource 负向核验，再启用后端。管理员凭据、client secret、token、authorization code
+和 PKCE verifier 只进入 secret/session 工具，不入库、不落 artifact、不出现在命令输出。
 
 `CELLARBRIDGE_MCP_MAX_PAGE_SIZE=100` 与 `CELLARBRIDGE_MCP_MAX_COLLECTION_ITEMS=1000`
 可向下收紧；`CELLARBRIDGE_MCP_MAX_RESPONSE_BYTES=262144` 可在 1 KiB 至 4 MiB 配置；
@@ -46,7 +106,9 @@ export CB_SUBJECT_ID="<authorized-order-uuid>"
 ```
 
 生产部署必须把 `CB_MCP_ORIGIN` 替换为实际白名单 Origin，并通过正式 secret/session 工具向
-客户端提供 token。首版不提供通过 `/mcp` 发现 authorization server 或动态注册客户端的流程。
+客户端提供 token。Host 可先读取 `/.well-known/oauth-protected-resource/mcp`，或从 401
+challenge 的 `resource_metadata` 发现 authorization server、resource 与最小 scope；客户端
+仍须预登记，不能动态注册。
 
 ## 3. HTTP headers
 
@@ -200,16 +262,21 @@ Authorization; Bearer; eyJ; SELECT; INSERT; com.rom.cellarbridge; java.lang; at 
 仓库级最低门禁：
 
 ```bash
-./mvnw -pl backend -am verify
+./mvnw -pl backend,keycloak-resource-binding -am verify
 make mcp-smoke
 make mcp-conformance
+make mcp-production-security
+make verify-container-security
 python3 scripts/validate_repository.py --scope all
 git diff --check
 ```
 
 `make mcp-smoke` 使用隔离的 Compose project 启动 PostgreSQL、Keycloak 和后端，通过真实
-Authorization Code + PKCE 分别取得 Sales 与 Buyer Bearer Token，再执行 initialize、discovery、
-call/read 与负向安全矩阵。它不会使用 Resource Owner Password Credentials，也不会打印 token。
+Authorization Code + S256 PKCE 和两阶段 RFC 8707 resource 分别取得 Sales 与 Buyer token，
+再执行 initialize、discovery、call/read 与负向安全矩阵。`make mcp-production-security`
+进一步覆盖 metadata/challenge、authorization/token/refresh resource 负向矩阵、API/MCP token
+隔离、Host/Origin/body/rate/bulkhead/SQL timeout、共享连接池配置下的 REST headroom、health、metrics 与日志扫描。
+它不会使用 Resource Owner Password Credentials，也不会打印 token。
 只运行 MockMvc 或单元测试不能替代该门禁。后端 verify 还必须覆盖六个 Tool 的 schema/结果
 一致性、四个集合 Tool 的首/中/末页及 cursor 篡改/跨查询/跨 tenant/过期、256 KiB/1,000
 元素预算，以及 source-watermark freshness 状态矩阵。
@@ -236,16 +303,21 @@ CB_MCP_CONFORMANCE_OUTPUT=docs/evidence/mcp/conformance-v0.1.16 \
   make mcp-conformance
 ```
 
-完整 OAuth discovery、动态客户端注册、写入、模型 sampling、RAG 和未声明的可选 capability
-不属于首版通过声明；未执行场景不得改写为 pass。
+动态客户端注册、token exchange、credential forwarding、写入、模型 sampling、RAG 和未声明
+的可选 capability 不属于通过声明；未执行场景不得改写为 pass。
 
 ## 8. 故障排查
 
 | 现象 | 检查 | 处理 |
 |---|---|---|
 | `/mcp` 不可达或 404 | readiness、`CELLARBRIDGE_MCP_ENABLED`、后端端口 | 启动后端或以 `true` 重启；不要开放备用未认证路由 |
-| 401 | token 的 issuer、audience、exp/nbf、签名与 Bearer 格式 | 重新通过 OIDC 登录取得 token；不要降低 audience 校验 |
-| 403 | Origin 白名单、业务权限、team scope、纯 Sales timeline 边界 | 使用允许 Origin/授权身份；不要把 tenant 或角色加到 arguments |
+| metadata 为 503 | MCP resource/audience/client/scope/Host 配置不完整或不一致 | 修复显式配置；不得从请求 Host/Forwarded 动态拼接 canonical URI |
+| 401 | issuer/JWK、专用 resource/audience/client、exp/nbf、签名与 Bearer 格式 | 重新执行带相同 resource 的 Code + S256 流程；API token 不能复用 |
+| 403 | `mcp:read` scope、Origin 白名单、业务权限、team scope、纯 Sales timeline 边界 | 使用允许 Origin/授权身份；不要降低 scope 或把 tenant/角色放入 arguments |
+| 413/429 | body 上限或 client token-bucket；429 应含 `Retry-After` | 缩小请求/降低速率；不要只提高上限 |
+| 503 / `DEPENDENCY_OVERLOADED` | 全局/每-client bulkhead 或 executor 饱和 | 查 MCP health/低基数指标及共享连接池余量；只可据门禁确认有界 demand 与该配置实测 headroom，不宣称独立 REST reserve |
+| `DOWNSTREAM_TIMEOUT` | request/statement timeout、数据库锁等待或下游迟滞 | 用安全 correlation 定位；确认连接池恢复，禁止回显 SQL/异常 |
+| Keycloak 暂时不可用 | 新登录/未知 kid 失败；已缓存 JWK 的未过期 token 可能继续通过 | 不摘除全部 REST 实例；恢复/轮换后重跑 resource 与双 audience smoke |
 | JSON-RPC invalid request | `jsonrpc`, `id`, `method`, `params`、Content-Type、protocol version | 按 initialize 协商结果修正请求 |
 | Tool 不在列表 | 服务端 capability、启停变量、版本 | 核对只应存在的六个 Tool；不要动态注册任意 Tool |
 | `CURSOR_INVALID` | cursor 是否来自同一 Tool/filter/tenant/授权身份，是否超过默认 15 分钟 TTL | 从第一页重新查询；不要解析、修改、记录或跨上下文复用 cursor |
@@ -266,6 +338,21 @@ CB_MCP_CONFORMANCE_OUTPUT=docs/evidence/mcp/conformance-v0.1.16 \
 CELLARBRIDGE_MCP_ENABLED=false make dev-core
 ```
 
-生产环境按部署系统等价配置关闭并重启后端。MCP 不写业务数据、没有 migration 或持久 session，
-所以关闭端点不需要数据补偿。若问题来自依赖或 transport，回滚到前一应用版本并保留 REST 与
-业务投影运行；不要临时增加无认证 fallback。
+生产环境先关闭或回滚后端并确认 `/mcp` 与 metadata 已撤回；Keycloak provider/SPI 必须按下述
+realm 恢复并验证后再撤，不能在 provider disabled 时开放 MCP，也不能退回 API audience token。
+变更前在加密文件系统保存完整集合与对象存在性；对象快照为 `[]` 表示变更前不存在：
+
+```bash
+umask 077; backup="${CB_MCP_BACKUP_DIR:?new encrypted backup directory required}"; mkdir "$backup"
+"$KC" get client-policies/profiles -r "$KC_REALM" --config "$KCADM_CONFIG" >"$backup/profiles.json"
+"$KC" get client-policies/policies -r "$KC_REALM" --config "$KCADM_CONFIG" >"$backup/policies.json"
+"$KC" get client-scopes -r "$KC_REALM" --config "$KCADM_CONFIG" | jq '[.[]|select(.name=="mcp:read")]' >"$backup/mcp-read.json"
+for id in cellarbridge-mcp cellarbridge-mcp-host; do "$KC" get clients -r "$KC_REALM" -q "clientId=$id" --config "$KCADM_CONFIG" >"$backup/$id.json"; done
+```
+
+回滚保持 MCP 关闭且暂留 provider/SPI：非空对象快照必须 `jq '.[0]'` 后恢复，先 scope 后 clients；
+快照为 `[]` 时按 name/clientId 查询当前 UUID，先删 clients 后 scope。完整集合按 policies → profiles
+恢复，避免仍被 policy 引用的 profile 先删除。同步恢复 resource/audience、Host/TLS、redirect/origins。
+验证全部快照后才能撤 provider；client upsert 是权威全对象替换，须审阅差异；realm import 不适用。
+密钥轮换先发布新 JWK、等待缓存过渡，再撤旧 key，并重跑两种 audience 的正反向验证。MCP
+不写业务数据、没有 migration 或持久 session，所以不需要数据补偿；不要增加无认证 fallback。

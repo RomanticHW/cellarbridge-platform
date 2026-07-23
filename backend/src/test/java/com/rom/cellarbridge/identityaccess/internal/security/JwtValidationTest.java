@@ -7,10 +7,12 @@ import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
 import com.nimbusds.jose.proc.SecurityContext;
+import com.rom.cellarbridge.platform.mcp.McpSecurityProperties;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.BeforeAll;
@@ -70,6 +72,32 @@ class JwtValidationTest {
     assertRejected(token(untrustedKey, ISSUER, AUDIENCE, Instant.now().plusSeconds(60)));
   }
 
+  @Test
+  void validatesMcpResourceAndCanonicalConfiguration() {
+    McpSecurityProperties mcp = mcpProperties("https://mcp.example/mcp");
+    var validator = JwtConfiguration.mcpValidators(mcp);
+    assertThat(mcp.configured()).isTrue();
+    assertThat(mcp.configured(10)).isTrue();
+    assertThat(mcp.configured(9)).isFalse();
+    assertThat(validator.validate(mcpJwt("https://mcp.example/mcp")).hasErrors()).isFalse();
+    assertThat(validator.validate(mcpJwt("https://mcp.example/mcp", "wrong", "client")).hasErrors())
+        .isTrue();
+    assertThat(validator.validate(mcpJwt(mcp.resource(), mcp.resource(), "wrong")).hasErrors())
+        .isTrue();
+    for (Object resource :
+        List.of(
+            "https://mcp.example/other",
+            List.of("https://mcp.example/mcp"),
+            List.of("https://mcp.example/mcp", "https://mcp.example/other"))) {
+      assertThat(validator.validate(mcpJwt(resource)).hasErrors()).isTrue();
+    }
+    assertThat(validator.validate(mcpJwt(null)).hasErrors()).isTrue();
+    assertThat(mcpProperties("https:/mcp").configured()).isFalse();
+    assertThat(mcpProperties("https://user@mcp.example/mcp").configured()).isFalse();
+    assertThat(mcpProperties("https://mcp.example/mcp", "https://mcp.example/other").configured())
+        .isFalse();
+  }
+
   private static void assertRejected(String token) {
     assertThatThrownBy(() -> decoder(trustedKey).decode(token))
         .isInstanceOf(org.springframework.security.oauth2.jwt.JwtException.class);
@@ -80,6 +108,45 @@ class JwtValidationTest {
         NimbusJwtDecoder.withPublicKey((RSAPublicKey) keyPair.getPublic()).build();
     decoder.setJwtValidator(JwtConfiguration.validators(ISSUER, AUDIENCE));
     return decoder;
+  }
+
+  private static McpSecurityProperties mcpProperties(String resource) {
+    return mcpProperties(resource, resource);
+  }
+
+  private static McpSecurityProperties mcpProperties(String resource, String audience) {
+    return new McpSecurityProperties(
+        resource,
+        audience,
+        "mcp:read",
+        List.of("client"),
+        List.of(),
+        List.of("mcp.example"),
+        1,
+        1,
+        1,
+        8,
+        4,
+        2,
+        Duration.ofSeconds(2),
+        Duration.ofSeconds(1));
+  }
+
+  private static Jwt mcpJwt(Object resource) {
+    return mcpJwt(resource, "https://mcp.example/mcp", "client");
+  }
+
+  private static Jwt mcpJwt(Object resource, String audience, String client) {
+    Instant now = Instant.now();
+    return Jwt.withTokenValue("token")
+        .header("alg", "RS256")
+        .subject("subject")
+        .audience(List.of(audience))
+        .issuedAt(now)
+        .expiresAt(now.plusSeconds(60))
+        .claim("resource", resource)
+        .claim("azp", client)
+        .build();
   }
 
   private static String token(KeyPair keyPair, String issuer, String audience, Instant expiresAt) {

@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - 'backend/**'
+      - 'keycloak-resource-binding/**'
       - 'pom.xml'
       - '.mvn/**'
       - 'mvnw'
@@ -31,4 +32,4 @@ jobs:
           cache: maven
 
       - name: Verify backend and architecture
-        run: ./mvnw --batch-mode --no-transfer-progress -pl backend -am verify
+        run: ./mvnw --batch-mode --no-transfer-progress -pl backend,keycloak-resource-binding -am verify

@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - 'backend/**'
+      - 'keycloak-resource-binding/**'
       - 'deploy/**'
       - 'scripts/mcp_*.sh'
       - 'scripts/mcp_*.py'
@@ -19,9 +20,9 @@ permissions:
   contents: read
 
 jobs:
-  conformance:
+  production-security:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -36,13 +37,15 @@ jobs:
           shellcheck scripts/mcp_smoke.sh
           python3 -m py_compile scripts/mcp_auth_proxy.py
 
-      - name: Verify real OIDC and official MCP conformance
-        run: make mcp-conformance
+      - name: Verify MCP production security and official conformance
+        run: make mcp-production-security
 
-      - name: Upload MCP conformance evidence
+      - name: Upload MCP verification evidence
         uses: actions/upload-artifact@v7
         with:
-          name: mcp-conformance
-          path: target/mcp-conformance/
+          name: mcp-production-security
+          path: |
+            target/mcp-conformance/
+            target/mcp-production-security/
           if-no-files-found: error
           retention-days: 30

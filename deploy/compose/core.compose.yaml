@@ -19,8 +19,17 @@ services:
     restart: unless-stopped
 
   keycloak:
-    image: quay.io/keycloak/keycloak:26.7.0
-    command: ['start-dev', '--import-realm']
+    build:
+      context: ../..
+      dockerfile: deploy/keycloak/Dockerfile
+    image: cellarbridge/keycloak:local
+    command:
+      [
+        'start-dev',
+        '--import-realm',
+        '--spi-client-policy-executor--cellarbridge-mcp-resource-binding--enabled=true',
+        '--spi-token-interceptor--cellarbridge-mcp-resource-binding--enabled=true',
+      ]
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:-local-admin}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-local-admin-change-me}
@@ -50,13 +59,29 @@ services:
       CELLARBRIDGE_DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-cellarbridge}
       CELLARBRIDGE_DB_USERNAME: ${POSTGRES_USER:-cellarbridge}
       CELLARBRIDGE_DB_PASSWORD: ${POSTGRES_PASSWORD:-cellarbridge_local}
+      CELLARBRIDGE_DB_POOL_SIZE: ${CELLARBRIDGE_DB_POOL_SIZE:-10}
       CELLARBRIDGE_COMMIT: ${CELLARBRIDGE_COMMIT:-local}
       CELLARBRIDGE_MCP_ENABLED: ${CELLARBRIDGE_MCP_ENABLED:-true}
+      CELLARBRIDGE_MCP_RESOURCE: ${CELLARBRIDGE_MCP_RESOURCE:-https://mcp.cellarbridge.example/mcp}
+      CELLARBRIDGE_MCP_AUDIENCE: ${CELLARBRIDGE_MCP_AUDIENCE:-https://mcp.cellarbridge.example/mcp}
+      CELLARBRIDGE_MCP_SCOPE: ${CELLARBRIDGE_MCP_SCOPE:-mcp:read}
+      CELLARBRIDGE_MCP_ALLOWED_CLIENTS: ${CELLARBRIDGE_MCP_ALLOWED_CLIENTS:-cellarbridge-mcp-host}
+      CELLARBRIDGE_MCP_ALLOWED_ORIGINS: ${CELLARBRIDGE_MCP_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+      CELLARBRIDGE_MCP_ALLOWED_HOSTS: ${CELLARBRIDGE_MCP_ALLOWED_HOSTS:-localhost:8080,127.0.0.1:8080}
+      CELLARBRIDGE_MCP_MAX_REQUEST_BYTES: ${CELLARBRIDGE_MCP_MAX_REQUEST_BYTES:-65536}
+      CELLARBRIDGE_MCP_RATE_CAPACITY: ${CELLARBRIDGE_MCP_RATE_CAPACITY:-30}
+      CELLARBRIDGE_MCP_RATE_REFILL_PER_SECOND: ${CELLARBRIDGE_MCP_RATE_REFILL_PER_SECOND:-10}
+      CELLARBRIDGE_MCP_MAX_CONCURRENCY: ${CELLARBRIDGE_MCP_MAX_CONCURRENCY:-8}
+      CELLARBRIDGE_MCP_MAX_CLIENT_CONCURRENCY: ${CELLARBRIDGE_MCP_MAX_CLIENT_CONCURRENCY:-4}
+      CELLARBRIDGE_MCP_REST_CONNECTION_RESERVE: ${CELLARBRIDGE_MCP_REST_CONNECTION_RESERVE:-2}
+      CELLARBRIDGE_MCP_REQUEST_TIMEOUT: ${CELLARBRIDGE_MCP_REQUEST_TIMEOUT:-PT5S}
+      CELLARBRIDGE_MCP_STATEMENT_TIMEOUT: ${CELLARBRIDGE_MCP_STATEMENT_TIMEOUT:-PT3S}
       SPRING_PROFILES_ACTIVE: demo
       CELLARBRIDGE_SECURITY_ISSUER: ${OIDC_AUTHORITY:-http://localhost:8081/realms/cellarbridge}
       CELLARBRIDGE_SECURITY_JWK_SET_URI: http://keycloak:8080/realms/cellarbridge/protocol/openid-connect/certs
       CELLARBRIDGE_SECURITY_AUDIENCE: ${OIDC_AUDIENCE:-cellarbridge-api}
       CELLARBRIDGE_SECURITY_ALLOWED_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
+      MANAGEMENT_TRACING_EXPORT_OTLP_ENABLED: ${MANAGEMENT_TRACING_EXPORT_OTLP_ENABLED:-false}
     ports:
       - '127.0.0.1:${BACKEND_PORT:-8080}:8080'
     read_only: true

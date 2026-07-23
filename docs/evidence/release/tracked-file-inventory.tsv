@@ -230,10 +230,13 @@ backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpCapabilitySupport.jav
 backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpFreshnessEvidence.java	source
 backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpInputValidation.java	source
 backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpReadEnvelope.java	source
+backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpReadExecutor.java	source
 backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpReadPayload.java	source
 backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpResponseProperties.java	source
 backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpSafeException.java	source
 backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpSchemaSupport.java	source
+backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpSecurityProperties.java	source
+backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpSecuritySupport.java	source
 backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpWarning.java	source
 backend/src/main/java/com/rom/cellarbridge/platform/mcp/package-info.java	source
 backend/src/main/java/com/rom/cellarbridge/platform/package-info.java	source
@@ -476,6 +479,7 @@ contracts/schemas/events/receivable-paid-v1.schema.json	contract
 contracts/schemas/events/trade-order-created-v1.schema.json	contract
 deploy/compose/core.compose.yaml	release_asset
 deploy/compose/full.compose.yaml	release_asset
+deploy/keycloak/Dockerfile	release_asset
 deploy/keycloak/cellarbridge-realm.json	release_asset
 deploy/observability/alert-rules.yaml	release_asset
 deploy/observability/grafana/dashboards/cellarbridge-operations.json	release_asset
@@ -736,6 +740,15 @@ frontend/tsconfig.app.json	release_asset
 frontend/tsconfig.json	release_asset
 frontend/tsconfig.node.json	release_asset
 frontend/vite.config.ts	release_asset
+keycloak-resource-binding/pom.xml	release_asset
+keycloak-resource-binding/src/main/java/com/rom/cellarbridge/keycloak/resource/McpResourcePolicyExecutor.java	source
+keycloak-resource-binding/src/main/java/com/rom/cellarbridge/keycloak/resource/McpResourcePolicyExecutorFactory.java	source
+keycloak-resource-binding/src/main/java/com/rom/cellarbridge/keycloak/resource/McpResourceTokenPostProcessor.java	source
+keycloak-resource-binding/src/main/java/com/rom/cellarbridge/keycloak/resource/McpResourceTokenPostProcessorFactory.java	source
+keycloak-resource-binding/src/main/java/com/rom/cellarbridge/keycloak/resource/ResourceBinding.java	source
+keycloak-resource-binding/src/main/resources/META-INF/services/org.keycloak.protocol.oidc.token.TokenPostProcessorFactory	source
+keycloak-resource-binding/src/main/resources/META-INF/services/org.keycloak.services.clientpolicy.executor.ClientPolicyExecutorProviderFactory	source
+keycloak-resource-binding/src/test/java/com/rom/cellarbridge/keycloak/resource/ResourceBindingTest.java	test
 mvnw	release_asset
 mvnw.cmd	release_asset
 performance/generate_dataset.py	release_asset

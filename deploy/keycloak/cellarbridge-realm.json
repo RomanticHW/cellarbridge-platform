@@ -9,6 +9,27 @@
   "loginWithEmailAllowed": false,
   "duplicateEmailsAllowed": false,
   "bruteForceProtected": true,
+  "revokeRefreshToken": true,
+  "refreshTokenMaxReuse": 0,
+  "clientScopes": [
+    {
+      "name": "mcp:read",
+      "protocol": "openid-connect",
+      "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true" }
+    },
+    {
+      "name": "profile",
+      "protocol": "openid-connect",
+      "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true" },
+      "protocolMappers": [{
+        "name": "subject",
+        "protocol": "openid-connect",
+        "protocolMapper": "oidc-sub-mapper",
+        "consentRequired": false,
+        "config": { "access.token.claim": "true", "introspection.token.claim": "true" }
+      }]
+    }
+  ],
   "clients": [
     {
       "clientId": "cellarbridge-api",
@@ -20,6 +41,61 @@
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false
+    },
+    {
+      "clientId": "cellarbridge-mcp",
+      "enabled": true,
+      "bearerOnly": true,
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "attributes": { "resource_url": "https://mcp.cellarbridge.example/mcp" }
+    },
+    {
+      "clientId": "cellarbridge-mcp-host",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["http://localhost:5173/app", "http://127.0.0.1:5173/app"],
+      "webOrigins": ["http://localhost:5173", "http://127.0.0.1:5173"],
+      "attributes": { "pkce.code.challenge.method": "S256", "cellarbridge.mcp.resource-enforced": "true" },
+      "defaultClientScopes": ["profile"],
+      "optionalClientScopes": ["mcp:read"],
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "tenant-code",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "tenant_code",
+            "claim.name": "tenant_code",
+            "jsonType.label": "String",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "false",
+            "multivalued": "false"
+          }
+        },
+        {
+          "name": "cellarbridge-mcp-seed-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "cellarbridge-mcp",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
     },
     {
       "clientId": "cellarbridge-console",
@@ -34,16 +110,13 @@
       "frontchannelLogout": true,
       "rootUrl": "http://localhost:5173",
       "baseUrl": "http://localhost:5173/app",
-      "redirectUris": [
-        "http://localhost:5173/app",
-        "http://127.0.0.1:5173/app"
-      ],
+      "redirectUris": ["http://localhost:5173/app", "http://127.0.0.1:5173/app"],
       "webOrigins": ["http://localhost:5173", "http://127.0.0.1:5173"],
       "attributes": {
         "post.logout.redirect.uris": "http://localhost:5173/login##http://127.0.0.1:5173/login",
         "pkce.code.challenge.method": "S256"
       },
-      "defaultClientScopes": ["web-origins", "acr", "roles", "profile", "basic"],
+      "defaultClientScopes": ["profile"],
       "optionalClientScopes": [],
       "protocol": "openid-connect",
       "protocolMappers": [
@@ -76,6 +149,28 @@
       ]
     }
   ],
+  "clientProfiles": {
+    "profiles": [
+      {
+        "name": "cellarbridge-mcp-resource-profile",
+        "executors": [{ "executor": "cellarbridge-mcp-resource-binding", "configuration": {} }]
+      }
+    ]
+  },
+  "clientPolicies": {
+    "policies": [
+      {
+        "name": "cellarbridge-mcp-resource-policy",
+        "enabled": true,
+        "mode": "STRICT",
+        "conditions": [{
+          "condition": "client-attributes",
+          "configuration": { "attributes": "[{\"key\":\"cellarbridge.mcp.resource-enforced\",\"value\":\"true\"}]" }
+        }],
+        "profiles": ["cellarbridge-mcp-resource-profile"]
+      }
+    ]
+  },
   "users": [
     {
       "id": "11000000-0000-4000-8000-000000000001",

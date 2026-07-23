@@ -18,6 +18,7 @@ services:
       CELLARBRIDGE_LOG_FORMAT: ecs
       CELLARBRIDGE_OTLP_TRACES_ENDPOINT: http://otel-collector:4318/v1/traces
       CELLARBRIDGE_TRACE_SAMPLE_PROBABILITY: ${TRACE_SAMPLE_PROBABILITY:-1.0}
+      MANAGEMENT_TRACING_EXPORT_OTLP_ENABLED: 'true'
     depends_on:
       otel-collector:
         condition: service_healthy
