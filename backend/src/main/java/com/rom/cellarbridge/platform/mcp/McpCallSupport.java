@@ -2,6 +2,8 @@ package com.rom.cellarbridge.platform.mcp;
 
 import com.rom.cellarbridge.platform.CorrelationIdFilter;
 import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
 import java.util.function.Supplier;
@@ -11,19 +13,20 @@ import org.slf4j.MDC;
 import org.springframework.dao.DataAccessException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Component;
-import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 @Component
 public final class McpCallSupport {
 
-  public static final String SCHEMA_VERSION = "1.0";
+  public static final String SCHEMA_VERSION = "2.0";
   private static final Logger LOGGER = LoggerFactory.getLogger(McpCallSupport.class);
   private final JsonMapper json;
+  private final McpResponseProperties responseProperties;
 
-  public McpCallSupport(JsonMapper json) {
+  public McpCallSupport(JsonMapper json, McpResponseProperties responseProperties) {
     this.json = json;
+    this.responseProperties = responseProperties;
   }
 
   public McpReadEnvelope read(String sourceKind, Supplier<McpReadPayload> operation) {
@@ -35,6 +38,7 @@ public final class McpCallSupport {
           sourceKind,
           payload.dataAsOf(),
           payload.projectionStatus(),
+          payload.freshness(),
           correlationId,
           payload.warnings(),
           payload.data(),
@@ -90,69 +94,75 @@ public final class McpCallSupport {
 
   public CallToolResult tool(String sourceKind, Supplier<McpReadPayload> operation) {
     McpReadEnvelope envelope = read(sourceKind, operation);
-    String text = json(envelope, envelope.correlationId());
-    JsonNode structured = tree(text, envelope.correlationId());
+    SerializedEnvelope serialized = serialize(envelope);
     return CallToolResult.builder()
-        .addTextContent(text)
-        .structuredContent(structured)
-        .isError(envelope.isError())
+        .addTextContent(serialized.text())
+        .structuredContent(serialized.structured())
+        .isError(serialized.envelope().isError())
         .build();
   }
 
   public String json(McpReadEnvelope envelope) {
-    return json(envelope, envelope.correlationId());
+    return serialize(envelope).text();
   }
 
-  private String json(Object value, String correlationId) {
+  private SerializedEnvelope serialize(McpReadEnvelope envelope) {
+    LimitedOutputStream output = new LimitedOutputStream(responseProperties.maxBytes());
     try {
-      return json.writeValueAsString(value);
-    } catch (JacksonException exception) {
+      json.writeValue(output, envelope);
+      byte[] bytes = output.toByteArray();
+      JsonNode structured = json.readTree(bytes);
+      if (collectionItems(structured) > responseProperties.maxCollectionItems()) {
+        return resultTooLarge(envelope);
+      }
+      return new SerializedEnvelope(
+          envelope, new String(bytes, StandardCharsets.UTF_8), structured);
+    } catch (RuntimeException exception) {
+      if (output.exceeded()) {
+        return resultTooLarge(envelope);
+      }
       LOGGER.warn(
-          "mcpSerializationFailed correlationId={} errorCode=INTERNAL_ERROR", correlationId);
-      return """
-          {"schemaVersion":"1.0","sourceKind":"MCP","dataAsOf":null,"projectionStatus":null,\
-          "correlationId":"00000000-0000-0000-0000-000000000000","warnings":[],"data":null,\
-          "isError":true,"code":"INTERNAL_ERROR","retryable":false,\
-          "safeMessage":"The operation could not be completed."}\
-          """;
+          "mcpSerializationFailed sourceKind={} correlationId={} errorCode=INTERNAL_ERROR",
+          envelope.sourceKind(),
+          envelope.correlationId());
+      return serializedError(
+          error(
+              envelope.sourceKind(),
+              envelope.correlationId(),
+              "INTERNAL_ERROR",
+              false,
+              "The operation could not be completed."));
+    }
+  }
+
+  private SerializedEnvelope resultTooLarge(McpReadEnvelope envelope) {
+    return serializedError(
+        error(
+            envelope.sourceKind(),
+            envelope.correlationId(),
+            "RESULT_TOO_LARGE",
+            false,
+            "Narrow the query or request a smaller page."));
+  }
+
+  private SerializedEnvelope serializedError(McpReadEnvelope envelope) {
+    try {
+      byte[] bytes = json.writeValueAsBytes(envelope);
+      if (bytes.length > responseProperties.maxBytes()) {
+        throw new IllegalStateException("Configured MCP error budget is too small");
+      }
+      return new SerializedEnvelope(
+          envelope, new String(bytes, StandardCharsets.UTF_8), json.readTree(bytes));
+    } catch (RuntimeException exception) {
+      throw new IllegalStateException("Safe MCP error serialization failed", exception);
     }
   }
 
   public static String normalizedProjectionStatus(String status) {
-    if ("CURRENT".equals(status) || "EMPTY".equals(status)) {
+    if (List.of("CURRENT", "STALE", "EMPTY", "REBUILDING", "UNKNOWN").contains(status)) {
       return status;
     }
     return "STALE";
-  }
-
-  public static List<String> projectionWarnings(String status) {
-    if ("REBUILDING".equals(status)) {
-      return List.of("The reporting projection is rebuilding; returned data may be stale.");
-    }
-    if (!"CURRENT".equals(status) && !"EMPTY".equals(status)) {
-      return List.of("The reporting projection may be stale.");
-    }
-    return List.of();
-  }
-
-  private JsonNode tree(String value, String correlationId) {
-    try {
-      return json.readTree(value);
-    } catch (JacksonException exception) {
-      LOGGER.warn(
-          "mcpSerializationTreeFailed correlationId={} errorCode=INTERNAL_ERROR", correlationId);
-      try {
-        return json.readTree(
-            """
-            {"schemaVersion":"1.0","sourceKind":"MCP","dataAsOf":null,\
-            "projectionStatus":null,"correlationId":"00000000-0000-0000-0000-000000000000",\
-            "warnings":[],"data":null,"isError":true,"code":"INTERNAL_ERROR",\
-            "retryable":false,"safeMessage":"The operation could not be completed."}\
-            """);
-      } catch (JacksonException impossible) {
-        throw new IllegalStateException("Static MCP error JSON could not be parsed");
-      }
-    }
   }
 
   private static McpReadEnvelope error(
@@ -160,6 +170,7 @@ public final class McpCallSupport {
     return new McpReadEnvelope(
         SCHEMA_VERSION,
         sourceKind,
+        null,
         null,
         null,
         correlationId,
@@ -175,4 +186,49 @@ public final class McpCallSupport {
     String value = MDC.get(CorrelationIdFilter.MDC_KEY);
     return value == null || value.isBlank() ? UUID.randomUUID().toString() : value;
   }
+
+  private static int collectionItems(JsonNode node) {
+    if (node == null || node.isValueNode()) {
+      return 0;
+    }
+    int count = node.isArray() ? node.size() : 0;
+    for (JsonNode child : node) {
+      count = Math.addExact(count, collectionItems(child));
+    }
+    return count;
+  }
+
+  private static final class LimitedOutputStream extends ByteArrayOutputStream {
+    private final int limit;
+    private boolean exceeded;
+
+    private LimitedOutputStream(int limit) {
+      this.limit = limit;
+    }
+
+    @Override
+    public synchronized void write(int value) {
+      requireCapacity(1);
+      super.write(value);
+    }
+
+    @Override
+    public synchronized void write(byte[] bytes, int offset, int length) {
+      requireCapacity(length);
+      super.write(bytes, offset, length);
+    }
+
+    private void requireCapacity(int length) {
+      if (length > limit - count) {
+        exceeded = true;
+        throw new IllegalStateException("MCP response byte limit exceeded");
+      }
+    }
+
+    private boolean exceeded() {
+      return exceeded;
+    }
+  }
+
+  private record SerializedEnvelope(McpReadEnvelope envelope, String text, JsonNode structured) {}
 }

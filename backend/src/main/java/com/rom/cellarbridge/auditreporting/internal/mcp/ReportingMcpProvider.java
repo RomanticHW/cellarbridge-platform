@@ -1,9 +1,19 @@
 package com.rom.cellarbridge.auditreporting.internal.mcp;
 
+import static com.rom.cellarbridge.platform.mcp.McpInputValidation.instant;
+import static com.rom.cellarbridge.platform.mcp.McpInputValidation.localDate;
+import static com.rom.cellarbridge.platform.mcp.McpInputValidation.optionalText;
+import static com.rom.cellarbridge.platform.mcp.McpInputValidation.optionalUuid;
+import static com.rom.cellarbridge.platform.mcp.McpInputValidation.uppercase;
+import static com.rom.cellarbridge.platform.mcp.McpInputValidation.uuid;
+
 import com.rom.cellarbridge.auditreporting.internal.application.AuditReportingService;
 import com.rom.cellarbridge.auditreporting.internal.application.AuditReportingService.AuditPage;
-import com.rom.cellarbridge.auditreporting.internal.application.AuditReportingService.TimelinePage;
-import com.rom.cellarbridge.auditreporting.internal.application.AuditReportingService.WorkItemPage;
+import com.rom.cellarbridge.auditreporting.internal.application.AuditReportingService.AuditQuery;
+import com.rom.cellarbridge.auditreporting.internal.application.AuditReportingService.InvalidCursorException;
+import com.rom.cellarbridge.auditreporting.internal.application.AuditReportingService.PaginatedTimelinePage;
+import com.rom.cellarbridge.auditreporting.internal.application.AuditReportingService.PaginatedWorkItemPage;
+import com.rom.cellarbridge.auditreporting.internal.application.AuditReportingService.ProjectionRead;
 import com.rom.cellarbridge.auditreporting.internal.application.AuditReportingStore.DashboardRecord;
 import com.rom.cellarbridge.auditreporting.internal.application.AuditReportingStore.ProjectionFreshness;
 import com.rom.cellarbridge.identityaccess.TenantContext;
@@ -11,23 +21,26 @@ import com.rom.cellarbridge.identityaccess.TenantContextHolder;
 import com.rom.cellarbridge.platform.mcp.McpCallSupport;
 import com.rom.cellarbridge.platform.mcp.McpCapabilitySupport;
 import com.rom.cellarbridge.platform.mcp.McpCapabilitySupport.Arguments;
+import com.rom.cellarbridge.platform.mcp.McpFreshnessEvidence;
 import com.rom.cellarbridge.platform.mcp.McpReadPayload;
+import com.rom.cellarbridge.platform.mcp.McpResponseProperties;
 import com.rom.cellarbridge.platform.mcp.McpSafeException;
+import com.rom.cellarbridge.platform.mcp.McpWarning;
 import io.modelcontextprotocol.server.McpStatelessServerFeatures.SyncToolSpecification;
 import io.modelcontextprotocol.spec.McpSchema.GetPromptRequest;
 import io.modelcontextprotocol.spec.McpSchema.GetPromptResult;
 import io.modelcontextprotocol.spec.McpSchema.PromptMessage;
 import io.modelcontextprotocol.spec.McpSchema.Role;
 import io.modelcontextprotocol.spec.McpSchema.TextContent;
-import java.time.Clock;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.springframework.ai.mcp.annotation.McpPrompt;
 import org.springframework.ai.mcp.annotation.McpResource;
@@ -52,25 +65,22 @@ public final class ReportingMcpProvider {
       Set.of("PARTNER", "QUOTATION", "TRADE_ORDER", "ORDER");
   private static final Set<String> SALES_OWNED_TIMELINE_TYPES =
       Set.of("QUOTATION", "TRADE_ORDER", "ORDER");
-  private static final Map<String, Object> WORK_ITEM_PROPERTIES = workItemProperties();
   private static final Map<String, Object> DASHBOARD_PROPERTIES = dashboardProperties();
-  private static final Map<String, Object> TIMELINE_PROPERTIES = timelineProperties();
-  private static final Map<String, Object> AUDIT_PROPERTIES = auditProperties();
 
   private final AuditReportingService service;
   private final TenantContextHolder contexts;
   private final McpCallSupport calls;
-  private final Clock clock;
+  private final McpResponseProperties responseProperties;
 
   public ReportingMcpProvider(
       AuditReportingService service,
       TenantContextHolder contexts,
       McpCallSupport calls,
-      Clock clock) {
+      McpResponseProperties responseProperties) {
     this.service = service;
     this.contexts = contexts;
     this.calls = calls;
-    this.clock = clock;
+    this.responseProperties = responseProperties;
   }
 
   @Bean
@@ -81,8 +91,9 @@ public final class ReportingMcpProvider {
         "cellarbridge_list_work_items",
         "List CellarBridge work items",
         "Lists personal work or, for an authorized manager, team work from the reporting projection.",
-        WORK_ITEM_PROPERTIES,
+        workItemProperties(responseProperties.maxPageSize()),
         List.of(),
+        ReportingMcpSchemas.WORK_ITEMS,
         this::listWorkItems);
   }
 
@@ -90,17 +101,27 @@ public final class ReportingMcpProvider {
     Instant from = instant(arguments.text("dueFrom"));
     Instant to = instant(arguments.text("dueTo"));
     requireOrdered(from, to);
-    WorkItemPage page =
-        service.workItems(
-            allowedSet(arguments.textList("statuses"), WORK_STATUSES),
-            allowedSet(arguments.textList("priorities"), WORK_PRIORITIES),
-            allowedSet(arguments.textList("types"), WORK_TYPES),
-            from,
-            to,
-            optionalText(arguments.text("subjectNumber"), 1, 80),
-            scope(arguments.text("scope")),
-            pageSize(arguments.integer("pageSize")));
+    Set<String> statuses = allowedSet(arguments.textList("statuses"), WORK_STATUSES);
+    Set<String> priorities = allowedSet(arguments.textList("priorities"), WORK_PRIORITIES);
+    Set<String> types = allowedSet(arguments.textList("types"), WORK_TYPES);
+    String subjectNumber = optionalText(arguments.text("subjectNumber"), 1, 80);
+    String requestedScope = scope(arguments.text("scope"));
+    Integer requestedPageSize = pageSize(arguments.integer("pageSize"));
+    String cursor = optionalText(arguments.text("cursor"), 1, 2048);
     ProjectionFreshness freshness = service.reportingProjectionFreshness();
+    PaginatedWorkItemPage page =
+        cursorCall(
+            () ->
+                service.workItems(
+                    statuses,
+                    priorities,
+                    types,
+                    from,
+                    to,
+                    subjectNumber,
+                    requestedScope,
+                    requestedPageSize,
+                    cursor));
     return projection(freshness, page);
   }
 
@@ -114,18 +135,16 @@ public final class ReportingMcpProvider {
         "Returns permission-filtered reporting metrics for an inclusive UTC date range.",
         DASHBOARD_PROPERTIES,
         List.of("from", "to"),
+        ReportingMcpSchemas.DASHBOARD,
         this::getDashboard);
   }
 
   private McpReadPayload getDashboard(Arguments arguments) {
-    DashboardRecord dashboard =
-        service.dashboard(
-            localDate(arguments.requiredText("from")), localDate(arguments.requiredText("to")));
-    return McpReadPayload.projection(
-        dashboard.dataAsOf(),
-        McpCallSupport.normalizedProjectionStatus(dashboard.projectionStatus()),
-        McpCallSupport.projectionWarnings(dashboard.projectionStatus()),
-        dashboard);
+    LocalDate from = localDate(arguments.requiredText("from"));
+    LocalDate to = localDate(arguments.requiredText("to"));
+    ProjectionRead<DashboardRecord> read =
+        service.dashboardRead(from, to, responseProperties.maxCollectionItems());
+    return projection(read.freshness(), read.data());
   }
 
   @Bean
@@ -136,13 +155,15 @@ public final class ReportingMcpProvider {
         "cellarbridge_get_timeline",
         "Get a CellarBridge business timeline",
         "Returns a permission-filtered timeline for one whitelisted business subject.",
-        TIMELINE_PROPERTIES,
+        timelineProperties(responseProperties.maxPageSize()),
         List.of("subjectType", "subjectId"),
+        ReportingMcpSchemas.TIMELINE,
         arguments ->
             timelinePayload(
                 arguments.requiredText("subjectType"),
                 arguments.requiredText("subjectId"),
-                arguments.integer("pageSize")));
+                arguments.integer("pageSize"),
+                arguments.text("cursor")));
   }
 
   @McpResource(
@@ -150,11 +171,12 @@ public final class ReportingMcpProvider {
       title = "CellarBridge business timeline",
       uri = "cellarbridge://timeline/{subjectType}/{subjectId}",
       description =
-          "Permission-filtered timeline for a PARTNER, QUOTATION, TRADE_ORDER, or ORDER UUID.",
+          "Permission-filtered first timeline page; when hasNext, continue with cellarbridge_get_timeline and its nextCursor.",
       mimeType = "application/json")
   public String timelineResource(String subjectType, String subjectId) {
     return calls.json(
-        calls.read("TIMELINE_PROJECTION", () -> timelinePayload(subjectType, subjectId, null)));
+        calls.read(
+            "TIMELINE_PROJECTION", () -> timelinePayload(subjectType, subjectId, null, null)));
   }
 
   @Bean
@@ -165,32 +187,36 @@ public final class ReportingMcpProvider {
         "cellarbridge_search_audit",
         "Search CellarBridge audit evidence",
         "Searches immutable, tenant-scoped audit evidence using a bounded time window.",
-        AUDIT_PROPERTIES,
+        auditProperties(responseProperties.maxPageSize()),
         List.of(),
+        ReportingMcpSchemas.AUDIT,
         this::searchAudit);
   }
 
   private McpReadPayload searchAudit(Arguments arguments) {
-    String to = arguments.text("to");
-    String from = arguments.text("from");
-    Instant upper = to == null ? clock.instant() : instant(to);
-    Instant lower = from == null ? upper.minus(Duration.ofDays(30)) : instant(from);
-    requireOrdered(lower, upper);
-    if (Duration.between(lower, upper).compareTo(Duration.ofDays(367)) > 0) {
-      throw McpSafeException.invalidRequest();
-    }
-    AuditPage page =
-        service.audit(
-            optionalText(arguments.text("subjectType"), 1, 50),
-            optionalUuid(arguments.text("subjectId")),
-            optionalUuid(arguments.text("correlationId")),
-            null,
-            optionalText(arguments.text("action"), 1, 120),
-            lower,
-            upper,
-            pageSize(arguments.integer("pageSize")),
-            optionalText(arguments.text("cursor"), 1, 2048));
+    Instant lower = instant(arguments.text("from"));
+    Instant upper = instant(arguments.text("to"));
+    String subjectType = optionalText(arguments.text("subjectType"), 1, 50);
+    UUID subjectId = optionalUuid(arguments.text("subjectId"));
+    UUID correlationId = optionalUuid(arguments.text("correlationId"));
+    String action = optionalText(arguments.text("action"), 1, 120);
+    Integer requestedPageSize = pageSize(arguments.integer("pageSize"));
+    String cursor = optionalText(arguments.text("cursor"), 1, 2048);
     ProjectionFreshness freshness = service.auditProjectionFreshness();
+    AuditPage page =
+        cursorCall(
+            () ->
+                service.boundedAudit(
+                    new AuditQuery(
+                        subjectType,
+                        subjectId,
+                        correlationId,
+                        null,
+                        action,
+                        lower,
+                        upper,
+                        requestedPageSize,
+                        cursor)));
     return projection(freshness, page);
   }
 
@@ -237,7 +263,8 @@ public final class ReportingMcpProvider {
         """);
   }
 
-  private McpReadPayload timelinePayload(String subjectType, String subjectId, Integer pageSize) {
+  private McpReadPayload timelinePayload(
+      String subjectType, String subjectId, Integer pageSize, String cursor) {
     String normalizedType = requiredTimelineType(subjectType);
     TenantContext context = contexts.requireCurrent();
     boolean unprivilegedSales =
@@ -252,20 +279,79 @@ public final class ReportingMcpProvider {
         && !"TRADE_ORDER".equals(normalizedType)) {
       throw new AccessDeniedException("Access denied");
     }
-    TimelinePage page = service.timeline(normalizedType, uuid(subjectId), pageSize(pageSize));
-    return McpReadPayload.projection(
-        page.dataAsOf(),
-        McpCallSupport.normalizedProjectionStatus(page.projectionStatus()),
-        McpCallSupport.projectionWarnings(page.projectionStatus()),
-        page);
+    UUID normalizedSubjectId = uuid(subjectId);
+    Integer requestedPageSize = pageSize(pageSize);
+    String normalizedCursor = optionalText(cursor, 1, 2048);
+    ProjectionRead<PaginatedTimelinePage> read =
+        cursorCall(
+            () ->
+                service.timeline(
+                    normalizedType, normalizedSubjectId, requestedPageSize, normalizedCursor));
+    return projection(read.freshness(), read.data());
   }
 
   private static McpReadPayload projection(ProjectionFreshness freshness, Object data) {
+    String status = McpCallSupport.normalizedProjectionStatus(freshness.projectionStatus());
     return McpReadPayload.projection(
         freshness.dataAsOf(),
-        McpCallSupport.normalizedProjectionStatus(freshness.projectionStatus()),
-        McpCallSupport.projectionWarnings(freshness.projectionStatus()),
+        status,
+        new McpFreshnessEvidence(
+            "SOURCE_WATERMARK",
+            freshness.observedAt(),
+            occurredAt(freshness.sourceWatermark()),
+            occurredAt(freshness.processedThrough()),
+            freshness.lastSuccessfulRefreshAt(),
+            freshness.projectionLagSeconds(),
+            freshness.pendingCount(),
+            freshness.deadLetterCount()),
+        projectionWarnings(freshness, status),
         data);
+  }
+
+  private static Instant occurredAt(
+      com.rom.cellarbridge.auditreporting.internal.application.ProjectionEventSource.Watermark
+          watermark) {
+    return watermark == null ? null : watermark.occurredAt();
+  }
+
+  public static List<McpWarning> projectionWarnings(ProjectionFreshness freshness, String status) {
+    List<McpWarning> warnings = new ArrayList<>();
+    if ("REBUILDING".equals(status)) {
+      warnings.add(
+          McpWarning.warning(
+              "PROJECTION_REBUILDING",
+              "The reporting projection is rebuilding; returned data may be stale."));
+    } else if ("UNKNOWN".equals(status)) {
+      warnings.add(
+          McpWarning.warning(
+              "PROJECTION_FRESHNESS_UNKNOWN",
+              "The reporting projection freshness could not be proven from source watermarks."));
+    } else if ("STALE".equals(status)) {
+      warnings.add(
+          McpWarning.warning(
+              "PROJECTION_STALE",
+              "The reporting projection has not fully caught up with its source events."));
+    }
+    if (freshness.pendingCount() > 0) {
+      warnings.add(
+          McpWarning.warning(
+              "PROJECTION_PENDING", "The reporting projection has pending source events."));
+    }
+    if (freshness.deadLetterCount() > 0) {
+      warnings.add(
+          McpWarning.warning(
+              "PROJECTION_DEAD_LETTER",
+              "The reporting projection has source events that require operator attention."));
+    }
+    return List.copyOf(warnings);
+  }
+
+  private static <T> T cursorCall(Supplier<T> operation) {
+    try {
+      return operation.get();
+    } catch (InvalidCursorException exception) {
+      throw McpSafeException.invalidCursor();
+    }
   }
 
   private static Set<String> allowedSet(List<String> values, Set<String> allowed) {
@@ -301,61 +387,14 @@ public final class ReportingMcpProvider {
     return normalized;
   }
 
-  private static Integer pageSize(Integer value) {
-    if (value != null && (value < 1 || value > 100)) {
+  private Integer pageSize(Integer value) {
+    if (value == null) {
+      return Math.min(25, responseProperties.maxPageSize());
+    }
+    if (value < 1 || value > responseProperties.maxPageSize()) {
       throw McpSafeException.invalidRequest();
     }
     return value;
-  }
-
-  private static String optionalText(String value, int min, int max) {
-    if (value == null) {
-      return null;
-    }
-    String normalized = value.strip();
-    if (normalized.length() < min || normalized.length() > max) {
-      throw McpSafeException.invalidRequest();
-    }
-    return normalized;
-  }
-
-  private static String uppercase(String value) {
-    return value == null ? null : value.toUpperCase(Locale.ROOT);
-  }
-
-  private static LocalDate localDate(String value) {
-    try {
-      return LocalDate.parse(value);
-    } catch (RuntimeException exception) {
-      throw McpSafeException.invalidRequest();
-    }
-  }
-
-  private static Instant instant(String value) {
-    if (value == null) {
-      return null;
-    }
-    try {
-      return Instant.parse(value);
-    } catch (RuntimeException exception) {
-      throw McpSafeException.invalidRequest();
-    }
-  }
-
-  private static UUID optionalUuid(String value) {
-    return value == null ? null : uuid(value);
-  }
-
-  private static UUID uuid(String value) {
-    try {
-      UUID parsed = UUID.fromString(value);
-      if (!parsed.toString().equals(value)) {
-        throw McpSafeException.invalidRequest();
-      }
-      return parsed;
-    } catch (RuntimeException exception) {
-      throw McpSafeException.invalidRequest();
-    }
   }
 
   private static void requireOrdered(Instant from, Instant to) {
@@ -364,7 +403,7 @@ public final class ReportingMcpProvider {
     }
   }
 
-  private static Map<String, Object> workItemProperties() {
+  private static Map<String, Object> workItemProperties(int maxPageSize) {
     return Map.ofEntries(
         Map.entry(
             "statuses",
@@ -392,7 +431,11 @@ public final class ReportingMcpProvider {
             "scope",
             McpCapabilitySupport.enumeratedText(
                 "Personal or authorized team scope", List.of("personal", "team"), false)),
-        Map.entry("pageSize", McpCapabilitySupport.integer("Page size from 1 to 100", 1, 100)));
+        Map.entry(
+            "pageSize",
+            McpCapabilitySupport.integer("Page size from 1 to " + maxPageSize, 1, maxPageSize)),
+        Map.entry(
+            "cursor", McpCapabilitySupport.text("Opaque cursor returned by this tool", 1, 2048)));
   }
 
   private static Map<String, Object> dashboardProperties() {
@@ -403,18 +446,22 @@ public final class ReportingMcpProvider {
         McpCapabilitySupport.formattedText("Required inclusive UTC end date", "date", 10));
   }
 
-  private static Map<String, Object> timelineProperties() {
-    return Map.of(
-        "subjectType",
-        McpCapabilitySupport.enumeratedText(
-            "Business subject type", TIMELINE_TYPES.stream().sorted().toList(), false),
-        "subjectId",
-        McpCapabilitySupport.formattedText("Required subject UUID", "uuid", 36),
-        "pageSize",
-        McpCapabilitySupport.integer("Page size from 1 to 100", 1, 100));
+  private static Map<String, Object> timelineProperties(int maxPageSize) {
+    return Map.ofEntries(
+        Map.entry(
+            "subjectType",
+            McpCapabilitySupport.enumeratedText(
+                "Business subject type", TIMELINE_TYPES.stream().sorted().toList(), false)),
+        Map.entry(
+            "subjectId", McpCapabilitySupport.formattedText("Required subject UUID", "uuid", 36)),
+        Map.entry(
+            "pageSize",
+            McpCapabilitySupport.integer("Page size from 1 to " + maxPageSize, 1, maxPageSize)),
+        Map.entry(
+            "cursor", McpCapabilitySupport.text("Opaque cursor returned by this tool", 1, 2048)));
   }
 
-  private static Map<String, Object> auditProperties() {
+  private static Map<String, Object> auditProperties(int maxPageSize) {
     return Map.ofEntries(
         Map.entry(
             "subjectType", McpCapabilitySupport.text("Subject type; at most 50 characters", 1, 50)),
@@ -430,7 +477,9 @@ public final class ReportingMcpProvider {
             "to",
             McpCapabilitySupport.formattedText(
                 "Exclusive ISO-8601 end; defaults to the current time", "date-time", 64)),
-        Map.entry("pageSize", McpCapabilitySupport.integer("Page size from 1 to 100", 1, 100)),
+        Map.entry(
+            "pageSize",
+            McpCapabilitySupport.integer("Page size from 1 to " + maxPageSize, 1, maxPageSize)),
         Map.entry(
             "cursor", McpCapabilitySupport.text("Opaque cursor returned by this tool", 1, 2048)));
   }

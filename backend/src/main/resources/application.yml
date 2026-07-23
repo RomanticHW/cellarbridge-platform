@@ -80,6 +80,11 @@ logging:
 cellarbridge:
   build:
     commit: ${CELLARBRIDGE_COMMIT:local}
+  mcp:
+    response:
+      max-bytes: ${CELLARBRIDGE_MCP_MAX_RESPONSE_BYTES:262144}
+      max-collection-items: ${CELLARBRIDGE_MCP_MAX_COLLECTION_ITEMS:1000}
+      max-page-size: ${CELLARBRIDGE_MCP_MAX_PAGE_SIZE:100}
   security:
     issuer: ${CELLARBRIDGE_SECURITY_ISSUER:http://localhost:8081/realms/cellarbridge}
     jwk-set-uri: ${CELLARBRIDGE_SECURITY_JWK_SET_URI:http://localhost:8081/realms/cellarbridge/protocol/openid-connect/certs}
@@ -89,12 +94,14 @@ cellarbridge:
     cursor-secret: ${CELLARBRIDGE_PARTNER_CURSOR_SECRET}
   catalog:
     cursor-secret: ${CELLARBRIDGE_CATALOG_CURSOR_SECRET}
+    cursor-ttl: ${CELLARBRIDGE_CATALOG_CURSOR_TTL:PT15M}
   order:
     cursor-secret: ${CELLARBRIDGE_ORDER_CURSOR_SECRET}
   settlement:
     cursor-secret: ${CELLARBRIDGE_SETTLEMENT_CURSOR_SECRET}
   audit-reporting:
     cursor-secret: ${CELLARBRIDGE_AUDIT_CURSOR_SECRET}
+    cursor-ttl: ${CELLARBRIDGE_AUDIT_CURSOR_TTL:PT15M}
   platform:
     local-events:
       enabled: ${CELLARBRIDGE_LOCAL_EVENTS_ENABLED:false}

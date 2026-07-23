@@ -8,6 +8,7 @@ import com.rom.cellarbridge.identityaccess.TenantContext;
 import com.rom.cellarbridge.identityaccess.TenantContextHolder;
 import com.rom.cellarbridge.identityaccess.TenantId;
 import com.rom.cellarbridge.inventory.InventorySupplyQuery.ExactLotAvailability;
+import com.rom.cellarbridge.inventory.InventorySupplyQuery.ExactLotCandidate;
 import com.rom.cellarbridge.inventory.InventorySupplyQuery.RouteAvailability;
 import com.rom.cellarbridge.test.PostgresIntegrationTestSupport;
 import java.math.BigDecimal;
@@ -216,8 +217,14 @@ class InventorySupplyQueryIntegrationTest extends PostgresIntegrationTestSupport
   @Test
   void returnsExactUnitPriorityAndWarehouseVersionInDeterministicOrder() {
     try (TenantContextHolder.Scope ignored = contextHolder.open(context())) {
-      Set<UUID> pools = query.authorizedSupplyPoolIds();
-      List<ExactLotAvailability> lots = query.findAuthorizedLots(pools);
+      Set<UUID> pools =
+          query.authorizedSupplyPoolIds(
+              Set.of(UUID.fromString("36000000-0000-4000-8000-000000000001")));
+      Set<ExactLotCandidate> candidates =
+          Set.of(
+              new ExactLotCandidate(pools.iterator().next(), SKU, QuantityUnit.BOTTLE),
+              new ExactLotCandidate(pools.iterator().next(), SKU, QuantityUnit.CASE));
+      List<ExactLotAvailability> lots = query.findAuthorizedLots(candidates, 100);
 
       assertThat(lots).isNotEmpty();
       assertThat(lots.getFirst().quantityUnit()).isEqualTo(QuantityUnit.BOTTLE);
@@ -226,6 +233,9 @@ class InventorySupplyQueryIntegrationTest extends PostgresIntegrationTestSupport
       assertThat(lots)
           .extracting(ExactLotAvailability::lotCode)
           .startsWith("LOT-EAST-2019-BOTTLE-A", "LOT-EAST-2019-A", "LOT-EAST-2019-B");
+      assertThat(query.findAuthorizedLots(candidates, 2))
+          .extracting(ExactLotAvailability::lotCode)
+          .containsExactly("LOT-EAST-2019-BOTTLE-A", "LOT-EAST-2019-A");
     }
   }
 

@@ -17,7 +17,7 @@ public interface CatalogSearchRepository {
   Optional<CatalogSkuRecord> find(TenantId tenantId, UUID skuId);
 
   List<SupplyProjectionRecord> findSupplyProjections(
-      TenantId tenantId, Set<UUID> skuIds, SearchCriteria criteria);
+      TenantId tenantId, Set<UUID> skuIds, SearchCriteria criteria, int limit);
 
   record SearchCriteria(
       String keyword,

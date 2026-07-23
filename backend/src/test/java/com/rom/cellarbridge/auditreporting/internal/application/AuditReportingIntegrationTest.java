@@ -4,17 +4,25 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.rom.cellarbridge.auditreporting.internal.application.AuditReportingService.AuditPage;
+import com.rom.cellarbridge.auditreporting.internal.application.AuditReportingService.AuditQuery;
+import com.rom.cellarbridge.auditreporting.internal.application.AuditReportingService.PaginatedTimelinePage;
+import com.rom.cellarbridge.auditreporting.internal.application.AuditReportingService.PaginatedWorkItemPage;
 import com.rom.cellarbridge.auditreporting.internal.application.AuditReportingStore.DashboardRecord;
+import com.rom.cellarbridge.auditreporting.internal.application.AuditReportingStore.ProjectionFreshness;
+import com.rom.cellarbridge.auditreporting.internal.mcp.ReportingMcpProvider;
 import com.rom.cellarbridge.identityaccess.PermissionCode;
 import com.rom.cellarbridge.identityaccess.TenantContext;
 import com.rom.cellarbridge.identityaccess.TenantContextHolder;
 import com.rom.cellarbridge.identityaccess.TenantId;
 import com.rom.cellarbridge.platform.EventDelivery;
+import com.rom.cellarbridge.platform.mcp.McpWarning;
 import com.rom.cellarbridge.test.PostgresIntegrationTestSupport;
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -39,6 +47,7 @@ class AuditReportingIntegrationTest extends PostgresIntegrationTestSupport {
       TenantId.of(UUID.fromString("20000000-0000-4000-8000-000000000001"));
   private static final UUID ACTOR = UUID.fromString("11200000-0000-4000-8000-000000000004");
   private static final Instant BASE = Instant.parse("2026-07-22T12:00:00Z");
+  private static final String DRAFT_ACTION = "QUOTATION_DRAFT_CREATED";
 
   @Autowired private AuditReportingService service;
   @Autowired private TenantContextHolder contexts;
@@ -281,163 +290,241 @@ class AuditReportingIntegrationTest extends PostgresIntegrationTestSupport {
   @Transactional
   void bindsAuditCursorToNormalizedQueryAndEffectiveAuthorizationScope() throws Exception {
     UUID quotationId = UUID.randomUUID();
+    Instant occurredAt = BASE.plusSeconds(100);
     for (int index = 0; index < 3; index++) {
-      service.project(
-          event(
-              TENANT,
-              UUID.randomUUID(),
-              "cellarbridge.quotation.draft-created.v1",
-              BASE.plusSeconds(100 + index),
-              "QUOTATION",
-              quotationId,
-              "QUO-CURSOR-BOUND",
-              Map.of("status", "DRAFT", "revision", index + 1, "actorId", ACTOR)));
+      service.project(draftEvent(TENANT, quotationId, occurredAt, "QUO-CURSOR-BOUND", index + 1));
     }
 
-    String cursor;
+    AuditFilter filter =
+        new AuditFilter("QUOTATION", quotationId, null, null, DRAFT_ACTION, null, null);
+    String firstCursor;
     try (TenantContextHolder.Scope ignored = contexts.open(admin(TENANT))) {
-      AuditPage first =
-          service.audit(
-              " QUOTATION ",
-              quotationId,
-              null,
-              null,
-              " QUOTATION_DRAFT_CREATED ",
-              null,
-              null,
-              1,
+      List<UUID> ids = new ArrayList<>();
+      AuditPage page =
+          auditPage(
+              new AuditFilter(
+                  " QUOTATION ", quotationId, null, null, " " + DRAFT_ACTION + " ", null, null),
               null);
-      assertThat(first.pageInfo().hasNext()).isTrue();
-      cursor = first.pageInfo().nextCursor();
-
-      assertThat(
-              service
-                  .audit(
-                      "QUOTATION",
-                      quotationId,
-                      null,
-                      null,
-                      "QUOTATION_DRAFT_CREATED",
-                      null,
-                      null,
-                      2,
-                      cursor)
-                  .items())
-          .isNotEmpty();
-
-      assertCursorRejected(
-          () ->
-              service.audit(
-                  "TRADE_ORDER",
-                  quotationId,
-                  null,
-                  null,
-                  "QUOTATION_DRAFT_CREATED",
-                  null,
-                  null,
-                  1,
-                  cursor));
-      assertCursorRejected(
-          () ->
-              service.audit(
-                  "QUOTATION",
-                  UUID.randomUUID(),
-                  null,
-                  null,
-                  "QUOTATION_DRAFT_CREATED",
-                  null,
-                  null,
-                  1,
-                  cursor));
-      assertCursorRejected(
-          () ->
-              service.audit(
-                  "QUOTATION",
-                  quotationId,
-                  UUID.randomUUID(),
-                  null,
-                  "QUOTATION_DRAFT_CREATED",
-                  null,
-                  null,
-                  1,
-                  cursor));
-      assertCursorRejected(
-          () ->
-              service.audit(
-                  "QUOTATION",
-                  quotationId,
-                  null,
-                  ACTOR,
-                  "QUOTATION_DRAFT_CREATED",
-                  null,
-                  null,
-                  1,
-                  cursor));
-      assertCursorRejected(
-          () ->
-              service.audit(
+      firstCursor = page.pageInfo().nextCursor();
+      while (true) {
+        ids.addAll(page.items().stream().map(item -> item.id()).toList());
+        String cursor = page.pageInfo().nextCursor();
+        if (cursor == null) break;
+        page = auditPage(filter, cursor);
+      }
+      assertThat(ids).hasSize(3).doesNotHaveDuplicates();
+      List.of(
+              new AuditFilter("TRADE_ORDER", quotationId, null, null, DRAFT_ACTION, null, null),
+              new AuditFilter("QUOTATION", UUID.randomUUID(), null, null, DRAFT_ACTION, null, null),
+              new AuditFilter(
+                  "QUOTATION", quotationId, UUID.randomUUID(), null, DRAFT_ACTION, null, null),
+              new AuditFilter("QUOTATION", quotationId, null, ACTOR, DRAFT_ACTION, null, null),
+              new AuditFilter(
+                  "QUOTATION", quotationId, null, null, "QUOTATION_APPROVED", null, null),
+              new AuditFilter("QUOTATION", quotationId, null, null, DRAFT_ACTION, BASE, null),
+              new AuditFilter(
                   "QUOTATION",
                   quotationId,
                   null,
                   null,
-                  "QUOTATION_APPROVED",
+                  DRAFT_ACTION,
                   null,
-                  null,
-                  1,
-                  cursor));
-      assertCursorRejected(
-          () ->
-              service.audit(
-                  "QUOTATION",
-                  quotationId,
-                  null,
-                  null,
-                  "QUOTATION_DRAFT_CREATED",
-                  BASE,
-                  null,
-                  1,
-                  cursor));
-      assertCursorRejected(
-          () ->
-              service.audit(
-                  "QUOTATION",
-                  quotationId,
-                  null,
-                  null,
-                  "QUOTATION_DRAFT_CREATED",
-                  null,
-                  BASE.plusSeconds(1_000),
-                  1,
-                  cursor));
+                  BASE.plusSeconds(1_000)))
+          .forEach(rejected -> assertAuditCursorRejected(firstCursor, rejected));
     }
 
     try (TenantContextHolder.Scope ignored = contexts.open(sales(TENANT))) {
-      assertCursorRejected(
-          () ->
-              service.audit(
-                  "QUOTATION",
-                  quotationId,
-                  null,
-                  null,
-                  "QUOTATION_DRAFT_CREATED",
-                  null,
-                  null,
-                  1,
-                  cursor));
+      assertAuditCursorRejected(firstCursor, filter);
     }
     try (TenantContextHolder.Scope ignored = contexts.open(systemOperator(TENANT))) {
+      assertAuditCursorRejected(firstCursor, filter);
+    }
+    try (TenantContextHolder.Scope ignored = contexts.open(admin(OTHER))) {
+      assertAuditCursorRejected(firstCursor, filter);
+    }
+  }
+
+  @Test
+  @Transactional
+  void paginatesTimelineWithoutGapsAndBindsCursorToTenantAndQuery() throws Exception {
+    UUID quotationId = UUID.randomUUID();
+    Instant occurredAt = BASE.plusSeconds(500);
+    for (int index = 0; index < 3; index++) {
+      service.project(
+          draftEvent(TENANT, quotationId, occurredAt, "QUO-TIMELINE-CURSOR", index + 1));
+    }
+
+    String firstCursor;
+    try (TenantContextHolder.Scope ignored = contexts.open(timelineReader(TENANT))) {
+      PaginatedTimelinePage first = service.timeline("QUOTATION", quotationId, 1, null).data();
+      assertThat(first.items()).hasSize(1);
+      assertThat(first.pageInfo())
+          .returns(1, AuditReportingService.PageInfo::pageSize)
+          .returns(true, AuditReportingService.PageInfo::hasNext);
+      firstCursor = first.pageInfo().nextCursor();
+
+      List<UUID> sourceEventIds = new ArrayList<>();
+      sourceEventIds.add(first.items().getFirst().sourceEventId());
+      for (String cursor = firstCursor; cursor != null; ) {
+        PaginatedTimelinePage page = service.timeline(" quotation ", quotationId, 1, cursor).data();
+        page.items().forEach(item -> sourceEventIds.add(item.sourceEventId()));
+        cursor = page.pageInfo().nextCursor();
+      }
+
+      assertThat(sourceEventIds).hasSize(3).doesNotHaveDuplicates();
+      assertCursorRejected(() -> service.timeline("QUOTATION", UUID.randomUUID(), 1, firstCursor));
+      assertCursorRejected(() -> service.timeline("PARTNER", quotationId, 1, firstCursor));
+    }
+
+    try (TenantContextHolder.Scope ignored = contexts.open(timelineReader(OTHER))) {
+      assertCursorRejected(() -> service.timeline("QUOTATION", quotationId, 1, firstCursor));
+    }
+  }
+
+  @Test
+  @Transactional
+  void paginatesDatedAndUndatedWorkItemsAndBindsEffectiveScope() throws Exception {
+    Instant occurredAt = BASE.plusSeconds(600);
+    for (int index = 0; index < 3; index++) {
+      service.project(approvalEvent(occurredAt, "QUO-WORK-CURSOR-" + index));
+    }
+    for (int index = 0; index < 2; index++) {
+      service.project(
+          exceptionEvent(occurredAt.plusSeconds(index), "EXC-WORK-CURSOR-" + index, "HIGH"));
+    }
+
+    Set<String> types = Set.of("QUOTATION_APPROVAL", "EXCEPTION_ACTION");
+    Set<PermissionCode> permissions =
+        Set.of(
+            PermissionCode.REPORTING_READ,
+            PermissionCode.QUOTATION_APPROVE,
+            PermissionCode.EXCEPTION_ASSIGN);
+    String firstCursor;
+    try (TenantContextHolder.Scope ignored = contexts.open(manager(TENANT, ACTOR, permissions))) {
+      List<UUID> workItemIds = new ArrayList<>();
+      PaginatedWorkItemPage first = workPage(Set.of("HIGH"), types, "WORK-CURSOR", "team", 2, null);
+      assertThat(first.items()).hasSize(2).allSatisfy(item -> assertThat(item.dueAt()).isNotNull());
+      assertThat(first.pageInfo())
+          .returns(2, AuditReportingService.PageInfo::pageSize)
+          .returns(true, AuditReportingService.PageInfo::hasNext);
+      firstCursor = first.pageInfo().nextCursor();
+      first.items().forEach(item -> workItemIds.add(item.id()));
+
+      for (String cursor = firstCursor; cursor != null; ) {
+        PaginatedWorkItemPage page =
+            workPage(Set.of("HIGH"), types, "WORK-CURSOR", "team", 2, cursor);
+        page.items().forEach(item -> workItemIds.add(item.id()));
+        cursor = page.pageInfo().nextCursor();
+      }
+
+      assertThat(workItemIds).hasSize(5).doesNotHaveDuplicates();
       assertCursorRejected(
-          () ->
-              service.audit(
-                  "QUOTATION",
-                  quotationId,
-                  null,
-                  null,
-                  "QUOTATION_DRAFT_CREATED",
-                  null,
-                  null,
-                  1,
-                  cursor));
+          () -> workPage(Set.of("HIGH"), types, "OTHER-SUBJECT", "team", 2, firstCursor));
+    }
+
+    try (TenantContextHolder.Scope ignored =
+        contexts.open(
+            manager(
+                TENANT,
+                ACTOR,
+                Set.of(PermissionCode.REPORTING_READ, PermissionCode.QUOTATION_APPROVE)))) {
+      assertCursorRejected(
+          () -> workPage(Set.of("HIGH"), types, "WORK-CURSOR", "team", 2, firstCursor));
+    }
+    try (TenantContextHolder.Scope ignored = contexts.open(manager(OTHER, ACTOR, permissions))) {
+      assertCursorRejected(
+          () -> workPage(Set.of("HIGH"), types, "WORK-CURSOR", "team", 2, firstCursor));
+    }
+  }
+
+  @Test
+  void derivesFreshnessFromSourceAndCheckpointEvidenceInsteadOfEventAge() throws Exception {
+    TenantId currentTenant = TenantId.of(UUID.randomUUID());
+    EventDelivery current = draftEvent(currentTenant, BASE, "QUO-FRESH-CURRENT");
+    projectAndArchive(current);
+    ProjectionFreshness caughtUp = freshness(currentTenant);
+    assertFreshness(caughtUp, "CURRENT", 0L);
+    assertThat(caughtUp.sourceWatermark()).isEqualTo(caughtUp.processedThrough());
+    assertThat(caughtUp.sourceWatermark().eventId()).isEqualTo(current.eventId());
+    assertThat(caughtUp.lastSuccessfulRefreshAt()).isNotNull();
+
+    TenantId sourceAheadTenant = TenantId.of(UUID.randomUUID());
+    EventDelivery sourceAhead =
+        draftEvent(sourceAheadTenant, BASE.plusSeconds(1), "QUO-FRESH-AHEAD");
+    archive(sourceAhead);
+    ProjectionFreshness stale = freshness(sourceAheadTenant);
+    assertFreshness(stale, "STALE", null, "PROJECTION_STALE");
+    assertThat(stale.sourceWatermark().eventId()).isEqualTo(sourceAhead.eventId());
+    assertThat(stale.processedThrough()).isNull();
+
+    TenantId gapTenant = TenantId.of(UUID.randomUUID());
+    archive(draftEvent(gapTenant, BASE.plusSeconds(1), "QUO-FRESH-GAP"));
+    EventDelivery latest = draftEvent(gapTenant, BASE.plusSeconds(2), "QUO-FRESH-LATEST");
+    projectAndArchive(latest);
+    ProjectionFreshness gap = freshness(gapTenant);
+    assertFreshness(gap, "STALE", 0L, "PROJECTION_STALE");
+    assertThat(gap.sourceWatermark()).isEqualTo(gap.processedThrough());
+
+    TenantId pendingTenant = TenantId.of(UUID.randomUUID());
+    EventDelivery pending =
+        event(
+            pendingTenant,
+            UUID.randomUUID(),
+            "cellarbridge.partner.activated.v1",
+            BASE.plusSeconds(2),
+            "PARTNER",
+            UUID.randomUUID(),
+            "PAR-FRESH-PENDING",
+            Map.of("status", "ACTIVE", "actorId", ACTOR));
+    service.project(pending);
+    archive(pending);
+    ProjectionFreshness pendingFreshness = freshness(pendingTenant);
+    assertFreshness(pendingFreshness, "STALE", 0L, "PROJECTION_STALE", "PROJECTION_PENDING");
+    assertThat(pendingFreshness.pendingCount()).isEqualTo(1);
+
+    TenantId deadTenant = TenantId.of(UUID.randomUUID());
+    EventDelivery deadSource = draftEvent(deadTenant, BASE.plusSeconds(3), "QUO-FRESH-DEAD");
+    archive(deadSource);
+    service.project(
+        new EventDelivery(
+            deadSource.eventId(),
+            deadSource.tenantId(),
+            deadSource.eventType(),
+            deadSource.eventVersion(),
+            deadSource.occurredAt(),
+            deadSource.producer(),
+            deadSource.subject(),
+            deadSource.correlationId(),
+            deadSource.causationId(),
+            "{"));
+    ProjectionFreshness deadFreshness = freshness(deadTenant);
+    assertFreshness(deadFreshness, "STALE", 0L, "PROJECTION_STALE", "PROJECTION_DEAD_LETTER");
+    assertThat(deadFreshness.deadLetterCount()).isEqualTo(1);
+    assertThat(deadFreshness.lastSuccessfulRefreshAt()).isNull();
+
+    TenantId unknownTenant = TenantId.of(UUID.randomUUID());
+    service.project(draftEvent(unknownTenant, BASE.plusSeconds(4), "QUO-FRESH-UNKNOWN"));
+    assertFreshness(freshness(unknownTenant), "UNKNOWN", null, "PROJECTION_FRESHNESS_UNKNOWN");
+
+    TenantId emptyTenant = TenantId.of(UUID.randomUUID());
+    assertFreshness(freshness(emptyTenant), "EMPTY", null);
+
+    jdbc.update(
+        """
+        INSERT INTO audit_reporting.projection_generation
+          (tenant_id,generation,status,schema_version,source_event_count,created_at)
+        VALUES (?,2,'STAGING',1,0,CURRENT_TIMESTAMP)
+        """,
+        currentTenant.value());
+    assertFreshness(freshness(currentTenant), "REBUILDING", 0L, "PROJECTION_REBUILDING");
+    try (TenantContextHolder.Scope ignored = contexts.open(admin(currentTenant))) {
+      assertThat(
+              service
+                  .dashboard(LocalDate.of(2026, 7, 22), LocalDate.of(2026, 7, 22))
+                  .projectionStatus())
+          .isEqualTo("REBUILDING");
+      assertThat(service.timeline("QUOTATION", current.subject().id(), 25).projectionStatus())
+          .isEqualTo("STALE");
     }
   }
 
@@ -510,6 +597,10 @@ class AuditReportingIntegrationTest extends PostgresIntegrationTestSupport {
 
   private void projectAndArchive(EventDelivery event) throws Exception {
     service.project(event);
+    archive(event);
+  }
+
+  private void archive(EventDelivery event) throws Exception {
     String envelope =
         json.writeValueAsString(
             Map.ofEntries(
@@ -559,6 +650,90 @@ class AuditReportingIntegrationTest extends PostgresIntegrationTestSupport {
         Timestamp.from(event.occurredAt()));
   }
 
+  private ProjectionFreshness freshness(TenantId tenantId) {
+    try (TenantContextHolder.Scope ignored = contexts.open(admin(tenantId))) {
+      return service.reportingProjectionFreshness();
+    }
+  }
+
+  private static void assertWarningCodes(ProjectionFreshness freshness, String... codes) {
+    assertThat(ReportingMcpProvider.projectionWarnings(freshness, freshness.projectionStatus()))
+        .extracting(McpWarning::code)
+        .containsExactly(codes);
+  }
+
+  private static void assertFreshness(
+      ProjectionFreshness freshness, String status, Long lagSeconds, String... warningCodes) {
+    assertThat(freshness.projectionStatus()).isEqualTo(status);
+    assertThat(freshness.projectionLagSeconds()).isEqualTo(lagSeconds);
+    assertWarningCodes(freshness, warningCodes);
+  }
+
+  private PaginatedWorkItemPage workPage(
+      Set<String> priorities,
+      Set<String> types,
+      String subjectNumber,
+      String scope,
+      int pageSize,
+      String cursor) {
+    return service.workItems(
+        Set.of("OPEN"), priorities, types, null, null, subjectNumber, scope, pageSize, cursor);
+  }
+
+  private EventDelivery approvalEvent(Instant occurredAt, String subjectNumber) throws Exception {
+    UUID quotationId = UUID.randomUUID();
+    return event(
+        TENANT,
+        UUID.randomUUID(),
+        "cellarbridge.quotation.approval-requested.v1",
+        occurredAt,
+        "QUOTATION",
+        quotationId,
+        subjectNumber,
+        Map.of(
+            "quotationId",
+            quotationId,
+            "status",
+            "PENDING_APPROVAL",
+            "revision",
+            1,
+            "actorId",
+            ACTOR));
+  }
+
+  private EventDelivery exceptionEvent(Instant occurredAt, String subjectNumber, String severity)
+      throws Exception {
+    UUID exceptionId = UUID.randomUUID();
+    return event(
+        TENANT,
+        UUID.randomUUID(),
+        "cellarbridge.exception.opened.v1",
+        occurredAt,
+        "EXCEPTION",
+        exceptionId,
+        subjectNumber,
+        Map.of("status", "OPEN", "severity", severity, "actorId", ACTOR));
+  }
+
+  private EventDelivery draftEvent(TenantId tenant, Instant occurredAt, String subjectNumber)
+      throws Exception {
+    return draftEvent(tenant, UUID.randomUUID(), occurredAt, subjectNumber, 1);
+  }
+
+  private EventDelivery draftEvent(
+      TenantId tenant, UUID quotationId, Instant occurredAt, String subjectNumber, int revision)
+      throws Exception {
+    return event(
+        tenant,
+        UUID.randomUUID(),
+        "cellarbridge.quotation.draft-created.v1",
+        occurredAt,
+        "QUOTATION",
+        quotationId,
+        subjectNumber,
+        Map.of("status", "DRAFT", "revision", revision, "actorId", ACTOR));
+  }
+
   private EventDelivery event(
       TenantId tenant,
       UUID eventId,
@@ -606,6 +781,33 @@ class AuditReportingIntegrationTest extends PostgresIntegrationTestSupport {
     return value == null ? 0 : value;
   }
 
+  private AuditPage auditPage(AuditFilter filter, String cursor) {
+    return service.boundedAudit(
+        new AuditQuery(
+            filter.subjectType(),
+            filter.subjectId(),
+            filter.correlationId(),
+            filter.actorId(),
+            filter.action(),
+            filter.from(),
+            filter.to(),
+            1,
+            cursor));
+  }
+
+  private void assertAuditCursorRejected(String cursor, AuditFilter filter) {
+    assertCursorRejected(() -> auditPage(filter, cursor));
+  }
+
+  private record AuditFilter(
+      String subjectType,
+      UUID subjectId,
+      UUID correlationId,
+      UUID actorId,
+      String action,
+      Instant from,
+      Instant to) {}
+
   private static void assertCursorRejected(
       org.assertj.core.api.ThrowableAssert.ThrowingCallable call) {
     assertThatThrownBy(call)
@@ -614,65 +816,88 @@ class AuditReportingIntegrationTest extends PostgresIntegrationTestSupport {
   }
 
   private static TenantContext admin(TenantId tenantId) {
-    return new TenantContext(
+    return context(
+        tenantId,
         ACTOR,
         "Tenant Administrator",
-        tenantId,
-        "Synthetic Cellars",
-        "ACTIVE",
-        null,
-        Set.of("Tenant Administrator"),
-        Set.of("tenant-administrator"),
+        "tenant-administrator",
         Set.of(
             PermissionCode.REPORTING_READ,
             PermissionCode.AUDIT_READ,
+            PermissionCode.QUOTATION_READ,
             PermissionCode.ADMINISTRATION_MANAGE_ACCESS),
-        "reporting-subject",
-        "reporting-tenant");
+        "reporting-subject");
   }
 
   private static TenantContext sales(TenantId tenantId) {
-    return new TenantContext(
+    return context(
+        tenantId,
         ACTOR,
         "Sales Representative",
-        tenantId,
-        "Synthetic Cellars",
-        "ACTIVE",
-        null,
-        Set.of("Sales Representative"),
-        Set.of("sales-representative"),
+        "sales-representative",
         Set.of(PermissionCode.REPORTING_READ, PermissionCode.AUDIT_READ),
-        "reporting-sales-subject",
-        "reporting-tenant");
+        "reporting-sales-subject");
   }
 
   private static TenantContext quotationReader(TenantId tenantId) {
-    return new TenantContext(
+    return context(
+        tenantId,
         ACTOR,
         "Sales Representative",
-        tenantId,
-        "Synthetic Cellars",
-        "ACTIVE",
-        null,
-        Set.of("Sales Representative"),
-        Set.of("sales-representative"),
+        "sales-representative",
         Set.of(PermissionCode.QUOTATION_READ),
-        "reporting-sales-subject",
-        "reporting-tenant");
+        "reporting-sales-subject");
+  }
+
+  private static TenantContext timelineReader(TenantId tenantId) {
+    return context(
+        tenantId,
+        ACTOR,
+        "Timeline Reader",
+        "timeline-reader",
+        Set.of(PermissionCode.PARTNER_READ, PermissionCode.QUOTATION_READ),
+        "reporting-timeline-subject");
   }
 
   private static TenantContext systemOperator(TenantId tenantId) {
-    return new TenantContext(
+    return context(
+        tenantId,
         ACTOR,
         "System Operator",
+        "system-operator",
+        Set.of(PermissionCode.AUDIT_READ),
+        "reporting-operator-subject");
+  }
+
+  private static TenantContext manager(
+      TenantId tenantId, UUID userId, Set<PermissionCode> permissions) {
+    return context(
+        tenantId,
+        userId,
+        "Sales Manager",
+        "sales-manager",
+        permissions,
+        "reporting-manager-subject");
+  }
+
+  private static TenantContext context(
+      TenantId tenantId,
+      UUID userId,
+      String roleName,
+      String roleCode,
+      Set<PermissionCode> permissions,
+      String subject) {
+    return new TenantContext(
+        userId,
+        roleName,
         tenantId,
         "Synthetic Cellars",
         "ACTIVE",
         null,
-        Set.of("System Operator"),
-        Set.of("system-operator"),
-        Set.of(PermissionCode.AUDIT_READ),
-        "reporting-operator-subject",
+        Set.of(roleName),
+        Set.of(roleCode),
+        permissions,
+        subject,
         "reporting-tenant");
   }
 }

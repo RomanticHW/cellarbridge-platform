@@ -382,11 +382,24 @@ public class InventoryReservationOperationsService {
   private Detail detail(TenantContext context, ReservationAggregate aggregate) {
     Set<UUID> exactPoolIds =
         context.hasPermission(PermissionCode.INVENTORY_READ_EXACT)
-            ? supplyQuery.authorizedSupplyPoolIds()
+            ? supplyQuery.authorizedSupplyPoolIds(
+                aggregate.allocations().stream()
+                    .map(allocation -> allocation.supplyPoolId())
+                    .collect(java.util.stream.Collectors.toUnmodifiableSet()))
             : Set.of();
     Map<UUID, String> warehouseLabelsByLot = new HashMap<>();
     supplyQuery
-        .findAuthorizedLots(exactPoolIds)
+        .findAuthorizedLots(
+            aggregate.allocations().stream()
+                .filter(allocation -> exactPoolIds.contains(allocation.supplyPoolId()))
+                .map(
+                    allocation ->
+                        new InventorySupplyQuery.ExactLotCandidate(
+                            allocation.supplyPoolId(),
+                            allocation.skuId(),
+                            allocation.quantityUnit()))
+                .collect(java.util.stream.Collectors.toUnmodifiableSet()),
+            Integer.MAX_VALUE)
         .forEach(lot -> warehouseLabelsByLot.put(lot.lotId(), lot.warehouseLabel()));
     Reservation reservation = aggregate.reservation();
     Set<String> allowed = allowedActions(context, reservation, aggregate.allocations());

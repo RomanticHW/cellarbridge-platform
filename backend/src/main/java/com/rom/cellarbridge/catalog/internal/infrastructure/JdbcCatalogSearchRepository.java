@@ -130,12 +130,12 @@ public class JdbcCatalogSearchRepository implements CatalogSearchRepository {
 
   @Override
   public List<SupplyProjectionRecord> findSupplyProjections(
-      TenantId tenantId, Set<UUID> skuIds, SearchCriteria criteria) {
+      TenantId tenantId, Set<UUID> skuIds, SearchCriteria criteria, int limit) {
     if (skuIds == null || skuIds.isEmpty()) {
       return List.of();
     }
     MapSqlParameterSource parameters =
-        baseParameters(tenantId, criteria).addValue("skuIds", skuIds);
+        baseParameters(tenantId, criteria).addValue("skuIds", skuIds).addValue("limit", limit);
     StringBuilder where =
         new StringBuilder(" WHERE sp.tenant_id = :tenantId AND sp.sku_id IN (:skuIds)");
     appendSupplyFilters(where, parameters, criteria, "sp");
@@ -158,6 +158,7 @@ public class JdbcCatalogSearchRepository implements CatalogSearchRepository {
                   sp.quantity_unit,
                   sp.location_label,
                   sp.supply_pool_id
+         LIMIT :limit
         """
             .formatted(where),
         parameters,

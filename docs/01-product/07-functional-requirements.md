@@ -124,10 +124,13 @@
 |---|---|---:|---|
 | FR-MCP-001 | 系统应在同一后端进程的 `/mcp` 暴露 STATELESS Streamable HTTP | P0 | MCP 2025-11-25 initialize/ping/list conformance 通过 |
 | FR-MCP-002 | MCP 请求必须验证与现有 API 相同 audience 的 Bearer Token | P0 | 未认证为 401；令牌不出现在响应、日志或证据中 |
-| FR-MCP-003 | MCP 必须准确暴露 6 个只读 tools、3 个 resources 和 3 个 prompts | P0 | list 结果与能力合同完全一致，工具只读提示完整 |
+| FR-MCP-003 | MCP 必须准确暴露 6 个只读 tools、1 个固定 resource、2 个 resource templates 和 3 个 prompts | P0 | list 结果与能力合同完全一致，工具只读提示完整 |
 | FR-MCP-004 | MCP 必须复用现有权限、租户、所有权和字段投影 | P0 | tenant/role/warehouse/partner/ID 猜测负向矩阵通过 |
 | FR-MCP-005 | MCP 错误必须稳定、可操作且不泄露内部异常或存在性 | P0 | 非法参数、拒绝与不存在均返回安全 envelope |
 | FR-MCP-006 | 当前版本不得提供业务写工具或内置模型/RAG/向量库 | P0 | 能力清单与运行时依赖检查无越界 |
+| FR-MCP-007 | 每个 Tool 必须声明与真实结果一致的严格 `outputSchema`，业务 envelope 独立版本化 | P0 | 六个成功结果逐一校验；公共错误按代表场景校验；禁止无类型 `data` |
+| FR-MCP-008 | 集合 Tool 必须提供签名 cursor 稳定分页，并受 page、集合元素和序列化字节预算约束 | P0 | 首/中/末页、同键排序、篡改/跨查询/跨租户/过期 cursor 与超限错误均有测试 |
+| FR-MCP-009 | MCP 必须返回可机器判断的 freshness evidence 和结构化 warning | P0 | Reporting 以 source watermark/checkpoint 判定；Supply 无可验证水位时返回 `UNKNOWN`，安静但同步的投影保持 `CURRENT` |
 
 ## 12. 通知与工作队列
 

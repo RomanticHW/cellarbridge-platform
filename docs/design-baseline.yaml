@@ -11,6 +11,7 @@ baseline:
   current_openapi_contract: "1.13.0"
   current_asyncapi_contract: "1.5.0"
   current_mcp_protocol: "2025-11-25"
+  current_mcp_envelope: "2.0"
   current_database_migration: 22
   current_route_policy: ROUTE-2026-03
   route_input_summary_schema: 3
@@ -28,6 +29,10 @@ baseline:
   public_release: available
   mcp_operations: available
   agent_workflows: available
+  mcp_strict_tool_output_schemas: available
+  mcp_signed_cursor_pagination: available
+  mcp_source_watermark_freshness: available
+  mcp_response_budget: available
   architecture_style: domain-oriented-modular-monolith
   primary_scenario: b2b-quotation-to-order-to-fulfillment
   data_policy: synthetic-only

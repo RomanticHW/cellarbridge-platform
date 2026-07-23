@@ -46,7 +46,7 @@ Vector Store、RAG、tool-calling loop 或任何模型供应商 SDK。
 - Provider 不接收 tenant、actor、role、permission、partner 或 warehouse assignment 参数；
 - 不增加业务表、Flyway migration、跨模块 SQL 或跨模块 `internal` 依赖。
 
-首版注册且仅注册六个只读 Tool：
+当前注册且仅注册六个只读 Tool：
 
 1. `cellarbridge_current_user`
 2. `cellarbridge_search_supply`
@@ -55,13 +55,13 @@ Vector Store、RAG、tool-calling loop 或任何模型供应商 SDK。
 5. `cellarbridge_get_timeline`
 6. `cellarbridge_search_audit`
 
-首版注册三个 Resource：
+当前 discovery 暴露一个固定 Resource 与两个 Resource Template：
 
 1. `cellarbridge://session/me`
 2. `cellarbridge://catalog/skus/{skuId}`
 3. `cellarbridge://timeline/{subjectType}/{subjectId}`
 
-首版注册三个固定 Prompt：
+当前注册三个固定 Prompt：
 
 1. `cellarbridge_daily_operations_brief`
 2. `cellarbridge_supply_search_brief`
@@ -79,7 +79,7 @@ JWT 建立新的 TenantContext，并在请求结束后清理；无状态 transpo
 MCP 参数和 Prompt 文本不具有授权含义。业务 Provider 继续执行 tenant、permission、role、
 owner、partner、warehouse assignment、状态与字段级约束。客户端声明“需要分析”不能提升权限。
 
-当前 Audit/Reporting timeline 对 Quotation/Trade Order 的普通 Sales owner scope 不能仅由其
+当前 Audit/Reporting timeline 对 Quotation/Trade Order/Order 的普通 Sales owner scope 不能仅由其
 查询接口完整证明，因此 MCP 对纯 `sales-representative` 读取这些 subject type 采用更严格的
 拒绝策略。只有源对象完整授权可被验证的身份才能通过 MCP 读取对应 timeline；后续若增加源模块
 owner-scope authorizer，必须先补测试与合同变更，再评估放宽。Buyer 仍固定为 JWT 映射的
@@ -92,13 +92,21 @@ partner scope。
 - 工具统一声明 `readOnlyHint=true`、`destructiveHint=false`、
   `openWorldHint=false`；
 - Resource URI 只接受声明的 scheme、路径模板、subject type 和 canonical UUID；
-- 成功输出携带来源、freshness、correlation 和 warning；
-- 协议、校验、授权和内部异常都映射为稳定安全错误；
+- 每个 Tool 声明与其真实 `data` 一致的严格 JSON Schema 2020-12 `outputSchema`；
+- 业务 envelope 使用独立于 MCP protocol 的 `schemaVersion=2.0`，warning 使用稳定
+  `code + severity + safeMessage` 对象；
+- 四个集合 Tool 使用绑定 tenant/query/授权范围/排序位置/版本/有效期的签名 cursor；
+- Reporting freshness 使用 source/checkpoint/pending/dead-letter/rebuild 证据，Supply 明确为
+  `OBSERVATION_AGE/UNKNOWN`；
+- 默认序列化响应上限为 256 KiB，嵌套集合元素总预算为 1,000；超过预算返回完整的
+  `RESULT_TOO_LARGE` 安全错误，不返回截断 JSON；
+- 成功输出携带来源、freshness evidence、correlation 和结构化 warning；
+- SDK input schema 拒绝采用标准 MCP `isError/text`；业务校验、授权和内部异常使用稳定安全 envelope；
 - 响应、日志、Prompt 和 error data 不包含 Authorization header、JWT、portal token、
   cursor secret、idempotency hash、SQL、表名、内部类名、路径、堆栈或原始异常消息；
 - 所有 MCP 响应使用 `Cache-Control: no-store`。
 
-第一阶段不实现通用 MCP OAuth discovery、动态客户端注册或独立 authorization server
+当前阶段不实现通用 MCP OAuth discovery、动态客户端注册或独立 authorization server
 metadata。它是复用现有 API Bearer token 的受控入口，不得宣传成通用 OAuth MCP 部署。
 
 ## 方案比较
@@ -119,7 +127,7 @@ metadata。它是复用现有 API Bearer token 的受控入口，不得宣传成
 - MCP 客户端、Tool 描述和 Prompt 都视为不可信输入，不能改变服务端权限；
 - 同进程意味着 MCP 与 REST 共享 JVM 资源，必须通过输入上限、分页上限、超时和观测防止
   单个客户端无界消耗资源；
-- 首版无写工具，所以不建立幂等写入、审批委托或无人值守执行语义。
+- 当前无写工具，所以不建立幂等写入、审批委托或无人值守执行语义。
 
 ## 后果
 
@@ -130,7 +138,7 @@ metadata。它是复用现有 API Bearer token 的受控入口，不得宣传成
 同进程减少了身份传播和部署复杂度，但 MCP 与主应用共享故障域；运行时必须监测 HTTP
 错误、耗时和资源使用。无状态模式简化身份隔离，但客户端不能依赖 server session 保存上下文。
 
-纯 Sales 对 Quotation/Trade Order timeline 暂时比现有页面更严格，这是已知的 fail-closed
+纯 Sales 对 Quotation/Trade Order/Order timeline 暂时比现有页面更严格，这是已知的 fail-closed
 差异，不得通过 MCP Provider 自行查询其他模块数据来补齐。
 
 ## 回滚

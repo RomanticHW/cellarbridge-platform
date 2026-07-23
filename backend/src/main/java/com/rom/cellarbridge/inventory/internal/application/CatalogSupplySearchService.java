@@ -12,6 +12,7 @@ import com.rom.cellarbridge.identityaccess.TenantContextHolder;
 import com.rom.cellarbridge.inventory.AvailabilityClass;
 import com.rom.cellarbridge.inventory.InventorySupplyQuery;
 import com.rom.cellarbridge.inventory.InventorySupplyQuery.ExactLotAvailability;
+import com.rom.cellarbridge.inventory.InventorySupplyQuery.ExactLotCandidate;
 import com.rom.cellarbridge.inventory.QuantityUnit;
 import com.rom.cellarbridge.inventory.SupplyType;
 import java.math.BigDecimal;
@@ -47,14 +48,20 @@ public class CatalogSupplySearchService {
   }
 
   public SearchPage search(SearchCommand command) {
+    return search(command, Integer.MAX_VALUE);
+  }
+
+  public SearchPage search(SearchCommand command, int maxExactLots) {
+    if (maxExactLots < 1) throw new IllegalArgumentException("maxExactLots must be positive");
     TenantContext context = requireSearchAccess();
     CatalogSearchQuery.SearchPage catalogPage =
-        catalogSearchQuery.search(context.tenantId(), toCatalogCommand(command));
-    List<SkuSearchItem> items = enrich(catalogPage.items(), context);
+        catalogSearchQuery.search(
+            context.tenantId(),
+            toCatalogCommand(command, authorizationScope(context), maxExactLots));
+    List<SkuSearchItem> items = enrich(catalogPage.items(), context, maxExactLots);
     Instant dataAsOf =
         items.stream()
-            .flatMap(item -> item.supplies().stream())
-            .map(SupplyView::dataAsOf)
+            .map(CatalogSupplySearchService::dataAsOf)
             .max(Comparator.naturalOrder())
             .orElse(catalogPage.dataAsOf());
     return new SearchPage(
@@ -67,9 +74,13 @@ public class CatalogSupplySearchService {
   }
 
   public SkuSearchItem get(UUID skuId) {
+    return get(skuId, Integer.MAX_VALUE);
+  }
+
+  public SkuSearchItem get(UUID skuId, int maxExactLots) {
     TenantContext context = requireSearchAccess();
-    CatalogSearchItem item = catalogSearchQuery.get(context.tenantId(), skuId);
-    return enrich(List.of(item), context).getFirst();
+    CatalogSearchItem item = catalogSearchQuery.get(context.tenantId(), skuId, maxExactLots);
+    return enrich(List.of(item), context, maxExactLots).getFirst();
   }
 
   private TenantContext requireSearchAccess() {
@@ -79,17 +90,43 @@ public class CatalogSupplySearchService {
     return context;
   }
 
-  private List<SkuSearchItem> enrich(List<CatalogSearchItem> catalogItems, TenantContext context) {
+  private List<SkuSearchItem> enrich(
+      List<CatalogSearchItem> catalogItems, TenantContext context, int maxExactLots) {
     boolean exact = context.hasPermission(PermissionCode.INVENTORY_READ_EXACT);
-    Set<UUID> authorizedPools = exact ? inventorySupplyQuery.authorizedSupplyPoolIds() : Set.of();
-    Set<UUID> visiblePoolIds =
+    Set<ExactLotCandidate> visibleCandidates =
         catalogItems.stream()
-            .flatMap(item -> item.supplies().stream())
-            .map(SupplyProjectionView::supplyPoolId)
+            .flatMap(
+                item ->
+                    item.supplies().stream()
+                        .filter(SupplyProjectionView::automaticallyReservable)
+                        .map(
+                            supply ->
+                                new ExactLotCandidate(
+                                    supply.supplyPoolId(),
+                                    item.sku().id(),
+                                    QuantityUnit.valueOf(supply.quantityUnit()))))
             .collect(Collectors.toUnmodifiableSet());
+    Set<UUID> authorizedPools =
+        exact
+            ? inventorySupplyQuery.authorizedSupplyPoolIds(
+                visibleCandidates.stream()
+                    .map(ExactLotCandidate::supplyPoolId)
+                    .collect(Collectors.toUnmodifiableSet()))
+            : Set.of();
+    Set<ExactLotCandidate> authorizedCandidates =
+        visibleCandidates.stream()
+            .filter(candidate -> authorizedPools.contains(candidate.supplyPoolId()))
+            .collect(Collectors.toUnmodifiableSet());
+    List<ExactLotAvailability> lots =
+        exact
+            ? inventorySupplyQuery.findAuthorizedLots(
+                authorizedCandidates,
+                maxExactLots == Integer.MAX_VALUE ? Integer.MAX_VALUE : maxExactLots + 1)
+            : List.of();
+    if (lots.size() > maxExactLots) throw new ExactLotResultLimitExceededException();
     Map<SupplyLotKey, List<ExactLotAvailability>> lotsBySupply =
         exact
-            ? inventorySupplyQuery.findAuthorizedLots(visiblePoolIds).stream()
+            ? lots.stream()
                 .collect(
                     Collectors.groupingBy(
                         lot ->
@@ -175,6 +212,14 @@ public class CatalogSupplySearchService {
         dataAsOf);
   }
 
+  private static Instant dataAsOf(SkuSearchItem item) {
+    return item.supplies().stream()
+        .map(SupplyView::dataAsOf)
+        .max(Comparator.naturalOrder())
+        .filter(value -> value.isAfter(item.sku().updatedAt()))
+        .orElse(item.sku().updatedAt());
+  }
+
   private static SkuView toSkuView(CatalogSkuView sku) {
     return new SkuView(
         sku.id(),
@@ -193,7 +238,8 @@ public class CatalogSupplySearchService {
         sku.updatedAt());
   }
 
-  private static CatalogSearchQuery.SearchCommand toCatalogCommand(SearchCommand command) {
+  private static CatalogSearchQuery.SearchCommand toCatalogCommand(
+      SearchCommand command, String authorizationScope, int maxSupplyProjections) {
     return new CatalogSearchQuery.SearchCommand(
         command.keyword(),
         command.producer(),
@@ -210,7 +256,13 @@ public class CatalogSupplySearchService {
         command.availableTo(),
         command.sort(),
         command.pageSize(),
-        command.cursor());
+        command.cursor(),
+        authorizationScope,
+        maxSupplyProjections);
+  }
+
+  private static String authorizationScope(TenantContext context) {
+    return context.userId() + "|" + context.hasPermission(PermissionCode.INVENTORY_READ_EXACT);
   }
 
   private static <T extends Enum<T>> Set<String> names(Set<T> values) {
@@ -244,6 +296,8 @@ public class CatalogSupplySearchService {
       int pageSize,
       Instant dataAsOf,
       String availabilityDisclaimer) {}
+
+  public static final class ExactLotResultLimitExceededException extends RuntimeException {}
 
   public record SkuSearchItem(SkuView sku, List<SupplyView> supplies) {}
 

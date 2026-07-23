@@ -117,6 +117,8 @@
 | `EVENT_HANDLER_RETRY_EXHAUSTED` | 自动重试耗尽 |
 | `EVENT_REPLAY_NOT_ALLOWED` | 无权限/状态不允许重放 |
 | `PROJECTION_REBUILD_IN_PROGRESS` | 投影重建中 |
+| `CURSOR_INVALID` | cursor 畸形、过期，或与 tenant、查询、能力、授权范围不匹配 |
+| `RESULT_TOO_LARGE` | 读取结果超过已配置的 byte 或集合元素预算 |
 
 ## 9. 字段错误
 

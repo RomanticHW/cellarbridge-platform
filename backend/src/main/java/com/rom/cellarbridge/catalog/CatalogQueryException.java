@@ -17,12 +17,17 @@ public final class CatalogQueryException extends RuntimeException {
     return new CatalogQueryException(Code.NOT_FOUND, "SKU was not found in the current tenant");
   }
 
+  public static CatalogQueryException resultTooLarge() {
+    return new CatalogQueryException(Code.RESULT_TOO_LARGE, "Catalog result exceeds its budget");
+  }
+
   public Code code() {
     return code;
   }
 
   public enum Code {
     INVALID_REQUEST,
-    NOT_FOUND
+    NOT_FOUND,
+    RESULT_TOO_LARGE
   }
 }
