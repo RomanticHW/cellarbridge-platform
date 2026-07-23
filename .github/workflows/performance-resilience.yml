@@ -60,7 +60,7 @@ jobs:
 
       - name: Set up pnpm for the full outage profile
         if: inputs.profile == 'full'
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 11.12.0
 
