@@ -6,6 +6,7 @@ import com.rom.cellarbridge.identityaccess.TenantContext;
 import com.rom.cellarbridge.identityaccess.TenantContextHolder;
 import com.rom.cellarbridge.identityaccess.TenantId;
 import com.rom.cellarbridge.inventory.InventorySupplyQuery;
+import com.rom.cellarbridge.inventory.InventorySupplyQuery.ExactLotCandidate;
 import com.rom.cellarbridge.inventory.QuantityUnit;
 import com.rom.cellarbridge.inventory.SupplyType;
 import java.sql.Timestamp;
@@ -36,7 +37,8 @@ public class JdbcInventorySupplyQuery implements InventorySupplyQuery {
   }
 
   @Override
-  public Set<UUID> authorizedSupplyPoolIds() {
+  public Set<UUID> authorizedSupplyPoolIds(Set<UUID> candidateIds) {
+    if (candidateIds == null || candidateIds.isEmpty()) return Set.of();
     TenantContext context = requireExactAccess();
     return jdbc
         .query(
@@ -50,24 +52,38 @@ public class JdbcInventorySupplyQuery implements InventorySupplyQuery {
                 ON wa.tenant_id = sp.tenant_id
                AND wa.warehouse_id = sp.warehouse_id
              WHERE sp.tenant_id = :tenantId
+               AND sp.id IN (:candidateIds)
                AND wa.user_id = :userId
                AND sp.status = 'ACTIVE'
                AND w.status = 'ACTIVE'
              ORDER BY sp.id
             """,
-            parameters(context),
+            parameters(context).addValue("candidateIds", candidateIds),
             (resultSet, rowNumber) -> resultSet.getObject("id", UUID.class))
         .stream()
         .collect(Collectors.toUnmodifiableSet());
   }
 
   @Override
-  public List<ExactLotAvailability> findAuthorizedLots(Set<UUID> supplyPoolIds) {
-    if (supplyPoolIds == null || supplyPoolIds.isEmpty()) {
-      return List.of();
-    }
+  public List<ExactLotAvailability> findAuthorizedLots(
+      Set<ExactLotCandidate> candidates, int maxResults) {
+    if (candidates == null || candidates.isEmpty()) return List.of();
+    if (maxResults < 1) throw new IllegalArgumentException("maxResults must be positive");
     TenantContext context = requireExactAccess();
-    MapSqlParameterSource parameters = parameters(context).addValue("supplyPoolIds", supplyPoolIds);
+    MapSqlParameterSource parameters =
+        parameters(context)
+            .addValue(
+                "supplyPoolIds",
+                candidates.stream()
+                    .map(ExactLotCandidate::supplyPoolId)
+                    .collect(Collectors.toSet()))
+            .addValue(
+                "skuIds",
+                candidates.stream().map(ExactLotCandidate::skuId).collect(Collectors.toSet()))
+            .addValue(
+                "candidateKeys",
+                candidates.stream().map(ExactLotCandidate::key).collect(Collectors.toSet()))
+            .addValue("maxResults", maxResults);
     return jdbc.query(
         """
         SELECT l.supply_pool_id,
@@ -97,11 +113,15 @@ public class JdbcInventorySupplyQuery implements InventorySupplyQuery {
            AND wa.user_id = :userId
          WHERE l.tenant_id = :tenantId
            AND l.supply_pool_id IN (:supplyPoolIds)
+           AND l.sku_id IN (:skuIds)
+           AND (l.supply_pool_id::text || '|' || l.sku_id::text || '|' || l.quantity_unit)
+               IN (:candidateKeys)
            AND l.status = 'AVAILABLE'
            AND sp.status = 'ACTIVE'
            AND w.status = 'ACTIVE'
          ORDER BY l.supply_pool_id, l.sku_id, l.quantity_unit,
                   l.available_from NULLS LAST, l.received_at NULLS LAST, l.lot_code, l.id
+         LIMIT :maxResults
         """,
         parameters,
         (resultSet, rowNumber) ->

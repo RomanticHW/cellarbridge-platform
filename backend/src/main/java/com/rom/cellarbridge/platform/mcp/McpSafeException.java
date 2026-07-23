@@ -23,6 +23,16 @@ public final class McpSafeException extends RuntimeException {
         "RESOURCE_NOT_FOUND", false, "The requested resource was not found.");
   }
 
+  public static McpSafeException invalidCursor() {
+    return new McpSafeException(
+        "CURSOR_INVALID", false, "The cursor is invalid, expired, or does not match this query.");
+  }
+
+  public static McpSafeException resultTooLarge() {
+    return new McpSafeException(
+        "RESULT_TOO_LARGE", false, "Narrow the query or request a smaller page.");
+  }
+
   public String code() {
     return code;
   }

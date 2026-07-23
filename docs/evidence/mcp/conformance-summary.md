@@ -16,7 +16,7 @@ The pre-conformance smoke passed with:
 
 - MCP protocol `2025-11-25`;
 - real OIDC Bearer authentication;
-- exactly 6 tools, 3 resources and 3 prompts;
+- exactly 6 tools, 1 fixed resource, 2 resource templates and 3 prompts;
 - initialize, discovery, tool call and resource read;
 - unauthenticated `401`, invalid Origin `403`, tenant-aware identity and Buyer supply denial;
 - no access token in backend logs.

@@ -1,5 +1,6 @@
 package com.rom.cellarbridge.auditreporting.internal.application;
 
+import com.rom.cellarbridge.auditreporting.internal.application.ProjectionEventSource.Watermark;
 import com.rom.cellarbridge.identityaccess.TenantId;
 import com.rom.cellarbridge.platform.EventDelivery;
 import java.math.BigDecimal;
@@ -45,7 +46,8 @@ public interface AuditReportingStore {
       LocalDate to,
       UUID ownerId,
       Set<String> allowedMetricTypes,
-      Instant generatedAt);
+      Instant generatedAt,
+      int chartLimit);
 
   List<AuditRecord> audit(
       TenantId tenantId,
@@ -55,7 +57,13 @@ public interface AuditReportingStore {
       int pageSize);
 
   List<TimelineRecord> timeline(
-      TenantId tenantId, String subjectType, UUID subjectId, UUID partnerScope, int pageSize);
+      TenantId tenantId,
+      String subjectType,
+      UUID subjectId,
+      UUID partnerScope,
+      Instant beforeOccurredAt,
+      UUID beforeSourceEventId,
+      int pageSize);
 
   List<WorkItemRecord> workItems(
       TenantId tenantId,
@@ -63,9 +71,12 @@ public interface AuditReportingStore {
       UUID userId,
       Set<String> permissionValues,
       boolean teamScope,
+      Instant afterDueAt,
+      String afterPriority,
+      UUID afterId,
       int pageSize);
 
-  ProjectionFreshness projectionFreshness(TenantId tenantId, Instant generatedAt);
+  ProjectionCheckpoint projectionCheckpoint(TenantId tenantId);
 
   long beginRebuild(TenantId tenantId, Instant now);
 
@@ -139,7 +150,7 @@ public interface AuditReportingStore {
       LocalDate to,
       Instant generatedAt,
       Instant dataAsOf,
-      long projectionLagSeconds,
+      Long projectionLagSeconds,
       String projectionStatus,
       Map<String, Object> metrics,
       Map<String, List<Map<String, Object>>> charts) {}
@@ -196,8 +207,45 @@ public interface AuditReportingStore {
       Instant dueTo,
       String subjectNumber) {}
 
+  record ProjectionCheckpoint(
+      boolean activeGeneration,
+      boolean rebuilding,
+      boolean checkpointPresent,
+      Instant dataAsOf,
+      Watermark processedThrough,
+      Instant lastSuccessfulRefreshAt,
+      long handledEventCount,
+      long pendingCount,
+      long deadLetterCount) {
+    public ProjectionCheckpoint {
+      if (handledEventCount < 0 || pendingCount < 0 || deadLetterCount < 0) {
+        throw new IllegalArgumentException("Projection checkpoint counts must not be negative");
+      }
+      if (pendingCount + deadLetterCount > handledEventCount) {
+        throw new IllegalArgumentException("Projection checkpoint counts are inconsistent");
+      }
+    }
+  }
+
   record ProjectionFreshness(
-      Instant dataAsOf, long projectionLagSeconds, String projectionStatus) {}
+      Instant dataAsOf,
+      Long projectionLagSeconds,
+      String projectionStatus,
+      Instant observedAt,
+      Watermark sourceWatermark,
+      Watermark processedThrough,
+      Instant lastSuccessfulRefreshAt,
+      long pendingCount,
+      long deadLetterCount) {
+    public ProjectionFreshness {
+      if (observedAt == null
+          || (projectionLagSeconds != null && projectionLagSeconds < 0)
+          || pendingCount < 0
+          || deadLetterCount < 0) {
+        throw new IllegalArgumentException("Projection freshness evidence is invalid");
+      }
+    }
+  }
 
   record WorkItemRecord(
       UUID id,

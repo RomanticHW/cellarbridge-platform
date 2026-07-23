@@ -5,11 +5,14 @@ import com.rom.cellarbridge.auditreporting.internal.application.AuditReportingSt
 import com.rom.cellarbridge.auditreporting.internal.application.AuditReportingStore.DashboardRecord;
 import com.rom.cellarbridge.auditreporting.internal.application.AuditReportingStore.InboxDecision;
 import com.rom.cellarbridge.auditreporting.internal.application.AuditReportingStore.Projection;
+import com.rom.cellarbridge.auditreporting.internal.application.AuditReportingStore.ProjectionCheckpoint;
 import com.rom.cellarbridge.auditreporting.internal.application.AuditReportingStore.ProjectionFreshness;
 import com.rom.cellarbridge.auditreporting.internal.application.AuditReportingStore.ProjectionStatus;
 import com.rom.cellarbridge.auditreporting.internal.application.AuditReportingStore.TimelineRecord;
 import com.rom.cellarbridge.auditreporting.internal.application.AuditReportingStore.WorkFilter;
 import com.rom.cellarbridge.auditreporting.internal.application.AuditReportingStore.WorkItemRecord;
+import com.rom.cellarbridge.auditreporting.internal.application.ProjectionEventSource.SourceState;
+import com.rom.cellarbridge.auditreporting.internal.application.ProjectionEventSource.Watermark;
 import com.rom.cellarbridge.identityaccess.AuthorizationService;
 import com.rom.cellarbridge.identityaccess.PermissionCode;
 import com.rom.cellarbridge.identityaccess.TenantContext;
@@ -18,10 +21,12 @@ import com.rom.cellarbridge.identityaccess.TenantId;
 import com.rom.cellarbridge.platform.EventDelivery;
 import com.rom.cellarbridge.platform.EventHandlingResult;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -100,6 +105,25 @@ public class AuditReportingService {
 
   @Transactional(readOnly = true)
   public DashboardRecord dashboard(LocalDate from, LocalDate to) {
+    ProjectionRead<DashboardRecord> read = dashboardRead(from, to, Integer.MAX_VALUE);
+    DashboardRecord dashboard = read.data();
+    ProjectionFreshness freshness = read.freshness();
+    return new DashboardRecord(
+        dashboard.from(),
+        dashboard.to(),
+        dashboard.generatedAt(),
+        freshness.dataAsOf(),
+        freshness.projectionLagSeconds() == null ? 0 : freshness.projectionLagSeconds(),
+        "UNKNOWN".equals(freshness.projectionStatus()) ? "STALE" : freshness.projectionStatus(),
+        dashboard.metrics(),
+        dashboard.charts());
+  }
+
+  @Transactional(readOnly = true)
+  public ProjectionRead<DashboardRecord> dashboardRead(
+      LocalDate from, LocalDate to, int maxCollectionItems) {
+    if (maxCollectionItems < 1)
+      throw new IllegalArgumentException("Result budget must be positive");
     TenantContext context = context();
     authorization.require(PermissionCode.REPORTING_READ, context.tenantId());
     requireRange(from, to);
@@ -111,7 +135,28 @@ public class AuditReportingService {
             : null;
     Set<String> metrics =
         context.hasRoleCode("finance-specialist") ? Set.of("RECEIVABLE_STATUS") : Set.of();
-    return store.dashboard(context.tenantId(), from, to, ownerScope, metrics, clock.instant());
+    Instant observedAt = clock.instant().truncatedTo(ChronoUnit.MICROS);
+    ProjectionFreshness freshness = projectionFreshness(context.tenantId(), observedAt);
+    DashboardRecord dashboard =
+        store.dashboard(
+            context.tenantId(),
+            from,
+            to,
+            ownerScope,
+            metrics,
+            observedAt,
+            maxCollectionItems == Integer.MAX_VALUE ? Integer.MAX_VALUE : maxCollectionItems + 1);
+    return new ProjectionRead<>(
+        new DashboardRecord(
+            dashboard.from(),
+            dashboard.to(),
+            dashboard.generatedAt(),
+            freshness.dataAsOf(),
+            freshness.projectionLagSeconds(),
+            freshness.projectionStatus(),
+            dashboard.metrics(),
+            dashboard.charts()),
+        freshness);
   }
 
   @Transactional(readOnly = true)
@@ -125,12 +170,33 @@ public class AuditReportingService {
       Instant to,
       Integer requestedPageSize,
       String cursor) {
+    return auditPage(
+        new AuditQuery(
+            subjectType,
+            subjectId,
+            correlationId,
+            actorId,
+            action,
+            from,
+            to,
+            requestedPageSize,
+            cursor),
+        false);
+  }
+
+  @Transactional(readOnly = true)
+  public AuditPage boundedAudit(AuditQuery query) {
+    return auditPage(query, true);
+  }
+
+  private AuditPage auditPage(AuditQuery query, boolean boundedWindow) {
     TenantContext context = context();
     authorization.require(PermissionCode.AUDIT_READ, context.tenantId());
-    int pageSize = pageSize(requestedPageSize);
-    String normalizedSubjectType = blank(subjectType);
-    String normalizedAction = blank(action);
-    UUID actorScope = context.hasRoleCode("sales-representative") ? context.userId() : actorId;
+    int pageSize = pageSize(query.pageSize());
+    String normalizedSubjectType = blank(query.subjectType());
+    String normalizedAction = blank(query.action());
+    UUID actorScope =
+        context.hasRoleCode("sales-representative") ? context.userId() : query.actorId();
     Set<String> classifications =
         context.hasRoleCode("system-operator")
             ? Set.of("TECHNICAL_SENSITIVE")
@@ -138,26 +204,44 @@ public class AuditReportingService {
     String queryFingerprint =
         auditQueryFingerprint(
             normalizedSubjectType,
-            subjectId,
-            correlationId,
+            query.subjectId(),
+            query.correlationId(),
             actorScope,
             normalizedAction,
-            from,
-            to,
+            query.from(),
+            query.to(),
             classifications);
     AuditCursorCodec.Position position =
-        cursors.decode(context.tenantId(), queryFingerprint, cursor);
+        decodeCursor(context.tenantId(), queryFingerprint, query.cursor());
+    Instant effectiveFrom = query.from();
+    Instant effectiveTo = query.to();
+    boolean continuation = query.cursor() != null && !query.cursor().isBlank();
+    if (continuation) {
+      effectiveFrom = position.windowFrom();
+      effectiveTo = position.windowTo();
+    } else if (boundedWindow) {
+      effectiveTo = query.to() == null ? clock.instant() : query.to();
+      effectiveFrom = query.from() == null ? effectiveTo.minus(Duration.ofDays(30)) : query.from();
+    }
+    if (boundedWindow
+        && (effectiveFrom == null
+            || effectiveTo == null
+            || !effectiveFrom.isBefore(effectiveTo)
+            || Duration.between(effectiveFrom, effectiveTo).compareTo(Duration.ofDays(367)) > 0)) {
+      if (continuation) throw new InvalidCursorException(new IllegalArgumentException("window"));
+      throw new IllegalArgumentException("Audit time window is invalid");
+    }
     List<AuditRecord> values =
         store.audit(
             context.tenantId(),
             new AuditFilter(
                 normalizedSubjectType,
-                subjectId,
-                correlationId,
+                query.subjectId(),
+                query.correlationId(),
                 actorScope,
                 normalizedAction,
-                from,
-                to,
+                effectiveFrom,
+                effectiveTo,
                 position.occurredAt(),
                 position.id()),
             actorScope,
@@ -170,6 +254,8 @@ public class AuditReportingService {
             ? cursors.encode(
                 context.tenantId(),
                 queryFingerprint,
+                effectiveFrom,
+                effectiveTo,
                 items.getLast().occurredAt(),
                 items.getLast().id())
             : null;
@@ -178,25 +264,53 @@ public class AuditReportingService {
 
   @Transactional(readOnly = true)
   public TimelinePage timeline(String subjectType, UUID subjectId, Integer requestedPageSize) {
+    PaginatedTimelinePage page = timeline(subjectType, subjectId, requestedPageSize, null).data();
+    return new TimelinePage(
+        page.items(), page.dataAsOf(), legacyTimelineProjectionStatus(page.projectionStatus()));
+  }
+
+  @Transactional(readOnly = true)
+  public ProjectionRead<PaginatedTimelinePage> timeline(
+      String subjectType, UUID subjectId, Integer requestedPageSize, String cursor) {
     TenantContext context = context();
-    PermissionCode permission =
-        switch (subjectType == null ? "" : subjectType.toUpperCase()) {
-          case "PARTNER" -> PermissionCode.PARTNER_READ;
-          case "QUOTATION" -> PermissionCode.QUOTATION_READ;
-          case "TRADE_ORDER", "ORDER" -> PermissionCode.ORDER_READ;
-          default -> PermissionCode.AUDIT_READ;
-        };
+    String normalizedSubjectType =
+        requiredText(subjectType, "subjectType").toUpperCase(Locale.ROOT);
+    PermissionCode permission = timelinePermission(normalizedSubjectType);
     authorization.require(permission, context.tenantId());
     int pageSize = pageSize(requestedPageSize);
-    List<TimelineRecord> items =
+    UUID normalizedSubjectId = java.util.Objects.requireNonNull(subjectId, "subjectId is required");
+    String queryFingerprint =
+        timelineQueryFingerprint(
+            normalizedSubjectType, normalizedSubjectId, permission, context.partnerId());
+    AuditCursorCodec.Position position = decodeCursor(context.tenantId(), queryFingerprint, cursor);
+    ProjectionFreshness freshness =
+        projectionFreshness(context.tenantId(), clock.instant().truncatedTo(ChronoUnit.MICROS));
+    List<TimelineRecord> values =
         store.timeline(
             context.tenantId(),
-            requiredText(subjectType, "subjectType"),
-            java.util.Objects.requireNonNull(subjectId, "subjectId is required"),
+            normalizedSubjectType,
+            normalizedSubjectId,
             context.partnerId(),
-            pageSize);
-    Instant dataAsOf = items.isEmpty() ? null : items.getFirst().dataAsOf();
-    return new TimelinePage(items, dataAsOf, projectionStatus(dataAsOf));
+            position.occurredAt(),
+            position.id(),
+            pageSize + 1);
+    boolean hasNext = values.size() > pageSize;
+    List<TimelineRecord> items = hasNext ? values.subList(0, pageSize) : values;
+    String next =
+        hasNext
+            ? cursors.encode(
+                context.tenantId(),
+                queryFingerprint,
+                items.getLast().occurredAt(),
+                items.getLast().sourceEventId())
+            : null;
+    return new ProjectionRead<>(
+        new PaginatedTimelinePage(
+            items,
+            freshness.dataAsOf(),
+            freshness.projectionStatus(),
+            new PageInfo(next, hasNext, pageSize)),
+        freshness);
   }
 
   @Transactional(readOnly = true)
@@ -209,6 +323,31 @@ public class AuditReportingService {
       String subjectNumber,
       String scope,
       Integer requestedPageSize) {
+    PaginatedWorkItemPage page =
+        workItems(
+            statuses,
+            priorities,
+            types,
+            dueFrom,
+            dueTo,
+            subjectNumber,
+            scope,
+            requestedPageSize,
+            null);
+    return new WorkItemPage(page.items(), page.scope());
+  }
+
+  @Transactional(readOnly = true)
+  public PaginatedWorkItemPage workItems(
+      Set<String> statuses,
+      Set<String> priorities,
+      Set<String> types,
+      Instant dueFrom,
+      Instant dueTo,
+      String subjectNumber,
+      String scope,
+      Integer requestedPageSize,
+      String cursor) {
     TenantContext context = context();
     authorization.require(PermissionCode.REPORTING_READ, context.tenantId());
     boolean teamScope = "team".equalsIgnoreCase(scope);
@@ -221,35 +360,53 @@ public class AuditReportingService {
         context.permissions().stream()
             .map(PermissionCode::value)
             .collect(java.util.stream.Collectors.toUnmodifiableSet());
-    List<WorkItemRecord> items =
+    WorkFilter filter =
+        new WorkFilter(
+            safe(statuses), safe(priorities), safe(types), dueFrom, dueTo, blank(subjectNumber));
+    int pageSize = pageSize(requestedPageSize);
+    String queryFingerprint =
+        workItemQueryFingerprint(
+            filter, teamScope ? null : context.userId(), permissionValues, teamScope);
+    AuditCursorCodec.WorkItemPosition position =
+        decodeWorkItemCursor(context.tenantId(), queryFingerprint, cursor);
+    List<WorkItemRecord> values =
         store.workItems(
             context.tenantId(),
-            new WorkFilter(
-                safe(statuses),
-                safe(priorities),
-                safe(types),
-                dueFrom,
-                dueTo,
-                blank(subjectNumber)),
+            filter,
             context.userId(),
             permissionValues,
             teamScope,
-            pageSize(requestedPageSize));
-    return new WorkItemPage(items, teamScope ? "TEAM" : "PERSONAL");
+            position.dueAt(),
+            position.priority(),
+            position.id(),
+            pageSize + 1);
+    boolean hasNext = values.size() > pageSize;
+    List<WorkItemRecord> items = hasNext ? values.subList(0, pageSize) : values;
+    String next =
+        hasNext
+            ? cursors.encodeWorkItem(
+                context.tenantId(),
+                queryFingerprint,
+                items.getLast().dueAt(),
+                items.getLast().priority(),
+                items.getLast().id())
+            : null;
+    return new PaginatedWorkItemPage(
+        items, teamScope ? "TEAM" : "PERSONAL", new PageInfo(next, hasNext, pageSize));
   }
 
   @Transactional(readOnly = true)
   public ProjectionFreshness reportingProjectionFreshness() {
     TenantContext context = context();
     authorization.require(PermissionCode.REPORTING_READ, context.tenantId());
-    return store.projectionFreshness(context.tenantId(), clock.instant());
+    return projectionFreshness(context.tenantId(), clock.instant().truncatedTo(ChronoUnit.MICROS));
   }
 
   @Transactional(readOnly = true)
   public ProjectionFreshness auditProjectionFreshness() {
     TenantContext context = context();
     authorization.require(PermissionCode.AUDIT_READ, context.tenantId());
-    return store.projectionFreshness(context.tenantId(), clock.instant());
+    return projectionFreshness(context.tenantId(), clock.instant().truncatedTo(ChronoUnit.MICROS));
   }
 
   @Transactional
@@ -311,6 +468,34 @@ public class AuditReportingService {
     return result;
   }
 
+  private AuditCursorCodec.Position decodeCursor(
+      TenantId tenantId, String queryFingerprint, String cursor) {
+    try {
+      return cursors.decode(tenantId, queryFingerprint, cursor);
+    } catch (IllegalArgumentException exception) {
+      throw new InvalidCursorException(exception);
+    }
+  }
+
+  private AuditCursorCodec.WorkItemPosition decodeWorkItemCursor(
+      TenantId tenantId, String queryFingerprint, String cursor) {
+    try {
+      return cursors.decodeWorkItem(tenantId, queryFingerprint, cursor);
+    } catch (IllegalArgumentException exception) {
+      throw new InvalidCursorException(exception);
+    }
+  }
+
+  private static PermissionCode timelinePermission(String subjectType) {
+    String normalized = requiredText(subjectType, "subjectType").toUpperCase(Locale.ROOT);
+    return switch (normalized) {
+      case "PARTNER" -> PermissionCode.PARTNER_READ;
+      case "QUOTATION" -> PermissionCode.QUOTATION_READ;
+      case "TRADE_ORDER", "ORDER" -> PermissionCode.ORDER_READ;
+      default -> PermissionCode.AUDIT_READ;
+    };
+  }
+
   private static String auditQueryFingerprint(
       String subjectType,
       UUID subjectId,
@@ -321,6 +506,7 @@ public class AuditReportingService {
       Instant to,
       Set<String> classifications) {
     StringBuilder canonical = new StringBuilder();
+    appendCanonical(canonical, "capability", "audit");
     appendCanonical(canonical, "subjectType", subjectType);
     appendCanonical(canonical, "subjectId", subjectId);
     appendCanonical(canonical, "correlationId", correlationId);
@@ -338,6 +524,40 @@ public class AuditReportingService {
     return ProjectionDefinition.sha256(canonical.toString());
   }
 
+  private static String timelineQueryFingerprint(
+      String subjectType, UUID subjectId, PermissionCode permission, UUID partnerScope) {
+    StringBuilder canonical = new StringBuilder();
+    appendCanonical(canonical, "capability", "timeline");
+    appendCanonical(canonical, "subjectType", subjectType);
+    appendCanonical(canonical, "subjectId", subjectId);
+    appendCanonical(canonical, "permission", permission.value());
+    appendCanonical(canonical, "partnerScope", partnerScope);
+    return ProjectionDefinition.sha256(canonical.toString());
+  }
+
+  private static String workItemQueryFingerprint(
+      WorkFilter filter, UUID userScope, Set<String> permissionValues, boolean teamScope) {
+    StringBuilder canonical = new StringBuilder();
+    appendCanonical(canonical, "capability", "work-items");
+    appendCanonical(canonical, "statuses", canonicalSet(filter.statuses()));
+    appendCanonical(canonical, "priorities", canonicalSet(filter.priorities()));
+    appendCanonical(canonical, "types", canonicalSet(filter.types()));
+    appendCanonical(canonical, "dueFrom", filter.dueFrom());
+    appendCanonical(canonical, "dueTo", filter.dueTo());
+    appendCanonical(canonical, "subjectNumber", filter.subjectNumber());
+    appendCanonical(canonical, "teamScope", teamScope);
+    appendCanonical(canonical, "userScope", userScope);
+    appendCanonical(canonical, "permissions", canonicalSet(permissionValues));
+    return ProjectionDefinition.sha256(canonical.toString());
+  }
+
+  private static String canonicalSet(Set<String> values) {
+    return values.stream()
+        .sorted()
+        .map(value -> value.length() + ":" + value)
+        .collect(java.util.stream.Collectors.joining(","));
+  }
+
   private static void appendCanonical(StringBuilder canonical, String name, Object value) {
     canonical.append(name).append('=');
     if (value == null) {
@@ -349,12 +569,99 @@ public class AuditReportingService {
     canonical.append(';');
   }
 
-  private String projectionStatus(Instant dataAsOf) {
-    if (dataAsOf == null) return "EMPTY";
-    return dataAsOf.isBefore(clock.instant().minusSeconds(10)) ? "STALE" : "CURRENT";
+  private ProjectionFreshness projectionFreshness(TenantId tenantId, Instant observedAt) {
+    SourceState source = eventSource.sourceState(tenantId, ProjectionDefinition.EVENT_TYPES);
+    ProjectionCheckpoint checkpoint = store.projectionCheckpoint(tenantId);
+    Watermark sourceWatermark = source.watermark();
+    Watermark processedThrough = checkpoint.processedThrough();
+    String status;
+    Long lagSeconds = lagSeconds(sourceWatermark, processedThrough);
+
+    if (checkpoint.rebuilding()) {
+      status = "REBUILDING";
+    } else if (isEmpty(source, checkpoint)) {
+      status = "EMPTY";
+    } else if (checkpoint.pendingCount() > 0 || checkpoint.deadLetterCount() > 0) {
+      status = "STALE";
+    } else if (source.eventCount() > 0 && !checkpoint.activeGeneration()) {
+      status = "STALE";
+    } else if (isInconsistent(source, checkpoint)) {
+      status = "UNKNOWN";
+      lagSeconds = null;
+    } else if (sourceAhead(source, checkpoint)) {
+      status = "STALE";
+    } else if (source.eventCount() == checkpoint.handledEventCount()
+        && sourceWatermark.equals(processedThrough)
+        && checkpoint.activeGeneration()) {
+      status = "CURRENT";
+      lagSeconds = 0L;
+    } else {
+      status = "UNKNOWN";
+      lagSeconds = null;
+    }
+    return new ProjectionFreshness(
+        checkpoint.dataAsOf(),
+        lagSeconds,
+        status,
+        observedAt,
+        sourceWatermark,
+        processedThrough,
+        checkpoint.lastSuccessfulRefreshAt(),
+        checkpoint.pendingCount(),
+        checkpoint.deadLetterCount());
+  }
+
+  private static boolean isEmpty(SourceState source, ProjectionCheckpoint checkpoint) {
+    return source.eventCount() == 0
+        && !checkpoint.checkpointPresent()
+        && checkpoint.handledEventCount() == 0
+        && checkpoint.dataAsOf() == null;
+  }
+
+  private static boolean isInconsistent(SourceState source, ProjectionCheckpoint checkpoint) {
+    Watermark sourceWatermark = source.watermark();
+    Watermark processedThrough = checkpoint.processedThrough();
+    if (checkpoint.checkpointPresent() != (processedThrough != null)
+        || checkpoint.handledEventCount() > source.eventCount()) {
+      return true;
+    }
+    if (sourceWatermark == null)
+      return processedThrough != null || checkpoint.handledEventCount() > 0;
+    if (processedThrough == null) return checkpoint.handledEventCount() > 0;
+    return processedThrough.occurredAt().isAfter(sourceWatermark.occurredAt())
+        || (source.eventCount() == checkpoint.handledEventCount()
+            && !sourceWatermark.equals(processedThrough));
+  }
+
+  private static boolean sourceAhead(SourceState source, ProjectionCheckpoint checkpoint) {
+    return source.watermark() != null && source.eventCount() > checkpoint.handledEventCount();
+  }
+
+  private static Long lagSeconds(Watermark source, Watermark processed) {
+    if (source == null
+        || processed == null
+        || processed.occurredAt().isAfter(source.occurredAt())) {
+      return null;
+    }
+    return Math.max(0, ChronoUnit.SECONDS.between(processed.occurredAt(), source.occurredAt()));
+  }
+
+  private static String legacyTimelineProjectionStatus(String status) {
+    return Set.of("UNKNOWN", "REBUILDING").contains(status) ? "STALE" : status;
   }
 
   public record PageInfo(String nextCursor, boolean hasNext, int pageSize) {}
+
+  public record AuditQuery(
+      String subjectType,
+      UUID subjectId,
+      UUID correlationId,
+      UUID actorId,
+      String action,
+      Instant from,
+      Instant to,
+      Integer pageSize,
+      String cursor) {}
 
   public record AuditPage(List<AuditRecord> items, PageInfo pageInfo) {
     public AuditPage {
@@ -369,11 +676,26 @@ public class AuditReportingService {
     }
   }
 
+  public record PaginatedTimelinePage(
+      List<TimelineRecord> items, Instant dataAsOf, String projectionStatus, PageInfo pageInfo) {
+    public PaginatedTimelinePage {
+      items = List.copyOf(items);
+    }
+  }
+
   public record WorkItemPage(List<WorkItemRecord> items, String scope) {
     public WorkItemPage {
       items = List.copyOf(items);
     }
   }
+
+  public record PaginatedWorkItemPage(List<WorkItemRecord> items, String scope, PageInfo pageInfo) {
+    public PaginatedWorkItemPage {
+      items = List.copyOf(items);
+    }
+  }
+
+  public record ProjectionRead<T>(T data, ProjectionFreshness freshness) {}
 
   public record RebuildResult(
       long generation,
@@ -381,4 +703,10 @@ public class AuditReportingService {
       Instant dataAsOf,
       Instant startedAt,
       Instant completedAt) {}
+
+  public static final class InvalidCursorException extends IllegalArgumentException {
+    private InvalidCursorException(IllegalArgumentException cause) {
+      super(cause.getMessage(), cause);
+    }
+  }
 }

@@ -49,7 +49,8 @@ public class CatalogSearchService implements CatalogSearchQuery {
     int pageSize = normalizePageSize(command.pageSize());
     SearchSort sort = SearchSort.parse(command.sort() == null ? "relevance" : command.sort());
     SearchCriteria criteria = criteria(command, sort);
-    String filterHash = CatalogCursorCodec.filterHash(canonicalFilter(criteria));
+    String filterHash =
+        CatalogCursorCodec.filterHash(canonicalFilter(criteria, command.authorizationScope()));
     CursorPosition cursor = cursorCodec.decode(tenantId, filterHash, sort, command.cursor());
 
     List<CatalogSkuRecord> fetched = repository.search(tenantId, criteria, cursor, pageSize + 1);
@@ -60,7 +61,9 @@ public class CatalogSearchService implements CatalogSearchQuery {
         repository.findSupplyProjections(
             tenantId,
             visible.stream().map(CatalogSkuRecord::id).collect(Collectors.toUnmodifiableSet()),
-            criteria);
+            criteria,
+            fetchLimit(command.maxSupplyProjections()));
+    requireWithinLimit(projections, command.maxSupplyProjections());
     List<CatalogSearchItem> items = assemble(visible, projections);
     String nextCursor =
         hasNext ? encodeCursor(tenantId, filterHash, sort, visible.getLast()) : null;
@@ -73,7 +76,7 @@ public class CatalogSearchService implements CatalogSearchQuery {
   }
 
   @Override
-  public CatalogSearchItem get(TenantId tenantId, UUID skuId) {
+  public CatalogSearchItem get(TenantId tenantId, UUID skuId, int maxSupplyProjections) {
     CatalogSkuRecord sku =
         repository.find(tenantId, skuId).orElseThrow(CatalogQueryException::notFound);
     SearchCriteria criteria =
@@ -93,8 +96,19 @@ public class CatalogSearchService implements CatalogSearchQuery {
             null,
             SearchSort.NAME);
     List<SupplyProjectionRecord> projections =
-        repository.findSupplyProjections(tenantId, Set.of(skuId), criteria);
+        repository.findSupplyProjections(
+            tenantId, Set.of(skuId), criteria, fetchLimit(maxSupplyProjections));
+    requireWithinLimit(projections, maxSupplyProjections);
     return assemble(List.of(sku), projections).getFirst();
+  }
+
+  private static int fetchLimit(int limit) {
+    if (limit < 1) throw CatalogQueryException.invalidRequest("Result budget must be positive");
+    return limit == Integer.MAX_VALUE ? limit : limit + 1;
+  }
+
+  private static void requireWithinLimit(List<?> values, int limit) {
+    if (values.size() > limit) throw CatalogQueryException.resultTooLarge();
   }
 
   private static List<CatalogSearchItem> assemble(
@@ -210,7 +224,7 @@ public class CatalogSearchService implements CatalogSearchQuery {
     return values == null ? Set.of() : Set.copyOf(values);
   }
 
-  private static String canonicalFilter(SearchCriteria criteria) {
+  private static String canonicalFilter(SearchCriteria criteria, String authorizationScope) {
     Map<String, Object> values = new LinkedHashMap<>();
     values.put("keyword", criteria.keyword());
     values.put("producer", criteria.producer());
@@ -226,6 +240,7 @@ public class CatalogSearchService implements CatalogSearchQuery {
     values.put("from", criteria.availableFrom());
     values.put("to", criteria.availableTo());
     values.put("sort", criteria.sort().externalValue());
+    values.put("authorizationScope", authorizationScope);
     return values.toString();
   }
 

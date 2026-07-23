@@ -71,6 +71,9 @@ class CatalogSearchApiIntegrationTest extends PostgresIntegrationTestSupport {
     assertThat(misspelled.body().path("availabilityDisclaimer").asText())
         .contains("not an inventory commitment");
     assertThat(misspelled.body().path("dataAsOf").asText()).isNotBlank();
+    ApiResponse empty = get("/api/v1/catalog/skus?keyword=Neverland%20Reserve", NORTH_SALES);
+    assertThat(empty.body().path("items")).isEmpty();
+    assertThat(empty.body().path("dataAsOf").asText()).isNotBlank();
 
     ApiResponse accent = get("/api/v1/catalog/skus?keyword=Etoile", NORTH_SALES);
     assertThat(accent.body().path("items").path(0).path("sku").path("displayName").asText())

@@ -1,6 +1,7 @@
 package com.rom.cellarbridge.auditreporting.internal.infrastructure;
 
 import com.rom.cellarbridge.auditreporting.internal.application.AuditReportingStore;
+import com.rom.cellarbridge.auditreporting.internal.application.ProjectionEventSource.Watermark;
 import com.rom.cellarbridge.identityaccess.TenantId;
 import com.rom.cellarbridge.platform.EventDelivery;
 import java.sql.Timestamp;
@@ -21,6 +22,9 @@ import tools.jackson.databind.json.JsonMapper;
 @Repository
 public class JdbcAuditReportingStore implements AuditReportingStore {
   private static final int PROJECTION_VERSION = 1;
+  private static final String WORK_PRIORITY_RANK =
+      "CASE work.priority WHEN 'CRITICAL' THEN 4 WHEN 'HIGH' THEN 3"
+          + " WHEN 'MEDIUM' THEN 2 WHEN 'LOW' THEN 1 ELSE 0 END";
   private final NamedParameterJdbcTemplate jdbc;
   private final JsonMapper json;
 
@@ -215,7 +219,8 @@ public class JdbcAuditReportingStore implements AuditReportingStore {
       LocalDate to,
       UUID ownerId,
       Set<String> allowedMetricTypes,
-      Instant generatedAt) {
+      Instant generatedAt,
+      int chartLimit) {
     long generation = activeGenerationReadOnly(tenantId);
     if (generation == 0) {
       return new DashboardRecord(
@@ -223,7 +228,7 @@ public class JdbcAuditReportingStore implements AuditReportingStore {
           to,
           generatedAt,
           null,
-          0,
+          0L,
           "EMPTY",
           Map.ofEntries(
               Map.entry("quotationCount", 0L),
@@ -251,7 +256,8 @@ public class JdbcAuditReportingStore implements AuditReportingStore {
             .addValue("from", from)
             .addValue("toExclusive", to.plusDays(1))
             .addValue("ownerId", ownerId)
-            .addValue("allowedMetricTypes", allowedMetricTypes);
+            .addValue("allowedMetricTypes", allowedMetricTypes)
+            .addValue("chartLimit", chartLimit);
     String restrictions =
         (ownerId == null ? "" : " AND owner_user_id = :ownerId")
             + (allowedMetricTypes.isEmpty() ? "" : " AND metric_type IN (:allowedMetricTypes)");
@@ -313,19 +319,8 @@ public class JdbcAuditReportingStore implements AuditReportingStore {
     charts.put("receivableStatus", grouped(values, restrictions, "outcome", "RECEIVABLE_STATUS"));
 
     GenerationRow generationRow = generation(tenantId, generation);
-    long lag =
-        generationRow.dataAsOf() == null
-            ? 0
-            : Math.max(0, ChronoUnit.SECONDS.between(generationRow.dataAsOf(), generatedAt));
-    String status = generationRow.dataAsOf() == null ? "EMPTY" : lag > 10 ? "STALE" : "CURRENT";
-    if (count(
-            "SELECT count(*) FROM audit_reporting.projection_generation WHERE tenant_id = :tenantId AND status = 'STAGING'",
-            values)
-        > 0) {
-      status = "REBUILDING";
-    }
     return new DashboardRecord(
-        from, to, generatedAt, generationRow.dataAsOf(), lag, status, metrics, charts);
+        from, to, generatedAt, generationRow.dataAsOf(), 0L, "UNKNOWN", metrics, charts);
   }
 
   @Override
@@ -388,13 +383,22 @@ public class JdbcAuditReportingStore implements AuditReportingStore {
 
   @Override
   public List<TimelineRecord> timeline(
-      TenantId tenantId, String subjectType, UUID subjectId, UUID partnerScope, int pageSize) {
+      TenantId tenantId,
+      String subjectType,
+      UUID subjectId,
+      UUID partnerScope,
+      Instant beforeOccurredAt,
+      UUID beforeSourceEventId,
+      int pageSize) {
     MapSqlParameterSource values =
         new MapSqlParameterSource()
             .addValue("tenantId", tenantId.value())
             .addValue("subjectType", subjectType.toUpperCase())
             .addValue("subjectId", subjectId)
             .addValue("partnerScope", partnerScope)
+            .addValue(
+                "beforeOccurredAt", beforeOccurredAt == null ? null : timestamp(beforeOccurredAt))
+            .addValue("beforeSourceEventId", beforeSourceEventId)
             .addValue("pageSize", pageSize);
     return jdbc.query(
         """
@@ -415,6 +419,11 @@ public class JdbcAuditReportingStore implements AuditReportingStore {
              OR (:subjectType = 'PARTNER' AND timeline.related_partner_id = :subjectId))
            AND (CAST(:partnerScope AS uuid) IS NULL OR timeline.related_partner_id = :partnerScope)
            AND timeline.visibility <> 'TECHNICAL'
+           AND (
+             CAST(:beforeOccurredAt AS timestamptz) IS NULL
+             OR (timeline.occurred_at, timeline.source_event_id)
+                < (:beforeOccurredAt, CAST(:beforeSourceEventId AS uuid))
+           )
          ORDER BY timeline.occurred_at DESC, timeline.source_event_id DESC
          LIMIT :pageSize
         """,
@@ -445,6 +454,9 @@ public class JdbcAuditReportingStore implements AuditReportingStore {
       UUID userId,
       Set<String> permissionValues,
       boolean teamScope,
+      Instant afterDueAt,
+      String afterPriority,
+      UUID afterId,
       int pageSize) {
     StringBuilder sql =
         new StringBuilder(
@@ -474,7 +486,37 @@ public class JdbcAuditReportingStore implements AuditReportingStore {
       sql.append(" AND work.subject_number ILIKE :subjectNumber ESCAPE '\\'");
       values.addValue("subjectNumber", "%" + escapeLike(filter.subjectNumber()) + "%");
     }
-    sql.append(" ORDER BY work.due_at NULLS LAST, work.priority DESC, work.id LIMIT :pageSize");
+    if (afterId != null) {
+      values
+          .addValue("afterPriorityRank", workPriorityRank(afterPriority))
+          .addValue("afterId", afterId);
+      if (afterDueAt == null) {
+        sql.append(
+            " AND work.due_at IS NULL"
+                + " AND ("
+                + WORK_PRIORITY_RANK
+                + " < :afterPriorityRank"
+                + " OR ("
+                + WORK_PRIORITY_RANK
+                + " = :afterPriorityRank AND work.id > :afterId))");
+      } else {
+        values.addValue("afterDueAt", timestamp(afterDueAt));
+        sql.append(
+            " AND (work.due_at > :afterDueAt"
+                + " OR work.due_at IS NULL"
+                + " OR (work.due_at = :afterDueAt"
+                + " AND ("
+                + WORK_PRIORITY_RANK
+                + " < :afterPriorityRank"
+                + " OR ("
+                + WORK_PRIORITY_RANK
+                + " = :afterPriorityRank AND work.id > :afterId))))");
+      }
+    }
+    sql.append(
+        " ORDER BY work.due_at ASC NULLS LAST, "
+            + WORK_PRIORITY_RANK
+            + " DESC, work.id ASC LIMIT :pageSize");
     return jdbc.query(
         sql.toString(),
         values,
@@ -497,27 +539,71 @@ public class JdbcAuditReportingStore implements AuditReportingStore {
                 resultSet.getLong("version")));
   }
 
+  private static int workPriorityRank(String priority) {
+    return switch (priority) {
+      case "CRITICAL" -> 4;
+      case "HIGH" -> 3;
+      case "MEDIUM" -> 2;
+      case "LOW" -> 1;
+      default -> throw new IllegalArgumentException("Work item cursor priority is invalid");
+    };
+  }
+
   @Override
-  public ProjectionFreshness projectionFreshness(TenantId tenantId, Instant generatedAt) {
-    long generation = activeGenerationReadOnly(tenantId);
-    if (generation == 0) {
-      return new ProjectionFreshness(null, 0, "EMPTY");
-    }
-    GenerationRow generationRow = generation(tenantId, generation);
-    long lag =
-        generationRow.dataAsOf() == null
-            ? 0
-            : Math.max(0, ChronoUnit.SECONDS.between(generationRow.dataAsOf(), generatedAt));
-    String status = generationRow.dataAsOf() == null ? "EMPTY" : lag > 10 ? "STALE" : "CURRENT";
-    Long rebuilding =
-        jdbc.queryForObject(
-            "SELECT count(*) FROM audit_reporting.projection_generation WHERE tenant_id = :tenantId AND status = 'STAGING'",
-            new MapSqlParameterSource("tenantId", tenantId.value()),
-            Long.class);
-    if (rebuilding != null && rebuilding > 0) {
-      status = "REBUILDING";
-    }
-    return new ProjectionFreshness(generationRow.dataAsOf(), lag, status);
+  public ProjectionCheckpoint projectionCheckpoint(TenantId tenantId) {
+    return jdbc.queryForObject(
+        """
+        WITH active AS (
+          SELECT data_as_of, activated_at
+            FROM audit_reporting.projection_generation
+           WHERE tenant_id = :tenantId AND status = 'ACTIVE'
+        ),
+        checkpoint AS (
+          SELECT last_event_id, last_occurred_at
+            FROM audit_reporting.projector_checkpoint
+           WHERE tenant_id = :tenantId AND projector_name = :projectorName
+        ),
+        inbox AS (
+          SELECT count(*) FILTER (WHERE status <> 'PROCESSING') AS handled_count,
+                 count(*) FILTER (WHERE status = 'PENDING') AS pending_count,
+                 count(*) FILTER (WHERE status = 'DEAD_LETTER') AS dead_letter_count,
+                 max(processed_at) FILTER (WHERE status = 'PROCESSED')
+                   AS last_processed_at
+            FROM audit_reporting.projector_inbox
+           WHERE tenant_id = :tenantId AND projector_name = :projectorName
+        )
+        SELECT EXISTS (SELECT 1 FROM active) AS active_generation,
+               EXISTS (
+                 SELECT 1 FROM audit_reporting.projection_generation
+                  WHERE tenant_id = :tenantId AND status = 'STAGING'
+               ) AS rebuilding,
+               EXISTS (SELECT 1 FROM checkpoint) AS checkpoint_present,
+               (SELECT data_as_of FROM active) AS data_as_of,
+               (SELECT last_event_id FROM checkpoint) AS last_event_id,
+               (SELECT last_occurred_at FROM checkpoint) AS last_occurred_at,
+               inbox.handled_count, inbox.pending_count, inbox.dead_letter_count,
+               inbox.last_processed_at
+          FROM inbox
+        """,
+        new MapSqlParameterSource()
+            .addValue("tenantId", tenantId.value())
+            .addValue("projectorName", "audit-reporting.business.v1"),
+        (resultSet, rowNumber) -> {
+          UUID eventId = resultSet.getObject("last_event_id", UUID.class);
+          Instant occurredAt = instant(resultSet.getTimestamp("last_occurred_at"));
+          Watermark processedThrough =
+              eventId == null || occurredAt == null ? null : new Watermark(occurredAt, eventId);
+          return new ProjectionCheckpoint(
+              resultSet.getBoolean("active_generation"),
+              resultSet.getBoolean("rebuilding"),
+              resultSet.getBoolean("checkpoint_present"),
+              instant(resultSet.getTimestamp("data_as_of")),
+              processedThrough,
+              instant(resultSet.getTimestamp("last_processed_at")),
+              resultSet.getLong("handled_count"),
+              resultSet.getLong("pending_count"),
+              resultSet.getLong("dead_letter_count"));
+        });
   }
 
   @Override
@@ -911,7 +997,7 @@ public class JdbcAuditReportingStore implements AuditReportingStore {
             + restrictions
             + " GROUP BY "
             + dimension
-            + " ORDER BY value DESC, label",
+            + " ORDER BY value DESC, label LIMIT :chartLimit",
         parameters,
         (resultSet, rowNumber) ->
             Map.of("label", resultSet.getString("label"), "value", resultSet.getLong("value")));

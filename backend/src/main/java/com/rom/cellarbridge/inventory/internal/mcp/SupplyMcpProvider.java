@@ -1,5 +1,10 @@
 package com.rom.cellarbridge.inventory.internal.mcp;
 
+import static com.rom.cellarbridge.platform.mcp.McpInputValidation.instant;
+import static com.rom.cellarbridge.platform.mcp.McpInputValidation.optionalText;
+import static com.rom.cellarbridge.platform.mcp.McpInputValidation.uppercase;
+import static com.rom.cellarbridge.platform.mcp.McpInputValidation.uuid;
+
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.rom.cellarbridge.catalog.CatalogItemStatus;
 import com.rom.cellarbridge.catalog.CatalogQueryException;
@@ -7,6 +12,7 @@ import com.rom.cellarbridge.inventory.AvailabilityClass;
 import com.rom.cellarbridge.inventory.QuantityUnit;
 import com.rom.cellarbridge.inventory.SupplyType;
 import com.rom.cellarbridge.inventory.internal.application.CatalogSupplySearchService;
+import com.rom.cellarbridge.inventory.internal.application.CatalogSupplySearchService.ExactLotResultLimitExceededException;
 import com.rom.cellarbridge.inventory.internal.application.CatalogSupplySearchService.ExactLotView;
 import com.rom.cellarbridge.inventory.internal.application.CatalogSupplySearchService.SearchCommand;
 import com.rom.cellarbridge.inventory.internal.application.CatalogSupplySearchService.SearchPage;
@@ -16,8 +22,12 @@ import com.rom.cellarbridge.inventory.internal.application.CatalogSupplySearchSe
 import com.rom.cellarbridge.platform.mcp.McpCallSupport;
 import com.rom.cellarbridge.platform.mcp.McpCapabilitySupport;
 import com.rom.cellarbridge.platform.mcp.McpCapabilitySupport.Arguments;
+import com.rom.cellarbridge.platform.mcp.McpFreshnessEvidence;
 import com.rom.cellarbridge.platform.mcp.McpReadPayload;
+import com.rom.cellarbridge.platform.mcp.McpResponseProperties;
 import com.rom.cellarbridge.platform.mcp.McpSafeException;
+import com.rom.cellarbridge.platform.mcp.McpSchemaSupport;
+import com.rom.cellarbridge.platform.mcp.McpWarning;
 import io.modelcontextprotocol.server.McpStatelessServerFeatures.SyncToolSpecification;
 import io.modelcontextprotocol.spec.McpSchema.GetPromptRequest;
 import io.modelcontextprotocol.spec.McpSchema.GetPromptResult;
@@ -27,6 +37,7 @@ import io.modelcontextprotocol.spec.McpSchema.TextContent;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
@@ -49,15 +60,21 @@ public final class SupplyMcpProvider {
   private static final Set<String> CATEGORIES =
       Set.of("RED", "WHITE", "ROSE", "SPARKLING", "FORTIFIED", "DESSERT", "OTHER");
   private static final Set<String> SORTS = Set.of("relevance", "name", "-updatedAt", "vintage");
-  private static final Map<String, Object> SEARCH_PROPERTIES = searchProperties();
+  private static final Map<String, Object> SEARCH_OUTPUT_SCHEMA = searchOutputSchema();
 
   private final CatalogSupplySearchService service;
   private final McpCallSupport calls;
+  private final McpResponseProperties responseProperties;
   private final Clock clock;
 
-  public SupplyMcpProvider(CatalogSupplySearchService service, McpCallSupport calls, Clock clock) {
+  public SupplyMcpProvider(
+      CatalogSupplySearchService service,
+      McpCallSupport calls,
+      McpResponseProperties responseProperties,
+      Clock clock) {
     this.service = service;
     this.calls = calls;
+    this.responseProperties = responseProperties;
     this.clock = clock;
   }
 
@@ -69,8 +86,9 @@ public final class SupplyMcpProvider {
         "cellarbridge_search_supply",
         "Search CellarBridge supply",
         "Searches tenant-scoped SKU and supply projections with existing exact-lot and warehouse field permissions.",
-        SEARCH_PROPERTIES,
+        searchProperties(responseProperties.maxPageSize()),
         List.of(),
+        SEARCH_OUTPUT_SCHEMA,
         this::searchSupply);
   }
 
@@ -95,13 +113,26 @@ public final class SupplyMcpProvider {
             arguments.text("cursor"));
     SearchPage page;
     try {
-      page = service.search(command);
+      page = service.search(command, exactLotLimit());
+    } catch (ExactLotResultLimitExceededException exception) {
+      throw McpSafeException.resultTooLarge();
     } catch (CatalogQueryException exception) {
+      if (exception.code() == CatalogQueryException.Code.RESULT_TOO_LARGE) {
+        throw McpSafeException.resultTooLarge();
+      }
+      if (command.cursor() != null) {
+        throw McpSafeException.invalidCursor();
+      }
       throw McpSafeException.invalidRequest();
     }
-    String status = page.items().isEmpty() ? "EMPTY" : projectionStatus(page.dataAsOf());
+    String status = page.items().isEmpty() ? "EMPTY" : "UNKNOWN";
+    Instant dataAsOf = page.items().isEmpty() ? null : page.dataAsOf();
     return McpReadPayload.projection(
-        page.dataAsOf(), status, List.of(page.availabilityDisclaimer()), SearchData.from(page));
+        dataAsOf,
+        status,
+        observationAge(dataAsOf),
+        supplyWarnings(page.availabilityDisclaimer()),
+        SearchData.from(page));
   }
 
   @McpPrompt(
@@ -138,8 +169,13 @@ public final class SupplyMcpProvider {
               UUID id = uuid(skuId);
               SkuSearchItem item;
               try {
-                item = service.get(id);
+                item = service.get(id, exactLotLimit());
+              } catch (ExactLotResultLimitExceededException exception) {
+                throw McpSafeException.resultTooLarge();
               } catch (CatalogQueryException exception) {
+                if (exception.code() == CatalogQueryException.Code.RESULT_TOO_LARGE) {
+                  throw McpSafeException.resultTooLarge();
+                }
                 if (exception.code() == CatalogQueryException.Code.NOT_FOUND) {
                   throw McpSafeException.notFound();
                 }
@@ -149,13 +185,19 @@ public final class SupplyMcpProvider {
                   item.supplies().stream()
                       .map(SupplyView::dataAsOf)
                       .max(Instant::compareTo)
+                      .filter(value -> value.isAfter(item.sku().updatedAt()))
                       .orElse(item.sku().updatedAt());
               return McpReadPayload.projection(
                   dataAsOf,
-                  projectionStatus(dataAsOf),
-                  List.of(CatalogSupplySearchService.AVAILABILITY_DISCLAIMER),
+                  dataAsOf == null ? "EMPTY" : "UNKNOWN",
+                  observationAge(dataAsOf),
+                  supplyWarnings(CatalogSupplySearchService.AVAILABILITY_DISCLAIMER),
                   SkuData.from(item));
             }));
+  }
+
+  private int exactLotLimit() {
+    return Math.min(responseProperties.maxCollectionItems(), 1000);
   }
 
   private SearchCommand validatedCommand(
@@ -197,7 +239,9 @@ public final class SupplyMcpProvider {
     if (!SORTS.contains(normalizedSort)) {
       throw McpSafeException.invalidRequest();
     }
-    if (pageSize != null && (pageSize < 1 || pageSize > 100)) {
+    int effectivePageSize =
+        pageSize == null ? Math.min(25, responseProperties.maxPageSize()) : pageSize;
+    if (effectivePageSize < 1 || effectivePageSize > responseProperties.maxPageSize()) {
       throw McpSafeException.invalidRequest();
     }
     Instant from = instant(availableFrom);
@@ -220,53 +264,24 @@ public final class SupplyMcpProvider {
         from,
         to,
         normalizedSort,
-        pageSize,
+        effectivePageSize,
         optionalText(cursor, 1, 2048));
   }
 
-  private String projectionStatus(Instant dataAsOf) {
-    if (dataAsOf == null) {
-      return "EMPTY";
-    }
-    return dataAsOf.isBefore(clock.instant().minusSeconds(10)) ? "STALE" : "CURRENT";
+  private McpFreshnessEvidence observationAge(Instant dataAsOf) {
+    Instant observedAt = clock.instant();
+    Long lagSeconds =
+        dataAsOf == null ? null : Math.max(0, ChronoUnit.SECONDS.between(dataAsOf, observedAt));
+    return new McpFreshnessEvidence(
+        "OBSERVATION_AGE", observedAt, null, null, dataAsOf, lagSeconds, null, null);
   }
 
-  private static String optionalText(String value, int min, int max) {
-    if (value == null) {
-      return null;
-    }
-    String normalized = value.strip();
-    if (normalized.length() < min || normalized.length() > max) {
-      throw McpSafeException.invalidRequest();
-    }
-    return normalized;
-  }
-
-  private static String uppercase(String value) {
-    return value == null ? null : value.toUpperCase(Locale.ROOT);
-  }
-
-  private static Instant instant(String value) {
-    if (value == null) {
-      return null;
-    }
-    try {
-      return Instant.parse(value);
-    } catch (RuntimeException exception) {
-      throw McpSafeException.invalidRequest();
-    }
-  }
-
-  private static UUID uuid(String value) {
-    try {
-      UUID parsed = UUID.fromString(value);
-      if (!parsed.toString().equals(value)) {
-        throw McpSafeException.invalidRequest();
-      }
-      return parsed;
-    } catch (RuntimeException exception) {
-      throw McpSafeException.invalidRequest();
-    }
+  private static List<McpWarning> supplyWarnings(String disclaimer) {
+    return List.of(
+        McpWarning.info("AVAILABILITY_INFORMATIONAL", disclaimer),
+        McpWarning.warning(
+            "FRESHNESS_NOT_SOURCE_VERIFIED",
+            "Supply age is observable, but source-to-projection alignment is not verified."));
   }
 
   private static <T extends Enum<T>> Set<T> enumSet(List<String> values, Class<T> type) {
@@ -289,7 +304,7 @@ public final class SupplyMcpProvider {
     return value == null ? null : value.stripTrailingZeros().toPlainString();
   }
 
-  private static Map<String, Object> searchProperties() {
+  private static Map<String, Object> searchProperties(int maxPageSize) {
     return Map.ofEntries(
         Map.entry(
             "keyword", McpCapabilitySupport.text("SKU name or code; 1 to 100 characters", 1, 100)),
@@ -334,13 +349,110 @@ public final class SupplyMcpProvider {
             "sort",
             McpCapabilitySupport.enumeratedText(
                 "Supply sort order", SORTS.stream().sorted().toList(), false)),
-        Map.entry("pageSize", McpCapabilitySupport.integer("Page size from 1 to 100", 1, 100)),
+        Map.entry(
+            "pageSize",
+            McpCapabilitySupport.integer("Page size from 1 to " + maxPageSize, 1, maxPageSize)),
         Map.entry(
             "cursor", McpCapabilitySupport.text("Opaque cursor returned by this tool", 1, 2048)));
   }
 
   private static <T extends Enum<T>> List<String> enumNames(Class<T> type) {
     return Arrays.stream(type.getEnumConstants()).map(Enum::name).sorted().toList();
+  }
+
+  private static Map<String, Object> searchOutputSchema() {
+    Map<String, Object> page =
+        McpSchemaSupport.object(
+            Map.of(
+                "nextCursor", McpSchemaSupport.nullable(McpSchemaSupport.string(2048)),
+                "hasNext", McpSchemaSupport.bool(),
+                "pageSize", McpSchemaSupport.boundedInteger(1, 100)));
+    return McpSchemaSupport.object(
+        Map.of(
+            "items", McpSchemaSupport.array(skuDataSchema(), 100),
+            "pageInfo", page,
+            "dataAsOf", McpSchemaSupport.nullable(McpSchemaSupport.string("date-time")),
+            "availabilityDisclaimer", McpSchemaSupport.string(500)));
+  }
+
+  private static Map<String, Object> skuDataSchema() {
+    return McpSchemaSupport.object(
+        Map.of(
+            "sku", skuSummarySchema(),
+            "supplies", McpSchemaSupport.array(supplySchema(), 1000)));
+  }
+
+  private static Map<String, Object> skuSummarySchema() {
+    return McpSchemaSupport.object(
+        Map.ofEntries(
+            Map.entry("skuId", McpSchemaSupport.string("uuid")),
+            Map.entry("skuCode", McpSchemaSupport.string(80)),
+            Map.entry("displayName", McpSchemaSupport.string(240)),
+            Map.entry("producerName", McpSchemaSupport.string(160)),
+            Map.entry("regionName", McpSchemaSupport.string(160)),
+            Map.entry("countryCode", McpSchemaSupport.patternedString(2, "^[A-Z]{2}$")),
+            Map.entry(
+                "category", McpSchemaSupport.enumeration(CATEGORIES.stream().sorted().toList())),
+            Map.entry("vintage", McpSchemaSupport.patternedString(4, "^(NV|(19|20)[0-9]{2})$")),
+            Map.entry("volumeMl", McpSchemaSupport.boundedInteger(1, Integer.MAX_VALUE)),
+            Map.entry("unitsPerCase", McpSchemaSupport.boundedInteger(1, Integer.MAX_VALUE)),
+            Map.entry(
+                "packageType",
+                McpSchemaSupport.enumeration(List.of("BOTTLE", "CASE", "GIFT_BOX", "WOODEN_CASE"))),
+            Map.entry("status", McpSchemaSupport.enumeration(enumNames(CatalogItemStatus.class))),
+            Map.entry("sourceVersion", McpSchemaSupport.nonNegativeInteger()),
+            Map.entry("updatedAt", McpSchemaSupport.string("date-time"))));
+  }
+
+  private static Map<String, Object> supplySchema() {
+    return McpSchemaSupport.object(
+        Map.ofEntries(
+            Map.entry("supplyPoolId", McpSchemaSupport.string("uuid")),
+            Map.entry("supplyType", McpSchemaSupport.enumeration(enumNames(SupplyType.class))),
+            Map.entry("quantityUnit", McpSchemaSupport.enumeration(enumNames(QuantityUnit.class))),
+            Map.entry("locationLabel", McpSchemaSupport.string(160)),
+            Map.entry(
+                "availabilityClass",
+                McpSchemaSupport.enumeration(enumNames(AvailabilityClass.class))),
+            Map.entry(
+                "displayQuantityBand",
+                McpSchemaSupport.enumeration(
+                    List.of("NONE", "LOW", "MEDIUM", "HIGH", "CONFIRMATION_REQUIRED"))),
+            Map.entry("automaticallyReservable", McpSchemaSupport.bool()),
+            Map.entry("displayedAvailableQuantity", McpSchemaSupport.string(80)),
+            Map.entry("exactLots", McpSchemaSupport.array(exactLotSchema(), 1000)),
+            Map.entry(
+                "estimatedAvailableAt",
+                McpSchemaSupport.nullable(McpSchemaSupport.string("date-time"))),
+            Map.entry("dataAsOf", McpSchemaSupport.string("date-time"))),
+        List.of(
+            "supplyPoolId",
+            "supplyType",
+            "quantityUnit",
+            "locationLabel",
+            "availabilityClass",
+            "displayQuantityBand",
+            "automaticallyReservable",
+            "exactLots",
+            "estimatedAvailableAt",
+            "dataAsOf"));
+  }
+
+  private static Map<String, Object> exactLotSchema() {
+    return McpSchemaSupport.object(
+        Map.ofEntries(
+            Map.entry("lotId", McpSchemaSupport.string("uuid")),
+            Map.entry("lotCode", McpSchemaSupport.string(100)),
+            Map.entry("warehouseLabel", McpSchemaSupport.string(160)),
+            Map.entry("quantityUnit", McpSchemaSupport.enumeration(enumNames(QuantityUnit.class))),
+            Map.entry("onHandQuantity", McpSchemaSupport.string(80)),
+            Map.entry("reservedQuantity", McpSchemaSupport.string(80)),
+            Map.entry("availableQuantity", McpSchemaSupport.string(80)),
+            Map.entry("warehouseAllocationPriority", McpSchemaSupport.nonNegativeInteger()),
+            Map.entry("warehouseVersion", McpSchemaSupport.nonNegativeInteger()),
+            Map.entry(
+                "availableFrom", McpSchemaSupport.nullable(McpSchemaSupport.string("date-time"))),
+            Map.entry("dataAsOf", McpSchemaSupport.string("date-time"))));
   }
 
   private static GetPromptResult prompt(String description, String text) {
@@ -354,7 +466,7 @@ public final class SupplyMcpProvider {
       return new SearchData(
           page.items().stream().map(SkuData::from).toList(),
           new PageData(page.nextCursor(), page.hasNext(), page.pageSize()),
-          page.dataAsOf(),
+          page.items().isEmpty() ? null : page.dataAsOf(),
           page.availabilityDisclaimer());
     }
   }

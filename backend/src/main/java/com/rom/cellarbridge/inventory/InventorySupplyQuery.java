@@ -9,9 +9,9 @@ import java.util.UUID;
 
 public interface InventorySupplyQuery {
 
-  Set<UUID> authorizedSupplyPoolIds();
+  Set<UUID> authorizedSupplyPoolIds(Set<UUID> candidateIds);
 
-  List<ExactLotAvailability> findAuthorizedLots(Set<UUID> supplyPoolIds);
+  List<ExactLotAvailability> findAuthorizedLots(Set<ExactLotCandidate> candidates, int maxResults);
 
   /** Internal module collaboration query. Results are not a reservation or customer promise. */
   List<RouteAvailability> findRouteAvailability(
@@ -31,6 +31,12 @@ public interface InventorySupplyQuery {
       long warehouseVersion,
       Instant availableFrom,
       Instant dataAsOf) {}
+
+  record ExactLotCandidate(UUID supplyPoolId, UUID skuId, QuantityUnit quantityUnit) {
+    public String key() {
+      return supplyPoolId + "|" + skuId + "|" + quantityUnit;
+    }
+  }
 
   record RouteAvailability(
       UUID supplyPoolId,

@@ -17,8 +17,6 @@ import java.util.function.Function;
 /** Strict MCP schema and argument support shared by the read-only business adapters. */
 public final class McpCapabilitySupport {
 
-  private static final Map<String, Object> OUTPUT_SCHEMA = outputSchema();
-
   private McpCapabilitySupport() {}
 
   public static SyncToolSpecification readOnlyTool(
@@ -29,6 +27,7 @@ public final class McpCapabilitySupport {
       String description,
       Map<String, Object> properties,
       List<String> required,
+      Map<String, Object> outputDataSchema,
       Function<Arguments, McpReadPayload> operation) {
     Map<String, Object> immutableProperties = Map.copyOf(properties);
     JsonSchema inputSchema =
@@ -43,7 +42,7 @@ public final class McpCapabilitySupport {
             .title(title)
             .description(description)
             .inputSchema(inputSchema)
-            .outputSchema(OUTPUT_SCHEMA)
+            .outputSchema(McpSchemaSupport.readEnvelope(sourceKind, outputDataSchema))
             .annotations(
                 ToolAnnotations.builder()
                     .title(title)
@@ -140,61 +139,12 @@ public final class McpCapabilitySupport {
     }
   }
 
-  private static Map<String, Object> outputSchema() {
-    Map<String, Object> properties = new LinkedHashMap<>();
-    properties.put("schemaVersion", Map.of("type", "string"));
-    properties.put("sourceKind", Map.of("type", "string"));
-    properties.put(
-        "dataAsOf",
-        Map.of(
-            "anyOf",
-            List.of(Map.of("type", "string", "format", "date-time"), Map.of("type", "null"))));
-    properties.put(
-        "projectionStatus",
-        Map.of(
-            "anyOf",
-            List.of(
-                Map.of(
-                    "type",
-                    "string",
-                    "enum",
-                    List.of("CURRENT", "STALE", "EMPTY", "NOT_APPLICABLE")),
-                Map.of("type", "null"))));
-    properties.put("correlationId", Map.of("type", "string", "format", "uuid"));
-    properties.put("warnings", Map.of("type", "array", "items", Map.of("type", "string")));
-    properties.put("data", Map.of());
-    properties.put("isError", Map.of("type", "boolean"));
-    properties.put("code", Map.of("type", List.of("string", "null")));
-    properties.put("retryable", Map.of("type", "boolean"));
-    properties.put("safeMessage", Map.of("type", List.of("string", "null")));
-    Map<String, Object> schema = new LinkedHashMap<>();
-    schema.put("$schema", "https://json-schema.org/draft/2020-12/schema");
-    schema.put("type", "object");
-    schema.put("properties", Map.copyOf(properties));
-    schema.put(
-        "required",
-        List.of(
-            "schemaVersion",
-            "sourceKind",
-            "dataAsOf",
-            "projectionStatus",
-            "correlationId",
-            "warnings",
-            "data",
-            "isError",
-            "code",
-            "retryable",
-            "safeMessage"));
-    schema.put("additionalProperties", false);
-    return Map.copyOf(schema);
-  }
-
   public static final class Arguments {
     private final Map<String, Object> values;
     private final Set<String> allowedKeys;
 
     private Arguments(Map<String, Object> values, Set<String> allowedKeys) {
-      this.values = values == null ? Map.of() : Map.copyOf(values);
+      this.values = values == null ? Map.of() : new LinkedHashMap<>(values);
       this.allowedKeys = Set.copyOf(allowedKeys);
     }
 
@@ -263,7 +213,7 @@ public final class McpCapabilitySupport {
     }
 
     private void validateKeys() {
-      if (!allowedKeys.containsAll(values.keySet())) {
+      if (!allowedKeys.containsAll(values.keySet()) || values.containsValue(null)) {
         throw McpSafeException.invalidRequest();
       }
     }

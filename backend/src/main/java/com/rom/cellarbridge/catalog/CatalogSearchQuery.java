@@ -11,7 +11,11 @@ public interface CatalogSearchQuery {
 
   SearchPage search(TenantId tenantId, SearchCommand command);
 
-  CatalogSearchItem get(TenantId tenantId, UUID skuId);
+  default CatalogSearchItem get(TenantId tenantId, UUID skuId) {
+    return get(tenantId, skuId, Integer.MAX_VALUE);
+  }
+
+  CatalogSearchItem get(TenantId tenantId, UUID skuId, int maxSupplyProjections);
 
   record SearchCommand(
       String keyword,
@@ -29,7 +33,9 @@ public interface CatalogSearchQuery {
       Instant availableTo,
       String sort,
       Integer pageSize,
-      String cursor) {}
+      String cursor,
+      String authorizationScope,
+      int maxSupplyProjections) {}
 
   record SearchPage(
       List<CatalogSearchItem> items,
