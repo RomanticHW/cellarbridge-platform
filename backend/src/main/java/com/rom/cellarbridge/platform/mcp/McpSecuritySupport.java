@@ -97,10 +97,6 @@ public final class McpSecuritySupport implements HealthIndicator {
     return this::denyScope;
   }
 
-  public McpSecurityProperties properties() {
-    return properties;
-  }
-
   public void timeout() {
     mark("DOWNSTREAM_TIMEOUT");
   }

@@ -47,7 +47,7 @@ class JwtConfiguration {
               (azpClaim == null || azp != null)
                   && (clientIdClaim == null || clientId != null)
                   && (azp == null || clientId == null || Objects.equals(azp, clientId));
-          return consistent && resolved != null && properties.allowedClientSet().contains(resolved)
+          return consistent && resolved != null && properties.allowedClients().contains(resolved)
               ? OAuth2TokenValidatorResult.success()
               : OAuth2TokenValidatorResult.failure(invalidClient);
         };

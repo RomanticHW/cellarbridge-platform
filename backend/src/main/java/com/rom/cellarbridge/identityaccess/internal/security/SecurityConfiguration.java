@@ -50,9 +50,9 @@ class SecurityConfiguration {
       JwtDecoder decoder,
       SecurityProperties securityProperties,
       TenantContextFilter tenantContextFilter,
+      McpSecurityProperties properties,
       McpSecuritySupport mcp)
       throws Exception {
-    McpSecurityProperties properties = mcp.properties();
     http.securityMatcher("/mcp", MCP_METADATA)
         .csrf(csrf -> csrf.disable())
         .cors(Customizer.withDefaults())

@@ -28,10 +28,7 @@ final class ResourceBinding {
     ClientModel resource =
         session.clients().getClientByClientId(session.getContext().getRealm(), RESOURCE_CLIENT_ID);
     String value = resource == null ? null : resource.getAttribute(RESOURCE_URL);
-    if (!isCanonical(value)) {
-      return null;
-    }
-    return value;
+    return isCanonical(value) ? value : null;
   }
 
   static boolean isCanonical(String value) {

@@ -3,7 +3,6 @@ package com.rom.cellarbridge.platform.mcp;
 import java.net.URI;
 import java.time.Duration;
 import java.util.List;
-import java.util.Set;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = "cellarbridge.mcp.security")
@@ -68,10 +67,6 @@ public record McpSecurityProperties(
     } catch (java.net.URISyntaxException exception) {
       return "";
     }
-  }
-
-  public Set<String> allowedClientSet() {
-    return Set.copyOf(allowedClients);
   }
 
   private static List<String> copy(List<String> values) {

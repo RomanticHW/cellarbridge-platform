@@ -51,9 +51,6 @@ public final class McpResourcePolicyExecutor
                   && ResourceBinding.oneExact(
                       ((TokenRefreshContext) context).getParams().get(OAuth2Constants.RESOURCE),
                       canonical));
-      default -> {
-        // This policy only constrains authorization-code and refresh flows.
-      }
     }
   }
 
@@ -68,7 +65,10 @@ public final class McpResourcePolicyExecutor
 
   private static void authorize(AuthorizationRequestContext context, String canonical)
       throws ClientPolicyException {
-    require(context.getRequestParameters().get(OAuth2Constants.RESOURCE), canonical);
+    if (!ResourceBinding.oneExact(
+        context.getRequestParameters().get(OAuth2Constants.RESOURCE), canonical)) {
+      reject();
+    }
     context.getAuthenticationSession().setClientNote(ResourceBinding.SESSION_NOTE, canonical);
   }
 
@@ -78,13 +78,6 @@ public final class McpResourcePolicyExecutor
             canonical,
             context.getParseResult().getCodeData().getResource(),
             context.getClientSession().getNote(ResourceBinding.SESSION_NOTE));
-  }
-
-  private static void require(java.util.List<String> values, String canonical)
-      throws ClientPolicyException {
-    if (!ResourceBinding.oneExact(values, canonical)) {
-      reject();
-    }
   }
 
   private static void reject() throws ClientPolicyException {

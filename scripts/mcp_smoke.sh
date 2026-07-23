@@ -400,12 +400,8 @@ assert_http_status() {
   fi
 }
 exercise_database_timeout() {
-  local phase="$1"
-  local relation="$2"
-  local access_token="$3"
-  local api_token="$4"
-  local payload="$5"
-  local verify_rest="$6"
+  local phase="$1" relation="$2" access_token="$3"
+  local api_token="$4" payload="$5" verify_rest="$6"
   local app="cb_mcp_${phase}_lock"
   local backend_id slow_pid status expected_status="200"
   [[ "${phase}" != "request" ]] || expected_status="504"
