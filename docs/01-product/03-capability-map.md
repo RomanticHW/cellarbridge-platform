@@ -42,6 +42,7 @@ mindmap
       Notifications
       Reporting
       Observability
+      Authenticated read-only MCP
 ```
 
 ## 2. 能力分解与模块归属
@@ -85,6 +86,7 @@ mindmap
 | CAP-REP-01 | 治理 | 经营读模型 | audit-reporting | 是 |
 | CAP-NOT-01 | 治理 | 站内通知与工作队列 | notification | 是 |
 | CAP-OBS-01 | 治理 | 技术与业务可观测性 | platform | 是 |
+| CAP-MCP-01 | 治理 | 面向智能客户端的认证只读业务访问 | platform + business adapters | 是，Task 16 |
 
 ## 3. 核心、支撑和通用分类
 
@@ -92,7 +94,7 @@ mindmap
 |---|---|---|
 | 核心 | 报价、路径评估、订单、库存预占、履约 | 领域不变量、正确性和差异化 |
 | 支撑 | 客户、目录、异常、应收 | 支持核心闭环，不扩展为独立大型系统 |
-| 通用 | 身份、通知、审计、报表、可观测性 | 采用成熟机制，避免自建通用平台 |
+| 通用 | 身份、通知、审计、报表、可观测性、MCP 接入 | 采用成熟机制，避免自建通用平台 |
 
 ## 4. 能力依赖
 
@@ -109,6 +111,7 @@ flowchart LR
     EXC[Exception Center]
     SET[Settlement]
     REP[Audit & Reporting]
+    MCP[Authenticated read-only MCP]
 
     IAM -.authorizes.-> PAR
     IAM -.authorizes.-> QUO
@@ -131,6 +134,10 @@ flowchart LR
     INV -.events.-> REP
     FUL -.events.-> REP
     SET -.events.-> REP
+    MCP -.authorizes.-> IAM
+    MCP --> CAT
+    MCP --> INV
+    MCP --> REP
 ```
 
 箭头表示业务信息依赖，不代表允许直接访问对方数据库。具体代码依赖规则见 `docs/03-architecture/02-module-dependency-rules.md`。

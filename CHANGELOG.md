@@ -4,7 +4,20 @@ All notable changes to this project are documented in this file. The project fol
 
 ## [Unreleased]
 
-No unreleased changes.
+### Added
+
+- authenticated read-only MCP Streamable HTTP endpoint at `/mcp`;
+- six tenant- and role-scoped business tools, three resources and three reusable operations prompts;
+- real OIDC smoke, protocol conformance runner, runbook and bilingual README discovery guidance.
+
+### Security
+
+- every stateless MCP request reuses API JWT audience validation, TenantContext, permissions,
+  ownership and field projections;
+- strict MCP Origin/CORS policy, no-store responses, bounded inputs and sanitized error envelopes;
+- no write tools, model-provider SDK, RAG integration or vector store.
+
+The immutable `v1.0.0` tag and its release assets predate these unreleased MCP capabilities.
 
 ## [1.0.0] - 2026-07-22
 

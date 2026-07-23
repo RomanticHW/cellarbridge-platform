@@ -29,3 +29,13 @@ settlement,action,current,settlement-view,viewer,open,safe-problem,denied,Settle
 reporting,list,current,reporting-view,owner,active,scoped-dashboard,allowed,AuditReportingIntegrationTest
 reporting,detail,other,reporting-view,foreign,active,safe-problem,denied,AuditReportingIntegrationTest
 reporting,action,current,reporting-rebuild,viewer,active,safe-problem,denied,AuditReportingIntegrationTest
+mcp-identity,tool,current,authenticated,self,active,safe-profile,allowed,OperationsMcpApiIntegrationTest
+mcp-supply,tool,current,sales-representative,tenant,active,commercial-redacted,allowed,OperationsMcpApiIntegrationTest
+mcp-supply,tool,current,warehouse-operator,assigned-warehouse,active,exact-assigned-supply,allowed,OperationsMcpApiIntegrationTest
+mcp-supply,tool,current,warehouse-operator,unassigned-warehouse,active,unassigned-exact-fields-redacted,allowed,OperationsMcpApiIntegrationTest
+mcp-supply,tool,current,buyer,partner,active,safe-error,denied,OperationsMcpApiIntegrationTest
+mcp-supply,resource,other,catalog-view,foreign,active,safe-not-found,denied,OperationsMcpApiIntegrationTest
+mcp-work-items,tool,current,sales-representative,team,open,safe-error,denied,OperationsMcpApiIntegrationTest
+mcp-timeline,tool,current,sales-representative,owner,quotation,safe-error,denied,OperationsMcpApiIntegrationTest
+mcp-timeline,resource,current,buyer,partner-order,active,buyer-safe,allowed,OperationsMcpApiIntegrationTest
+mcp-audit,tool,current,buyer,partner,active,safe-error,denied,OperationsMcpApiIntegrationTest

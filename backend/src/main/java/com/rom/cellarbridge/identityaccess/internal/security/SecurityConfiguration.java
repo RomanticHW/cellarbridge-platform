@@ -37,6 +37,8 @@ class SecurityConfiguration {
                     .permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/v1/me")
                     .authenticated()
+                    .requestMatchers("/mcp")
+                    .authenticated()
                     .requestMatchers("/api/v1/partners/**")
                     .authenticated()
                     .requestMatchers(HttpMethod.GET, "/api/v1/catalog/skus/**")
@@ -94,6 +96,7 @@ class SecurityConfiguration {
                         new PermissionsPolicyHeaderWriter(
                             "camera=(), geolocation=(), microphone=()")));
     http.addFilterBefore(tenantContextFilter, AuthorizationFilter.class);
+    http.addFilterAfter(new McpProtocolVersionFilter(), AuthorizationFilter.class);
     return http.build();
   }
 
@@ -104,12 +107,26 @@ class SecurityConfiguration {
     configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
     configuration.setAllowedHeaders(
         List.of(
-            "Authorization", "Content-Type", "If-Match", "Idempotency-Key", "X-Correlation-ID"));
+            "Authorization",
+            "Content-Type",
+            "If-Match",
+            "Idempotency-Key",
+            "MCP-Protocol-Version",
+            "X-Correlation-ID"));
     configuration.setExposedHeaders(List.of("ETag", "X-Correlation-ID", "Idempotency-Replayed"));
     configuration.setAllowCredentials(false);
     configuration.setMaxAge(3600L);
     UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
     source.registerCorsConfiguration("/api/**", configuration);
+    CorsConfiguration mcp = new CorsConfiguration();
+    mcp.setAllowedOrigins(properties.allowedOrigins());
+    mcp.setAllowedMethods(List.of("GET", "POST", "OPTIONS"));
+    mcp.setAllowedHeaders(
+        List.of("Authorization", "Content-Type", "MCP-Protocol-Version", "X-Correlation-ID"));
+    mcp.setExposedHeaders(List.of("X-Correlation-ID"));
+    mcp.setAllowCredentials(false);
+    mcp.setMaxAge(3600L);
+    source.registerCorsConfiguration("/mcp", mcp);
     return source;
   }
 }

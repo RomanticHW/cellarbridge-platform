@@ -8,3 +8,6 @@
 | Portal token in URL | Required by the public portal contract; logging disabled and referrer/cache restricted | Token rotation, expiry monitoring and edge WAF rules |
 | No dedicated WAF or distributed limiter | Application and single-node nginx rate limits protect the demo | Shared limiter and abuse telemetry at the production edge |
 | Upstream observability container licenses | Grafana and Tempo are unmodified, separately running AGPL images | Preserve notices/source links and re-review before distribution or modification |
+| MCP uses the existing API audience | Suitable for the current first-party demo; no MCP OAuth discovery or dynamic client registration is claimed | Define a dedicated resource indicator/audience and standards-complete authorization metadata before third-party production access |
+| Agent Host and model are outside the trust boundary | CellarBridge validates every request and returns only role/tenant-scoped data, but cannot govern downstream prompt retention | Approved hosts, managed token storage, DLP, retention policy and human approval rules |
+| MCP shares the application process | Keeps authorization and business rules single-sourced; transport load shares the backend fault domain | Capacity limits, gateway controls, isolation decision and load evidence before broad production rollout |

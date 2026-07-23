@@ -25,6 +25,7 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Transactional;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -277,6 +278,170 @@ class AuditReportingIntegrationTest extends PostgresIntegrationTestSupport {
   }
 
   @Test
+  @Transactional
+  void bindsAuditCursorToNormalizedQueryAndEffectiveAuthorizationScope() throws Exception {
+    UUID quotationId = UUID.randomUUID();
+    for (int index = 0; index < 3; index++) {
+      service.project(
+          event(
+              TENANT,
+              UUID.randomUUID(),
+              "cellarbridge.quotation.draft-created.v1",
+              BASE.plusSeconds(100 + index),
+              "QUOTATION",
+              quotationId,
+              "QUO-CURSOR-BOUND",
+              Map.of("status", "DRAFT", "revision", index + 1, "actorId", ACTOR)));
+    }
+
+    String cursor;
+    try (TenantContextHolder.Scope ignored = contexts.open(admin(TENANT))) {
+      AuditPage first =
+          service.audit(
+              " QUOTATION ",
+              quotationId,
+              null,
+              null,
+              " QUOTATION_DRAFT_CREATED ",
+              null,
+              null,
+              1,
+              null);
+      assertThat(first.pageInfo().hasNext()).isTrue();
+      cursor = first.pageInfo().nextCursor();
+
+      assertThat(
+              service
+                  .audit(
+                      "QUOTATION",
+                      quotationId,
+                      null,
+                      null,
+                      "QUOTATION_DRAFT_CREATED",
+                      null,
+                      null,
+                      2,
+                      cursor)
+                  .items())
+          .isNotEmpty();
+
+      assertCursorRejected(
+          () ->
+              service.audit(
+                  "TRADE_ORDER",
+                  quotationId,
+                  null,
+                  null,
+                  "QUOTATION_DRAFT_CREATED",
+                  null,
+                  null,
+                  1,
+                  cursor));
+      assertCursorRejected(
+          () ->
+              service.audit(
+                  "QUOTATION",
+                  UUID.randomUUID(),
+                  null,
+                  null,
+                  "QUOTATION_DRAFT_CREATED",
+                  null,
+                  null,
+                  1,
+                  cursor));
+      assertCursorRejected(
+          () ->
+              service.audit(
+                  "QUOTATION",
+                  quotationId,
+                  UUID.randomUUID(),
+                  null,
+                  "QUOTATION_DRAFT_CREATED",
+                  null,
+                  null,
+                  1,
+                  cursor));
+      assertCursorRejected(
+          () ->
+              service.audit(
+                  "QUOTATION",
+                  quotationId,
+                  null,
+                  ACTOR,
+                  "QUOTATION_DRAFT_CREATED",
+                  null,
+                  null,
+                  1,
+                  cursor));
+      assertCursorRejected(
+          () ->
+              service.audit(
+                  "QUOTATION",
+                  quotationId,
+                  null,
+                  null,
+                  "QUOTATION_APPROVED",
+                  null,
+                  null,
+                  1,
+                  cursor));
+      assertCursorRejected(
+          () ->
+              service.audit(
+                  "QUOTATION",
+                  quotationId,
+                  null,
+                  null,
+                  "QUOTATION_DRAFT_CREATED",
+                  BASE,
+                  null,
+                  1,
+                  cursor));
+      assertCursorRejected(
+          () ->
+              service.audit(
+                  "QUOTATION",
+                  quotationId,
+                  null,
+                  null,
+                  "QUOTATION_DRAFT_CREATED",
+                  null,
+                  BASE.plusSeconds(1_000),
+                  1,
+                  cursor));
+    }
+
+    try (TenantContextHolder.Scope ignored = contexts.open(sales(TENANT))) {
+      assertCursorRejected(
+          () ->
+              service.audit(
+                  "QUOTATION",
+                  quotationId,
+                  null,
+                  null,
+                  "QUOTATION_DRAFT_CREATED",
+                  null,
+                  null,
+                  1,
+                  cursor));
+    }
+    try (TenantContextHolder.Scope ignored = contexts.open(systemOperator(TENANT))) {
+      assertCursorRejected(
+          () ->
+              service.audit(
+                  "QUOTATION",
+                  quotationId,
+                  null,
+                  null,
+                  "QUOTATION_DRAFT_CREATED",
+                  null,
+                  null,
+                  1,
+                  cursor));
+    }
+  }
+
+  @Test
   void rebuildsIntoStagingAndAtomicallySwitchesEquivalentResults() throws Exception {
     UUID orderId = UUID.randomUUID();
     EventDelivery order =
@@ -441,6 +606,13 @@ class AuditReportingIntegrationTest extends PostgresIntegrationTestSupport {
     return value == null ? 0 : value;
   }
 
+  private static void assertCursorRejected(
+      org.assertj.core.api.ThrowableAssert.ThrowingCallable call) {
+    assertThatThrownBy(call)
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("query");
+  }
+
   private static TenantContext admin(TenantId tenantId) {
     return new TenantContext(
         ACTOR,
@@ -486,6 +658,21 @@ class AuditReportingIntegrationTest extends PostgresIntegrationTestSupport {
         Set.of("sales-representative"),
         Set.of(PermissionCode.QUOTATION_READ),
         "reporting-sales-subject",
+        "reporting-tenant");
+  }
+
+  private static TenantContext systemOperator(TenantId tenantId) {
+    return new TenantContext(
+        ACTOR,
+        "System Operator",
+        tenantId,
+        "Synthetic Cellars",
+        "ACTIVE",
+        null,
+        Set.of("System Operator"),
+        Set.of("system-operator"),
+        Set.of(PermissionCode.AUDIT_READ),
+        "reporting-operator-subject",
         "reporting-tenant");
   }
 }

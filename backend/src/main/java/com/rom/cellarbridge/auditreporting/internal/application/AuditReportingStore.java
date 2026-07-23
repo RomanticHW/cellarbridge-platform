@@ -65,6 +65,8 @@ public interface AuditReportingStore {
       boolean teamScope,
       int pageSize);
 
+  ProjectionFreshness projectionFreshness(TenantId tenantId, Instant generatedAt);
+
   long beginRebuild(TenantId tenantId, Instant now);
 
   void activateRebuild(
@@ -193,6 +195,9 @@ public interface AuditReportingStore {
       Instant dueFrom,
       Instant dueTo,
       String subjectNumber) {}
+
+  record ProjectionFreshness(
+      Instant dataAsOf, long projectionLagSeconds, String projectionStatus) {}
 
   record WorkItemRecord(
       UUID id,

@@ -5,6 +5,7 @@ import com.rom.cellarbridge.auditreporting.internal.application.AuditReportingSt
 import com.rom.cellarbridge.auditreporting.internal.application.AuditReportingStore.DashboardRecord;
 import com.rom.cellarbridge.auditreporting.internal.application.AuditReportingStore.InboxDecision;
 import com.rom.cellarbridge.auditreporting.internal.application.AuditReportingStore.Projection;
+import com.rom.cellarbridge.auditreporting.internal.application.AuditReportingStore.ProjectionFreshness;
 import com.rom.cellarbridge.auditreporting.internal.application.AuditReportingStore.ProjectionStatus;
 import com.rom.cellarbridge.auditreporting.internal.application.AuditReportingStore.TimelineRecord;
 import com.rom.cellarbridge.auditreporting.internal.application.AuditReportingStore.WorkFilter;
@@ -127,21 +128,34 @@ public class AuditReportingService {
     TenantContext context = context();
     authorization.require(PermissionCode.AUDIT_READ, context.tenantId());
     int pageSize = pageSize(requestedPageSize);
-    AuditCursorCodec.Position position = cursors.decode(context.tenantId(), cursor);
+    String normalizedSubjectType = blank(subjectType);
+    String normalizedAction = blank(action);
     UUID actorScope = context.hasRoleCode("sales-representative") ? context.userId() : actorId;
     Set<String> classifications =
         context.hasRoleCode("system-operator")
             ? Set.of("TECHNICAL_SENSITIVE")
             : Set.of("INTERNAL", "COMMERCIAL_SENSITIVE");
+    String queryFingerprint =
+        auditQueryFingerprint(
+            normalizedSubjectType,
+            subjectId,
+            correlationId,
+            actorScope,
+            normalizedAction,
+            from,
+            to,
+            classifications);
+    AuditCursorCodec.Position position =
+        cursors.decode(context.tenantId(), queryFingerprint, cursor);
     List<AuditRecord> values =
         store.audit(
             context.tenantId(),
             new AuditFilter(
-                blank(subjectType),
+                normalizedSubjectType,
                 subjectId,
                 correlationId,
                 actorScope,
-                blank(action),
+                normalizedAction,
                 from,
                 to,
                 position.occurredAt(),
@@ -153,7 +167,11 @@ public class AuditReportingService {
     List<AuditRecord> items = hasNext ? values.subList(0, pageSize) : values;
     String next =
         hasNext
-            ? cursors.encode(context.tenantId(), items.getLast().occurredAt(), items.getLast().id())
+            ? cursors.encode(
+                context.tenantId(),
+                queryFingerprint,
+                items.getLast().occurredAt(),
+                items.getLast().id())
             : null;
     return new AuditPage(items, new PageInfo(next, hasNext, pageSize));
   }
@@ -220,6 +238,20 @@ public class AuditReportingService {
     return new WorkItemPage(items, teamScope ? "TEAM" : "PERSONAL");
   }
 
+  @Transactional(readOnly = true)
+  public ProjectionFreshness reportingProjectionFreshness() {
+    TenantContext context = context();
+    authorization.require(PermissionCode.REPORTING_READ, context.tenantId());
+    return store.projectionFreshness(context.tenantId(), clock.instant());
+  }
+
+  @Transactional(readOnly = true)
+  public ProjectionFreshness auditProjectionFreshness() {
+    TenantContext context = context();
+    authorization.require(PermissionCode.AUDIT_READ, context.tenantId());
+    return store.projectionFreshness(context.tenantId(), clock.instant());
+  }
+
   @Transactional
   public RebuildResult rebuildCurrentTenant() {
     TenantContext context = context();
@@ -277,6 +309,44 @@ public class AuditReportingService {
     String result = blank(value);
     if (result == null) throw new IllegalArgumentException(name + " is required");
     return result;
+  }
+
+  private static String auditQueryFingerprint(
+      String subjectType,
+      UUID subjectId,
+      UUID correlationId,
+      UUID actorScope,
+      String action,
+      Instant from,
+      Instant to,
+      Set<String> classifications) {
+    StringBuilder canonical = new StringBuilder();
+    appendCanonical(canonical, "subjectType", subjectType);
+    appendCanonical(canonical, "subjectId", subjectId);
+    appendCanonical(canonical, "correlationId", correlationId);
+    appendCanonical(canonical, "actorScope", actorScope);
+    appendCanonical(canonical, "action", action);
+    appendCanonical(canonical, "from", from);
+    appendCanonical(canonical, "to", to);
+    appendCanonical(
+        canonical,
+        "classifications",
+        classifications.stream()
+            .sorted()
+            .map(value -> value.length() + ":" + value)
+            .collect(java.util.stream.Collectors.joining(",")));
+    return ProjectionDefinition.sha256(canonical.toString());
+  }
+
+  private static void appendCanonical(StringBuilder canonical, String name, Object value) {
+    canonical.append(name).append('=');
+    if (value == null) {
+      canonical.append('-');
+    } else {
+      String text = value.toString();
+      canonical.append(text.length()).append(':').append(text);
+    }
+    canonical.append(';');
   }
 
   private String projectionStatus(Instant dataAsOf) {

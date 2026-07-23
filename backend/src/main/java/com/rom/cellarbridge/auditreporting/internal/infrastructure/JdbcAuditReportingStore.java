@@ -498,6 +498,29 @@ public class JdbcAuditReportingStore implements AuditReportingStore {
   }
 
   @Override
+  public ProjectionFreshness projectionFreshness(TenantId tenantId, Instant generatedAt) {
+    long generation = activeGenerationReadOnly(tenantId);
+    if (generation == 0) {
+      return new ProjectionFreshness(null, 0, "EMPTY");
+    }
+    GenerationRow generationRow = generation(tenantId, generation);
+    long lag =
+        generationRow.dataAsOf() == null
+            ? 0
+            : Math.max(0, ChronoUnit.SECONDS.between(generationRow.dataAsOf(), generatedAt));
+    String status = generationRow.dataAsOf() == null ? "EMPTY" : lag > 10 ? "STALE" : "CURRENT";
+    Long rebuilding =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM audit_reporting.projection_generation WHERE tenant_id = :tenantId AND status = 'STAGING'",
+            new MapSqlParameterSource("tenantId", tenantId.value()),
+            Long.class);
+    if (rebuilding != null && rebuilding > 0) {
+      status = "REBUILDING";
+    }
+    return new ProjectionFreshness(generationRow.dataAsOf(), lag, status);
+  }
+
+  @Override
   public long beginRebuild(TenantId tenantId, Instant now) {
     jdbc.queryForObject(
         "SELECT 1 FROM (SELECT pg_advisory_xact_lock(hashtextextended(:lockKey, 0))) acquisition",

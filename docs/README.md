@@ -75,6 +75,7 @@ The documentation is organized from evidence to delivery. Each layer narrows the
 - [Technology baseline](03-architecture/13-technology-baseline.md)
 - [Architecture fitness functions](03-architecture/14-architecture-fitness-functions.md)
 - [Architecture Decision Records](03-architecture/adr/)
+- [ADR-026: authenticated read-only MCP interface](03-architecture/adr/ADR-026-authenticated-read-only-mcp-interface.md)
 
 ### Contracts — `docs/04-contracts/` and `contracts/`
 
@@ -88,6 +89,7 @@ The documentation is organized from evidence to delivery. Each layer narrows the
 - [Audit model](04-contracts/07-audit-model.md)
 - [Reporting read models](04-contracts/08-reporting-read-models.md)
 - [Data classification and retention](04-contracts/09-data-classification-and-retention.md)
+- [MCP capability contract](04-contracts/10-mcp-capability-contract.md)
 - [OpenAPI](../contracts/openapi/cellarbridge-api.yaml)
 - [AsyncAPI](../contracts/asyncapi/cellarbridge-events.yaml)
 
@@ -117,6 +119,10 @@ The documentation is organized from evidence to delivery. Each layer narrows the
 - [Settlement runbook](05-delivery/21-settlement-runbook.md)
 - [Audit and reporting runbook](05-delivery/22-audit-reporting-runbook.md)
 - [Observability and security runbook](05-delivery/23-observability-security-runbook.md)
+- [Performance and resilience runbook](05-delivery/24-performance-resilience-runbook.md)
+- [v1.0.0 release notes](05-delivery/25-release-notes-v1.0.0.md)
+- [MCP and intelligent client runbook](05-delivery/26-mcp-agent-runbook.md)
+- [MCP smoke and conformance evidence](evidence/mcp/conformance-summary.md)
 
 ## Change control
 

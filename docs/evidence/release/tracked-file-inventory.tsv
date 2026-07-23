@@ -16,6 +16,7 @@ path	category
 .github/workflows/docs-check.yml	release_asset
 .github/workflows/frontend.yml	release_asset
 .github/workflows/identity-access.yml	release_asset
+.github/workflows/mcp.yml	release_asset
 .github/workflows/migration-history.yml	release_asset
 .github/workflows/partner-onboarding.yml	release_asset
 .github/workflows/performance-resilience.yml	release_asset
@@ -49,6 +50,7 @@ backend/src/main/java/com/rom/cellarbridge/auditreporting/internal/application/P
 backend/src/main/java/com/rom/cellarbridge/auditreporting/internal/application/ProjectionHandlerConfiguration.java	source
 backend/src/main/java/com/rom/cellarbridge/auditreporting/internal/infrastructure/JdbcAuditReportingStore.java	source
 backend/src/main/java/com/rom/cellarbridge/auditreporting/internal/infrastructure/JdbcProjectionEventSource.java	source
+backend/src/main/java/com/rom/cellarbridge/auditreporting/internal/mcp/ReportingMcpProvider.java	source
 backend/src/main/java/com/rom/cellarbridge/auditreporting/internal/web/AuditReportingController.java	source
 backend/src/main/java/com/rom/cellarbridge/auditreporting/internal/web/AuditReportingExceptionHandler.java	source
 backend/src/main/java/com/rom/cellarbridge/auditreporting/package-info.java	source
@@ -120,8 +122,10 @@ backend/src/main/java/com/rom/cellarbridge/identityaccess/internal/domain/Tenant
 backend/src/main/java/com/rom/cellarbridge/identityaccess/internal/domain/UserMapping.java	source
 backend/src/main/java/com/rom/cellarbridge/identityaccess/internal/domain/UserStatus.java	source
 backend/src/main/java/com/rom/cellarbridge/identityaccess/internal/infrastructure/JdbcIdentityAccessRepository.java	source
+backend/src/main/java/com/rom/cellarbridge/identityaccess/internal/mcp/IdentityMcpProvider.java	source
 backend/src/main/java/com/rom/cellarbridge/identityaccess/internal/security/AudienceValidator.java	source
 backend/src/main/java/com/rom/cellarbridge/identityaccess/internal/security/JwtConfiguration.java	source
+backend/src/main/java/com/rom/cellarbridge/identityaccess/internal/security/McpProtocolVersionFilter.java	source
 backend/src/main/java/com/rom/cellarbridge/identityaccess/internal/security/ProblemAccessDeniedHandler.java	source
 backend/src/main/java/com/rom/cellarbridge/identityaccess/internal/security/ProblemAuthenticationEntryPoint.java	source
 backend/src/main/java/com/rom/cellarbridge/identityaccess/internal/security/SafeIdentifierHasher.java	source
@@ -168,6 +172,7 @@ backend/src/main/java/com/rom/cellarbridge/inventory/internal/infrastructure/Jdb
 backend/src/main/java/com/rom/cellarbridge/inventory/internal/infrastructure/JdbcInventoryReservationRepository.java	source
 backend/src/main/java/com/rom/cellarbridge/inventory/internal/infrastructure/JdbcReservationOperationRepository.java	source
 backend/src/main/java/com/rom/cellarbridge/inventory/internal/infrastructure/JdbcReservationRequestConflictRepository.java	source
+backend/src/main/java/com/rom/cellarbridge/inventory/internal/mcp/SupplyMcpProvider.java	source
 backend/src/main/java/com/rom/cellarbridge/inventory/internal/web/CatalogSearchController.java	source
 backend/src/main/java/com/rom/cellarbridge/inventory/internal/web/CatalogSupplyExceptionHandler.java	source
 backend/src/main/java/com/rom/cellarbridge/inventory/internal/web/InventoryReservationController.java	source
@@ -218,6 +223,13 @@ backend/src/main/java/com/rom/cellarbridge/platform/internal/LocalEventDispatche
 backend/src/main/java/com/rom/cellarbridge/platform/internal/LocalEventSchedulingConfiguration.java	source
 backend/src/main/java/com/rom/cellarbridge/platform/internal/OperationalMetrics.java	source
 backend/src/main/java/com/rom/cellarbridge/platform/internal/SafeTelemetryIdentifiers.java	source
+backend/src/main/java/com/rom/cellarbridge/platform/internal/mcp/McpToolConfiguration.java	source
+backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpCallSupport.java	source
+backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpCapabilitySupport.java	source
+backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpReadEnvelope.java	source
+backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpReadPayload.java	source
+backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpSafeException.java	source
+backend/src/main/java/com/rom/cellarbridge/platform/mcp/package-info.java	source
 backend/src/main/java/com/rom/cellarbridge/platform/package-info.java	source
 backend/src/main/java/com/rom/cellarbridge/quotation/QuotationAcceptedV1.java	source
 backend/src/main/java/com/rom/cellarbridge/quotation/QuotationSnapshotHashV1.java	source
@@ -332,6 +344,7 @@ backend/src/test/java/com/rom/cellarbridge/FoundationApplicationIntegrationTest.
 backend/src/test/java/com/rom/cellarbridge/architecture/ArchitectureRulesTest.java	test
 backend/src/test/java/com/rom/cellarbridge/architecture/ModularityTest.java	test
 backend/src/test/java/com/rom/cellarbridge/architecture/fixture/domain/IllegalWebDependency.java	test
+backend/src/test/java/com/rom/cellarbridge/auditreporting/internal/application/AuditCursorCodecTest.java	test
 backend/src/test/java/com/rom/cellarbridge/auditreporting/internal/application/AuditReportingIntegrationTest.java	test
 backend/src/test/java/com/rom/cellarbridge/catalog/CatalogSearchApiIntegrationTest.java	test
 backend/src/test/java/com/rom/cellarbridge/catalog/internal/domain/CatalogDomainTest.java	test
@@ -344,6 +357,8 @@ backend/src/test/java/com/rom/cellarbridge/identityaccess/TenantContextSnapshotT
 backend/src/test/java/com/rom/cellarbridge/identityaccess/internal/application/DefaultAuthorizationServiceTest.java	test
 backend/src/test/java/com/rom/cellarbridge/identityaccess/internal/infrastructure/JdbcIdentityAccessRepositoryIntegrationTest.java	test
 backend/src/test/java/com/rom/cellarbridge/identityaccess/internal/security/JwtValidationTest.java	test
+backend/src/test/java/com/rom/cellarbridge/identityaccess/internal/security/McpCorsConfigurationTest.java	test
+backend/src/test/java/com/rom/cellarbridge/identityaccess/internal/security/McpProtocolVersionFilterTest.java	test
 backend/src/test/java/com/rom/cellarbridge/identityaccess/internal/security/SecurityAuditLoggerTest.java	test
 backend/src/test/java/com/rom/cellarbridge/identityaccess/internal/security/TenantContextFilterTest.java	test
 backend/src/test/java/com/rom/cellarbridge/inventory/InventoryReservationApiIntegrationTest.java	test
@@ -360,6 +375,7 @@ backend/src/test/java/com/rom/cellarbridge/inventory/internal/infrastructure/Jdb
 backend/src/test/java/com/rom/cellarbridge/inventory/internal/infrastructure/JdbcInventoryReservationRepositoryIntegrationTest.java	test
 backend/src/test/java/com/rom/cellarbridge/inventory/internal/infrastructure/JdbcReservationRequestConflictRepositoryConcurrencyTest.java	test
 backend/src/test/java/com/rom/cellarbridge/inventory/internal/infrastructure/JdbcReservationRequestConflictRepositoryIntegrationTest.java	test
+backend/src/test/java/com/rom/cellarbridge/mcp/OperationsMcpApiIntegrationTest.java	test
 backend/src/test/java/com/rom/cellarbridge/partner/PartnerApiIntegrationTest.java	test
 backend/src/test/java/com/rom/cellarbridge/partner/internal/domain/PartnerTest.java	test
 backend/src/test/java/com/rom/cellarbridge/platform/CorrelationContextTest.java	test
@@ -536,6 +552,7 @@ docs/03-architecture/adr/ADR-022-trade-order-reservation-outcome-integration.md	
 docs/03-architecture/adr/ADR-023-inventory-reservation-operations.md	doc
 docs/03-architecture/adr/ADR-024-audit-entry-immutability-trigger.md	doc
 docs/03-architecture/adr/ADR-025-open-telemetry-observability-profile.md	doc
+docs/03-architecture/adr/ADR-026-authenticated-read-only-mcp-interface.md	doc
 docs/04-contracts/00-api-guidelines.md	doc
 docs/04-contracts/01-error-catalog.md	doc
 docs/04-contracts/02-idempotency.md	doc
@@ -546,6 +563,7 @@ docs/04-contracts/06-permission-matrix.md	doc
 docs/04-contracts/07-audit-model.md	doc
 docs/04-contracts/08-reporting-read-models.md	doc
 docs/04-contracts/09-data-classification-and-retention.md	doc
+docs/04-contracts/10-mcp-capability-contract.md	doc
 docs/05-delivery/00-implementation-roadmap.md	doc
 docs/05-delivery/01-work-breakdown-and-dependencies.md	doc
 docs/05-delivery/02-definition-of-done.md	doc
@@ -573,8 +591,10 @@ docs/05-delivery/22-audit-reporting-runbook.md	doc
 docs/05-delivery/23-observability-security-runbook.md	doc
 docs/05-delivery/24-performance-resilience-runbook.md	doc
 docs/05-delivery/25-release-notes-v1.0.0.md	doc
+docs/05-delivery/26-mcp-agent-runbook.md	doc
 docs/README.md	doc
 docs/design-baseline.yaml	doc
+docs/evidence/mcp/conformance-summary.md	evidence
 docs/evidence/observability/dashboard.json	evidence
 docs/evidence/observability/metric-capture-guide.md	evidence
 docs/evidence/observability/trace-walkthrough.md	evidence
@@ -730,6 +750,8 @@ scripts/fulfillment_orchestration_e2e.sh	release_asset
 scripts/generate_publication_inventory.py	release_asset
 scripts/identity_access_e2e.sh	release_asset
 scripts/keycloak_outage_evidence.sh	release_asset
+scripts/mcp_auth_proxy.py	release_asset
+scripts/mcp_smoke.sh	release_asset
 scripts/partner_onboarding_e2e.sh	release_asset
 scripts/performance_evidence.sh	release_asset
 scripts/prepare_release_assets.py	release_asset
