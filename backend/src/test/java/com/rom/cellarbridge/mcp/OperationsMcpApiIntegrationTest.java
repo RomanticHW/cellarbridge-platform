@@ -17,7 +17,11 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -48,6 +52,7 @@ class OperationsMcpApiIntegrationTest extends PostgresIntegrationTestSupport {
   private static final String HARBOR_MANAGER = "mcp-harbor-manager";
   private static final String NORTH_SKU = "34000000-0000-4000-8000-000000000001";
   private static final String SUBJECT = "34000000-0000-4000-8000-000000000001";
+  private static final String CLEANUP_PROBE_HEADER = "X-CellarBridge-Cleanup-Probe";
   private static final List<String> EXPECTED_TOOLS =
       List.of(
           "cellarbridge_current_user",
@@ -459,19 +464,27 @@ class OperationsMcpApiIntegrationTest extends PostgresIntegrationTestSupport {
 
   @Test
   void keepsTenantContextInsideTheRequestAndCleansItAfterward() throws Exception {
-    cleanupProbe.reset();
+    String probeId = cleanupProbe.reset();
     JsonNode current =
         structured(
             rpc(
                 NORTH_SALES,
                 "tools/call",
-                Map.of("name", "cellarbridge_current_user", "arguments", Map.of())));
+                Map.of("name", "cellarbridge_current_user", "arguments", Map.of()),
+                Map.of(CLEANUP_PROBE_HEADER, probeId)));
     assertThat(current.path("data").path("displayName").asText()).isEqualTo("North Sales");
+    assertThat(cleanupProbe.awaitCompletion()).isTrue();
     assertThat(cleanupProbe.checked()).isTrue();
     assertThat(cleanupProbe.cleared()).isTrue();
   }
 
   private RpcResponse rpc(String token, String method, Map<String, ?> params) throws Exception {
+    return rpc(token, method, params, Map.of());
+  }
+
+  private RpcResponse rpc(
+      String token, String method, Map<String, ?> params, Map<String, String> headers)
+      throws Exception {
     HttpRequest.Builder builder =
         request()
             .POST(
@@ -480,6 +493,7 @@ class OperationsMcpApiIntegrationTest extends PostgresIntegrationTestSupport {
     if (token != null) {
       builder.header("Authorization", "Bearer " + token);
     }
+    headers.forEach(builder::header);
     HttpResponse<String> response =
         http.send(builder.build(), HttpResponse.BodyHandlers.ofString());
     JsonNode body =
@@ -573,8 +587,7 @@ class OperationsMcpApiIntegrationTest extends PostgresIntegrationTestSupport {
   static final class RequestContextCleanupProbe extends OncePerRequestFilter {
 
     private final TenantContextHolder contexts;
-    private final AtomicBoolean checked = new AtomicBoolean();
-    private final AtomicBoolean cleared = new AtomicBoolean();
+    private final AtomicReference<ProbeState> state = new AtomicReference<>();
 
     private RequestContextCleanupProbe(TenantContextHolder contexts) {
       this.contexts = contexts;
@@ -584,24 +597,43 @@ class OperationsMcpApiIntegrationTest extends PostgresIntegrationTestSupport {
     protected void doFilterInternal(
         HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
         throws ServletException, IOException {
-      filterChain.doFilter(request, response);
-      if ("/mcp".equals(request.getRequestURI())) {
-        checked.set(true);
-        cleared.set(contexts.current().isEmpty());
+      ProbeState probe = state.get();
+      try {
+        filterChain.doFilter(request, response);
+      } finally {
+        if (probe != null
+            && probe.id().equals(request.getHeader(CLEANUP_PROBE_HEADER))
+            && "/mcp".equals(request.getRequestURI())) {
+          probe.checked().set(true);
+          probe.cleared().set(contexts.current().isEmpty());
+          probe.completed().countDown();
+        }
       }
     }
 
-    void reset() {
-      checked.set(false);
-      cleared.set(false);
+    String reset() {
+      String id = UUID.randomUUID().toString();
+      state.set(
+          new ProbeState(id, new CountDownLatch(1), new AtomicBoolean(), new AtomicBoolean()));
+      return id;
+    }
+
+    boolean awaitCompletion() throws InterruptedException {
+      ProbeState probe = state.get();
+      return probe != null && probe.completed().await(5, TimeUnit.SECONDS);
     }
 
     boolean checked() {
-      return checked.get();
+      ProbeState probe = state.get();
+      return probe != null && probe.checked().get();
     }
 
     boolean cleared() {
-      return cleared.get();
+      ProbeState probe = state.get();
+      return probe != null && probe.cleared().get();
     }
+
+    private record ProbeState(
+        String id, CountDownLatch completed, AtomicBoolean checked, AtomicBoolean cleared) {}
   }
 }
