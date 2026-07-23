@@ -86,7 +86,7 @@ jobs:
 
       - name: Upload evidence artifacts
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: performance-resilience-${{ inputs.profile || 'smoke' }}
           path: target/performance-evidence/${{ inputs.profile || 'smoke' }}/
