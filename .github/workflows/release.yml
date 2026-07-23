@@ -91,7 +91,7 @@ jobs:
           --security-dir target/downloaded/security
           --screenshots-dir target/downloaded/browser/screenshots
       - name: Upload assembled release evidence
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: cellarbridge-v1.0.0-release-assets
           path: target/release-assets/
