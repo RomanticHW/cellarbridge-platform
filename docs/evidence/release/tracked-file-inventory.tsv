@@ -736,6 +736,15 @@ frontend/tsconfig.app.json	release_asset
 frontend/tsconfig.json	release_asset
 frontend/tsconfig.node.json	release_asset
 frontend/vite.config.ts	release_asset
+keycloak-resource-binding/pom.xml	release_asset
+keycloak-resource-binding/src/main/java/com/rom/cellarbridge/keycloak/resource/McpResourcePolicyExecutor.java	source
+keycloak-resource-binding/src/main/java/com/rom/cellarbridge/keycloak/resource/McpResourcePolicyExecutorFactory.java	source
+keycloak-resource-binding/src/main/java/com/rom/cellarbridge/keycloak/resource/McpResourceTokenPostProcessor.java	source
+keycloak-resource-binding/src/main/java/com/rom/cellarbridge/keycloak/resource/McpResourceTokenPostProcessorFactory.java	source
+keycloak-resource-binding/src/main/java/com/rom/cellarbridge/keycloak/resource/ResourceBinding.java	source
+keycloak-resource-binding/src/main/resources/META-INF/services/org.keycloak.protocol.oidc.token.TokenPostProcessorFactory	source
+keycloak-resource-binding/src/main/resources/META-INF/services/org.keycloak.services.clientpolicy.executor.ClientPolicyExecutorProviderFactory	source
+keycloak-resource-binding/src/test/java/com/rom/cellarbridge/keycloak/resource/ResourceBindingTest.java	test
 mvnw	release_asset
 mvnw.cmd	release_asset
 performance/generate_dataset.py	release_asset

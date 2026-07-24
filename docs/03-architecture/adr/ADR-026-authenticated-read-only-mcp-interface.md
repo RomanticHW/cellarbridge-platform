@@ -109,6 +109,21 @@ partner scope。
 当前阶段不实现通用 MCP OAuth discovery、动态客户端注册或独立 authorization server
 metadata。它是复用现有 API Bearer token 的受控入口，不得宣传成通用 OAuth MCP 部署。
 
+### 5. Dormant resource-binding foundation
+
+仓库内包含一个针对 Keycloak 26.7 的 resource-binding Provider 模块，作为后续专用 MCP
+resource/audience 交付的隔离基础。该模块当前只进入 Maven reactor、Java 21 测试和依赖审查：
+后端与 Keycloak 运行镜像均不复制其 JAR，realm 不注册 client policy，两个 SPI factory
+也以 `enabled=false` 为缺省值。未显式标记的 client 固定 no-op。
+
+因此本阶段不改变上述 `cellarbridge-api` audience 行为，也不构成 RFC 8707、PKCE 或
+authorization/token/refresh 运行证据。只有完成真实 Keycloak 协议负测、资源服务器隔离、
+部署与回滚验证后，才能启用或公开声明对应能力。
+
+Provider 依赖 Keycloak 26.7 的 `server-spi-private`，这部分 API 不承诺跨版本兼容。每次
+Keycloak 升级都必须重新编译并执行完整协议矩阵；若兼容性或安全门禁失败，应保持 factory
+关闭并移除模块构建接线，或在上游稳定能力可用后替换该扩展。
+
 ## 方案比较
 
 | 方案 | 优点 | 代价与风险 | 结论 |
