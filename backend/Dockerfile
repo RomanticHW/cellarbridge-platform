@@ -3,6 +3,7 @@ WORKDIR /workspace
 COPY .mvn .mvn
 COPY mvnw pom.xml ./
 COPY backend/pom.xml backend/pom.xml
+COPY keycloak-resource-binding/pom.xml keycloak-resource-binding/pom.xml
 RUN ./mvnw -q -pl backend -am dependency:go-offline
 COPY backend backend
 RUN ./mvnw -q -pl backend -am -DskipTests package

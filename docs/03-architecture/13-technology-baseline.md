@@ -19,6 +19,7 @@
 | Spring AI MCP Server WebMVC Starter / BOM | 2.0.0 | Available | 同进程、无状态 Streamable HTTP MCP server | 复用 Spring MVC 生命周期与官方 MCP Java SDK；边界见 ADR-026 |
 | Model Context Protocol Java SDK | 2.0.0（传递依赖） | Available | MCP 协议、Tool/Resource/Prompt server primitives | 由 starter 管理，不直接实现或 fork 协议 |
 | NetworkNT JSON Schema Validator | 3.0.6 | Available | MCP output schema 运行时校验 | 显式覆盖 Boot BOM 中不兼容的 1.x 版本，使用 MCP SDK 所需 Jackson 3/dialect API |
+| Keycloak server SPI | 26.7.0 | Dormant / default-off | authorization-server resource binding 扩展基础 | 仓库内 provider 仅参与 Maven reactor 编译、单测与依赖审查；未打入任何后端或 Keycloak 运行镜像/部署包，未部署、未启用；启用前须重验 private SPI 与真实协议矩阵 |
 
 Java 21 而非更新非 LTS：作品核心是稳定工程；Boot 4 需要在 Task 01 验证 Java 最低要求和依赖兼容。若 Boot 4 生态依赖阻塞，备选是受支持的 Boot 3.5.x，但必须 ADR 记录。
 

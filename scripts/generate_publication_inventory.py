@@ -31,12 +31,17 @@ def classify(path: str) -> str:
         return "generated"
     if (
         path.startswith("backend/src/test/")
+        or path.startswith("keycloak-resource-binding/src/test/")
         or path.startswith("frontend/e2e/")
         or ".test." in name
         or name.startswith("test_")
     ):
         return "test"
-    if path.startswith("backend/src/main/") or path.startswith("frontend/src/"):
+    if (
+        path.startswith("backend/src/main/")
+        or path.startswith("keycloak-resource-binding/src/main/")
+        or path.startswith("frontend/src/")
+    ):
         return "source"
     if path.startswith("docs/") or name in {
         "README.md",

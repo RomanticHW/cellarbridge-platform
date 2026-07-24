@@ -59,7 +59,7 @@ validate-public:
 	$(PYTHON) scripts/generate_publication_inventory.py
 
 validate-backend:
-	./mvnw -q -pl backend -am -DskipTests compile spotless:check
+	./mvnw -q -pl backend,keycloak-resource-binding -am -DskipTests compile spotless:check
 
 validate-frontend: generate-api-client
 	cd frontend && $(PNPM) typecheck && $(PNPM) lint && $(PNPM) format:check
@@ -80,7 +80,7 @@ test-migration-history:
 test: test-backend test-frontend
 
 test-backend:
-	./mvnw -pl backend -am verify
+	./mvnw -pl backend,keycloak-resource-binding -am verify
 
 test-frontend:
 	cd frontend && $(PNPM) test:coverage && $(PNPM) build
