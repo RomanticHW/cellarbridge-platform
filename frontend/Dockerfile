@@ -1,4 +1,4 @@
-FROM node:24.18.0-alpine3.23 AS build
+FROM node:26.5.0-alpine3.23 AS build
 ARG VITE_OIDC_AUTHORITY=http://localhost:8081/realms/cellarbridge
 ARG VITE_OIDC_CLIENT_ID=cellarbridge-console
 ENV VITE_OIDC_AUTHORITY=${VITE_OIDC_AUTHORITY}
