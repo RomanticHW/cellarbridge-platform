@@ -2242,9 +2242,10 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
-        /** @description The public portal request rate has been exceeded */
+        /** @description The process-local public portal capability rate has been exceeded */
         RateLimited: {
             headers: {
+                "Retry-After": components["headers"]["RetryAfter"];
                 [name: string]: unknown;
             };
             content: {
@@ -2281,6 +2282,8 @@ export interface components {
         ETag: string;
         /** @description True when an earlier completed result is returned */
         IdempotencyReplayed: boolean;
+        /** @description Whole seconds until the capability-scoped request can be retried */
+        RetryAfter: number;
     };
     pathItems: never;
 }

@@ -18,6 +18,7 @@ values are reviewable examples, not measured production requests or limits.
 - MCP metrics: `cellarbridge.mcp.requests`, `.latency` and `.response.bytes` use only controlled
   protocol/client-class/capability/outcome/rejection values. Never add identity, tenant, UUID,
   cursor, correlation, Origin, clientInfo, arguments or payload as tags/trace attributes.
+- Portal admission: `cellarbridge_quotation_portal_rate_limit_requests_total` uses only bounded `scope`, `key_class` and `outcome` labels; capability tokens and digests never become labels.
 - Traces: backend OTLP/HTTP → Collector → Tempo; Grafana queries Tempo.
 - Logs: ECS JSON on stdout with service/version, trace/span and safe MDC correlation fields.
 - Business evidence: audit/timeline APIs remain the authoritative business record. Telemetry is diagnostic and may be sampled or unavailable.

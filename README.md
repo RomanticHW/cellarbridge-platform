@@ -5,8 +5,8 @@
 
 [English](#english) · [简体中文](#简体中文)
 
-> **Current main — authenticated read-only MCP for AI Agent workflows.** `/mcp` combines permission-filtered operations, strict Envelope 2.0 schemas, signed cursors, truthful freshness, dedicated OAuth/PKCE/resource binding and fail-closed admission controls.
-> **当前 main — 已提供认证只读 MCP。** `/mcp` 将权限过滤、严格 Envelope 2.0 schema、签名分页、真实 freshness、专用 OAuth/PKCE/resource 绑定和 fail-closed 准入组合为一个标准入口。
+> **Current main — authenticated read-only MCP plus hardened public quotation links.** `/mcp` combines permission-filtered operations, strict Envelope 2.0 schemas, signed cursors, truthful freshness, dedicated OAuth/PKCE/resource binding and fail-closed admission controls. Public quotation capability URLs use monotonic GCRA admission with a quota-derived dynamic recovery time and bounded telemetry.
+> **当前 main — 已提供认证只读 MCP，并加固公开报价链接。** `/mcp` 将权限过滤、严格 Envelope 2.0 schema、签名分页、真实 freshness、专用 OAuth/PKCE/resource 绑定和 fail-closed 准入组合为一个标准入口；公开报价 capability URL 使用单调时钟 GCRA、按配额计算的动态恢复时间与有界观测。
 > **Release boundary:** `v1.0.0` predates MCP; its deterministic demo still covers quotation, reservation, recovery, settlement and audit.
 > **发布边界：** `v1.0.0` 不含 MCP；详见[发行说明](docs/05-delivery/25-release-notes-v1.0.0.md)和[项目指南](docs/reviewer-guide.md)。
 
@@ -176,6 +176,8 @@ planned and are absent from the runtime.
 **Concurrency demonstrated through reservation execution.** Task 08 B1 combines deterministic candidate locking with exact PostgreSQL conditional updates. Controlled contention proves no oversell and multi-line rollback. B2 serializes competing outcomes under the Trade Order row lock, validates request/decision hashes, and preserves the first terminal result across duplicate or out-of-order delivery.
 
 **Reliable asynchronous collaboration.** The current core uses persisted local event publications and idempotent Consumer Inbox handlers. Correlation and causation identifiers remain business evidence; W3C trace context is stored in event metadata and asynchronous consumers use span links rather than false synchronous parentage.
+
+**Admission control matched to the traffic boundary.** Public quotation links use monotonic-time GCRA instead of a fixed minute window, preventing boundary double bursts while returning a dynamic `Retry-After`. Reads have an independent 120/minute budget; accept and reject share a 30/minute decision budget. Malformed tokens map to 64 fixed buckets per scope (128 total), active state is capped at 10,000 with fail-closed admission, and metrics expose only bounded labels. This state is process-local, so an `N`-replica deployment can admit up to `N` times the configured capability budget and still requires edge-source limiting. MCP retains its token bucket for its different controlled-client burst profile.
 
 **Architecture as an executable constraint.** Current Spring Modulith and ArchUnit tests enforce module cycles, internal-package boundaries, selected dependency directions, and domain isolation. Remaining fitness functions are explicitly marked partial or planned.
 
@@ -350,6 +352,8 @@ Keycloak/OIDC、React/TypeScript/Vite、OpenAPI、Spring AI MCP、OpenTelemetry 
 **并发正确性已在预留执行链路获得证明。** Task 08 B1 将确定性候选锁定与 PostgreSQL 精确条件更新组合起来，证明不会超卖并能整单回滚。B2 在 Trade Order 行锁内串行化竞争结果，校验请求与决策哈希，并在重复或乱序投递下保留首个终态。
 
 **异步协作可恢复且可追踪。** 当前 core 使用持久化本地发布记录和幂等 Consumer Inbox，保留 correlation/causation 业务证据，并在事件 metadata 传播 W3C trace context；异步消费者使用 span link，不伪造同步父子关系。
+
+**按流量边界选择准入算法。** 公开报价链接使用单调时钟 GCRA 取代固定分钟窗口，消除窗口边界双突发，并返回动态 `Retry-After`。读取额度独立为每分钟 120 次，接受与拒绝共享每分钟 30 次的决定额度；非法 token 在每个 scope 只映射到 64 个固定桶（合计最多 128 个），活跃状态最多 10,000 个且容量满时 fail closed，指标只使用有界标签。该状态是进程内的，部署 `N` 个副本时 capability 总额度最多放大 `N` 倍，仍需保留边缘来源限流；MCP 则因受控客户端的突发特征继续使用 token bucket。
 
 **架构约束可执行。** 当前 Spring Modulith 和 ArchUnit 测试验证模块循环、internal 包边界、部分依赖方向和领域隔离；其余适应度函数明确标记为部分可用或计划中。
 
