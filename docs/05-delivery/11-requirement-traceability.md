@@ -49,7 +49,7 @@
 | Area         | 主要需求  | 设计依据                                |             实施任务 | 必须保留的公开证据                                                 |
 | ------------ | --------- | --------------------------------------- | -------------------: | ------------------------------------------------------------------ |
 | 模块边界     | NFR-MOD-* | module rules、Spring Modulith、ArchUnit |            01 onward | architecture test output and module diagram                        |
-| 事务与幂等   | NFR-REL-* | transaction, event, idempotency docs    |                05~11 | duplicate/concurrency/crash tests                                  |
+| 事务与幂等   | NFR-REL-* | transaction, event, idempotency docs    | 05~11 + retention hardening | duplicate/concurrency/crash、expired-key atomic reuse、bounded cleanup、`PROCESSING` preservation tests |
 | 多租户与授权 | NFR-SEC-* | security/tenancy and permission matrix  | 02 onward, harden 13 | role × tenant × ownership × state matrix                           |
 | 性能         | NFR-PER-* | performance/scalability                 |       04, 08, 12, 14 | dataset, environment, scripts, p50/p95/p99 and invariant checks    |
 | 可观测性     | NFR-OBS-* | observability                           |                   13 | trace walkthrough, dashboards, metric definitions, redaction tests |

@@ -92,6 +92,11 @@ Redis 不可用时 core 正确性继续，性能下降并记录指标。
 - 处理慢任务拆异步，不持有长事务；
 - backlog 和 oldest age 指标。
 
+Quotation HTTP 幂等摘要复用既有 `(expires_at, tenant_id, id)` retention 索引，以数据库
+`CURRENT_TIMESTAMP`、`FOR UPDATE SKIP LOCKED` 和单条 CTE delete 每批清理 500 条。
+每小时执行最多 10 批，限制单轮删除为 5,000 条；并发实例可以安全分摊，积压则留待下轮。
+查询和清理只把过期 `COMPLETED` 当作可回收缓存，`PROCESSING` 与业务事实不参与回收。
+
 ## 8. 读模型
 
 驾驶舱/时间线通过事件投影：

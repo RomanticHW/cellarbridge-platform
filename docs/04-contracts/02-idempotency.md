@@ -25,7 +25,10 @@
 
 消费者 Inbox `(consumer_name, event_id)`。
 
-## 3. HTTP 协议
+## 3. HTTP 目标协议
+
+本节定义各写用例按需采用的目标协议，不代表每个当前端点已经实现持久化 `PROCESSING`、
+status URI 或租约恢复。已实现边界以对应模块合同、实现状态和集成测试为准。
 
 请求头：
 
@@ -93,6 +96,17 @@ on unique conflict -> re-read -> validate hash -> return
 - Event Inbox 至少覆盖事件保留/重放期，演示默认 90 天或长期保留摘要；
 - 清理任务不删除业务唯一约束。
 
+当前自动清理只作用于 `quotation.http_idempotency`。写入使用条件原子 upsert：不存在时插入，
+仅在冲突记录为已过期 `COMPLETED` 时替换，受影响行数必须为 1，否则业务事务回滚。
+Quotation 客户决定在同一事务直接写入 `COMPLETED`，当前不会创建 `PROCESSING` 或提供
+status URI/租约恢复；若存在遗留或人工写入的 `PROCESSING`，系统不会自动替换或删除，
+同 scope 写入由条件 upsert 的 affected-row guard 以稳定的 `500 INTERNAL_ERROR`
+安全失败并回滚。该错误表示不应出现的持久化状态，而不是可承诺恢复时限的正常处理中响应；
+因此不提供 `Retry-After` 或 `Location`。每小时任务以 `CURRENT_TIMESTAMP` 为准，使用
+`FOR UPDATE SKIP LOCKED` 每批 500 条、每轮最多 10 批；客户决定、审计、付款/冲正、
+Consumer Inbox 与其他业务幂等事实继续按各自合同保留。新摘要的 `expires_at` 仍由应用
+注入时钟生成，部署必须维持应用与数据库时钟同步；数据库时间是清理资格的最终判断。
+
 ## 9. 安全
 
 - key 作用域包括 tenant、operation、必要 actor/partner；
@@ -107,6 +121,6 @@ on unique conflict -> re-read -> validate hash -> return
 - 20~100 并发相同 key；
 - 同 key 不同 payload；
 - 事务提交后响应前崩溃；
-- PROCESSING 租约过期恢复；
+- 对实现了 `PROCESSING` 租约的用例验证过期恢复；
 - 事件重复/乱序；
 - 保留清理后自然键仍防重复。

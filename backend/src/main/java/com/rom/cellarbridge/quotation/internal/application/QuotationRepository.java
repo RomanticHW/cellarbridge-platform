@@ -94,6 +94,9 @@ public interface QuotationRepository {
       IdempotencyWrite idempotency);
 
   @GlobalRegistryAccess
+  int deleteExpiredIdempotency(int batchSize);
+
+  @GlobalRegistryAccess
   List<ExpirationWorkItem> claimExpired(
       Instant now, UUID claimOwner, Instant claimUntil, int batchSize);
 

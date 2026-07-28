@@ -4,6 +4,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.rom.cellarbridge.quotation.internal.application.QuotationExpirationService;
+import com.rom.cellarbridge.quotation.internal.application.QuotationIdempotencyRetentionService;
 import com.rom.cellarbridge.quotation.internal.application.QuotationRepository.ExpirationWorkItem;
 import com.rom.cellarbridge.test.PostgresIntegrationTestSupport;
 import java.net.URI;
@@ -36,6 +37,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -117,13 +119,22 @@ class CustomerQuotationApiIntegrationTest extends PostgresIntegrationTestSupport
 
   @Autowired private DataSource dataSource;
 
+  @Autowired private ApplicationContext applicationContext;
+
   @Autowired private MutableClock clock;
 
   @Autowired private QuotationExpirationService expirationService;
 
+  @Autowired private QuotationIdempotencyRetentionService idempotencyRetention;
+
   @BeforeEach
   void resetClock() {
     clock.set(BASE);
+  }
+
+  @Test
+  void disablesIdempotencyRetentionSchedulerInTheTestProfile() {
+    assertThat(applicationContext.containsBean("quotationIdempotencyRetentionScheduler")).isFalse();
   }
 
   @Test
@@ -403,6 +414,191 @@ class CustomerQuotationApiIntegrationTest extends PostgresIntegrationTestSupport
     assertConcurrentDecisionResults(distinctKeyResults);
     assertDecisionAndAcceptedEventCounts(distinctKeyQuote.id(), 1, 1);
     assertThat(idempotencyCount(distinctKeyQuote.id())).isEqualTo(20);
+  }
+
+  @Test
+  void serializesCleanupAndSameKeyReuseInBothLockOrders() throws Exception {
+    CompletedScope cleanupFirst =
+        completedScope("accept-cleanup-first-0001", "PO-CLEANUP-FIRST", true);
+    PendingAcceptance afterCleanup = pendingAcceptance("PO-AFTER-CLEANUP");
+    createIdempotencyProbe("DELETE", cleanupFirst.recordId(), 19_001L);
+    try (Connection gate = dataSource.getConnection();
+        ExecutorService executor = Executors.newFixedThreadPool(2)) {
+      int blockerPid = holdProbeGate(gate, 19_001L);
+      CompletableFuture<Integer> cleanup =
+          CompletableFuture.supplyAsync(idempotencyRetention::purgeExpired, executor);
+      int cleanupPid = awaitDatabaseWaiter(blockerPid);
+      CompletableFuture<ApiResponse> reuse =
+          CompletableFuture.supplyAsync(
+              () -> uncheckedAcceptance(afterCleanup, cleanupFirst.key()), executor);
+      awaitDatabaseLockWait(cleanupPid);
+      gate.commit();
+      assertThat(cleanup.get(10, SECONDS)).isEqualTo(1);
+      assertThat(reuse.get(10, SECONDS).status()).isEqualTo(201);
+    } finally {
+      dropIdempotencyProbe();
+    }
+    assertReplacedScope(cleanupFirst, afterCleanup.quotation());
+
+    CompletedScope requestFirst =
+        completedScope("accept-request-first-0001", "PO-REQUEST-FIRST", true);
+    PendingAcceptance beforeCleanup = pendingAcceptance("PO-BEFORE-CLEANUP");
+    createIdempotencyProbe("UPDATE", requestFirst.recordId(), 19_002L);
+    try (Connection gate = dataSource.getConnection()) {
+      int blockerPid = holdProbeGate(gate, 19_002L);
+      CompletableFuture<ApiResponse> reuse =
+          CompletableFuture.supplyAsync(
+              () -> uncheckedAcceptance(beforeCleanup, requestFirst.key()));
+      awaitDatabaseWaiter(blockerPid);
+      assertThat(idempotencyRetention.purgeExpired()).isZero();
+      gate.commit();
+      assertThat(reuse.get(10, SECONDS).status()).isEqualTo(201);
+    } finally {
+      dropIdempotencyProbe();
+    }
+    assertReplacedScope(requestFirst, beforeCleanup.quotation());
+  }
+
+  @Test
+  void rollsBackTheEntireDecisionWhenAnExpiredProcessingScopeCannotBeReplaced() throws Exception {
+    CompletedScope processing =
+        completedScope("accept-expired-processing-0001", "PO-PROCESSING-SEED", true);
+    assertThat(
+            jdbc.update(
+                """
+                UPDATE quotation.http_idempotency
+                   SET status = 'PROCESSING', decision_id = NULL, response_status = NULL
+                 WHERE id = ?::uuid
+                """,
+                processing.recordId()))
+        .isEqualTo(1);
+    PendingAcceptance attempted = pendingAcceptance("PO-PROCESSING-ROLLBACK");
+    try {
+      ApiResponse failed = uncheckedAcceptance(attempted, processing.key());
+      assertThat(failed.status()).isEqualTo(500);
+      assertThat(failed.body().path("code").asText()).isEqualTo("INTERNAL_ERROR");
+      assertThat(
+              jdbc.queryForObject(
+                  "SELECT status FROM quotation.quotation WHERE id = ?::uuid",
+                  String.class,
+                  attempted.quotation().id()))
+          .isEqualTo("SENT");
+      assertDecisionAndAcceptedEventCounts(attempted.quotation().id(), 0, 0);
+      assertThat(idempotencyCount(attempted.quotation().id())).isZero();
+      assertThat(acceptanceAuditCount(attempted.quotation().id())).isZero();
+      assertThat(
+              jdbc.queryForObject(
+                  "SELECT status FROM quotation.expiration_work_item WHERE quotation_id = ?::uuid",
+                  String.class,
+                  attempted.quotation().id()))
+          .isEqualTo("PENDING");
+      assertThat(
+              jdbc.queryForMap(
+                  "SELECT status, decision_id, response_status FROM quotation.http_idempotency WHERE id = ?::uuid",
+                  processing.recordId()))
+          .containsEntry("status", "PROCESSING")
+          .containsEntry("decision_id", null)
+          .containsEntry("response_status", null);
+      assertDecisionAndAcceptedEventCounts(processing.quotation().id(), 1, 1);
+    } finally {
+      jdbc.update(
+          "DELETE FROM quotation.http_idempotency WHERE id = ?::uuid", processing.recordId());
+    }
+  }
+
+  @Test
+  void concurrentCleanersSplitLockedBatchesWithoutDeletingBusinessFacts() throws Exception {
+    CompletedScope seed =
+        completedScope("accept-concurrent-cleanup-0001", "PO-CONCURRENT-CLEANUP", false);
+    assertThat(insertAncientCompleted(seed.decisionId(), "concurrent-cleanup", 1000))
+        .isEqualTo(1000);
+    createIdempotencyProbe("DELETE", seed.decisionId(), 19_003L);
+    try (Connection gate = dataSource.getConnection();
+        ExecutorService executor = Executors.newFixedThreadPool(2)) {
+      int blockerPid = holdProbeGate(gate, 19_003L);
+      CountDownLatch start = new CountDownLatch(1);
+      CompletableFuture<Integer> first =
+          CompletableFuture.supplyAsync(() -> awaitAndPurge(start), executor);
+      CompletableFuture<Integer> second =
+          CompletableFuture.supplyAsync(() -> awaitAndPurge(start), executor);
+      start.countDown();
+      awaitDatabaseLockWaits(blockerPid, 2);
+      gate.commit();
+      List<Integer> deleted = List.of(first.get(10, SECONDS), second.get(10, SECONDS));
+      assertThat(deleted).allSatisfy(count -> assertThat(count).isBetween(1, 999));
+      assertThat(deleted.stream().mapToInt(Integer::intValue).sum()).isEqualTo(1000);
+      assertThat(ancientCompletedCount(seed.decisionId())).isZero();
+      assertDecisionAndAcceptedEventCounts(seed.quotation().id(), 1, 1);
+    } finally {
+      dropIdempotencyProbe();
+      jdbc.update(
+          """
+          DELETE FROM quotation.http_idempotency
+           WHERE decision_id = ?::uuid
+             AND expires_at < CURRENT_TIMESTAMP
+          """,
+          seed.decisionId());
+    }
+  }
+
+  @Test
+  void boundsCleanupAndNeverDeletesProcessingOrBusinessFacts() throws Exception {
+    IssuedQuotation quotation = issue(BASE.plusSeconds(20 * 86_400L));
+    String terms = get(quotation.publicPath()).body().path("termsVersion").asText();
+    ApiResponse accepted =
+        decision(
+            quotation.publicPath() + "/acceptance",
+            "accept-retention-seed-0001",
+            acceptanceBody(terms, "PO-RETENTION-SEED"));
+    assertThat(accepted.status()).withFailMessage(accepted.raw()).isEqualTo(201);
+    UUID decisionId =
+        jdbc.queryForObject(
+            "SELECT id FROM quotation.customer_decision WHERE quotation_id = ?::uuid",
+            UUID.class,
+            quotation.id());
+    UUID processingId = UUID.randomUUID();
+    try {
+      assertThat(insertAncientCompleted(decisionId, "retention-bound", 5001)).isEqualTo(5001);
+      assertThat(
+              jdbc.update(
+                  """
+                  INSERT INTO quotation.http_idempotency
+                    (id, tenant_id, partner_id, operation, key_hash, request_hash, status,
+                     decision_id, response_status, expires_at, created_at, updated_at, version)
+                  SELECT ?::uuid, tenant_id, partner_id, 'REJECT_QUOTATION',
+                         repeat('f', 64), repeat('e', 64), 'PROCESSING', NULL, NULL,
+                         CURRENT_TIMESTAMP - INTERVAL '100 years',
+                         CURRENT_TIMESTAMP - INTERVAL '101 years',
+                         CURRENT_TIMESTAMP - INTERVAL '101 years', 0
+                    FROM quotation.customer_decision
+                   WHERE id = ?::uuid
+                  """,
+                  processingId,
+                  decisionId))
+          .isEqualTo(1);
+
+      assertThat(idempotencyRetention.purgeExpired()).isEqualTo(5000);
+      assertThat(ancientCompletedCount(decisionId)).isEqualTo(1);
+      idempotencyRetention.purgeExpired();
+      assertThat(ancientCompletedCount(decisionId)).isZero();
+      assertThat(
+              jdbc.queryForObject(
+                  "SELECT count(*) FROM quotation.http_idempotency WHERE id = ?::uuid",
+                  Integer.class,
+                  processingId))
+          .isEqualTo(1);
+      assertDecisionAndAcceptedEventCounts(quotation.id(), 1, 1);
+    } finally {
+      jdbc.update(
+          """
+          DELETE FROM quotation.http_idempotency
+           WHERE id = ?::uuid
+              OR (decision_id = ?::uuid
+                  AND expires_at < CURRENT_TIMESTAMP - INTERVAL '99 years')
+          """,
+          processingId,
+          decisionId);
+    }
   }
 
   @Test
@@ -730,12 +926,188 @@ class CustomerQuotationApiIntegrationTest extends PostgresIntegrationTestSupport
     return count == null ? 0 : count;
   }
 
+  private CompletedScope completedScope(String key, String reference, boolean expired)
+      throws Exception {
+    PendingAcceptance pending = pendingAcceptance(reference);
+    ApiResponse accepted = uncheckedAcceptance(pending, key);
+    assertThat(accepted.status()).withFailMessage(accepted.raw()).isEqualTo(201);
+    UUID decisionId =
+        jdbc.queryForObject(
+            "SELECT id FROM quotation.customer_decision WHERE quotation_id = ?::uuid",
+            UUID.class,
+            pending.quotation().id());
+    UUID recordId = idempotencyId(pending.quotation().id());
+    if (expired) {
+      assertThat(
+              jdbc.update(
+                  """
+                  UPDATE quotation.http_idempotency
+                     SET expires_at = CURRENT_TIMESTAMP - INTERVAL '1 second'
+                   WHERE id = ?::uuid
+                  """,
+                  recordId))
+          .isEqualTo(1);
+    }
+    return new CompletedScope(pending.quotation(), key, recordId, decisionId);
+  }
+
+  private PendingAcceptance pendingAcceptance(String reference) throws Exception {
+    IssuedQuotation quotation = issue(BASE.plusSeconds(20 * 86_400L));
+    String terms = get(quotation.publicPath()).body().path("termsVersion").asText();
+    return new PendingAcceptance(quotation, acceptanceBody(terms, reference));
+  }
+
+  private ApiResponse uncheckedAcceptance(PendingAcceptance pending, String key) {
+    return uncheckedDecision(pending.quotation().publicPath() + "/acceptance", key, pending.body());
+  }
+
+  private void assertReplacedScope(CompletedScope old, IssuedQuotation replacement) {
+    assertThat(idempotencyId(replacement.id())).isNotEqualTo(old.recordId());
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM quotation.http_idempotency WHERE id = ?::uuid",
+                Integer.class,
+                old.recordId()))
+        .isZero();
+    assertThat(idempotencyCount(old.quotation().id())).isZero();
+    assertThat(idempotencyCount(replacement.id())).isEqualTo(1);
+    assertDecisionAndAcceptedEventCounts(old.quotation().id(), 1, 1);
+    assertDecisionAndAcceptedEventCounts(replacement.id(), 1, 1);
+  }
+
+  private UUID idempotencyId(UUID quotationId) {
+    return jdbc.queryForObject(
+        """
+        SELECT idempotency.id
+          FROM quotation.http_idempotency idempotency
+          JOIN quotation.customer_decision decision
+            ON decision.tenant_id = idempotency.tenant_id
+           AND decision.id = idempotency.decision_id
+         WHERE decision.quotation_id = ?::uuid
+        """,
+        UUID.class,
+        quotationId);
+  }
+
+  private int acceptanceAuditCount(UUID quotationId) {
+    return jdbc.queryForObject(
+        """
+        SELECT count(*)
+          FROM quotation.audit_entry
+         WHERE quotation_id = ?::uuid
+           AND action = 'QUOTATION_ACCEPTED_BY_CUSTOMER'
+        """,
+        Integer.class,
+        quotationId);
+  }
+
+  private int insertAncientCompleted(UUID decisionId, String prefix, int count) {
+    return jdbc.update(
+        """
+        INSERT INTO quotation.http_idempotency
+          (id, tenant_id, partner_id, operation, key_hash, request_hash, status,
+           decision_id, response_status, expires_at, created_at, updated_at, version)
+        SELECT md5(? || '-id-' || sequence)::uuid, tenant_id, partner_id, 'ACCEPT_QUOTATION',
+               md5(? || '-key-a-' || sequence) || md5(? || '-key-b-' || sequence),
+               md5(? || '-request-a-' || sequence) || md5(? || '-request-b-' || sequence),
+               'COMPLETED', id, 200, CURRENT_TIMESTAMP - INTERVAL '100 years',
+               CURRENT_TIMESTAMP - INTERVAL '101 years',
+               CURRENT_TIMESTAMP - INTERVAL '101 years', 0
+          FROM quotation.customer_decision
+         CROSS JOIN generate_series(1, ?) AS sequence
+         WHERE id = ?::uuid
+        """,
+        prefix,
+        prefix,
+        prefix,
+        prefix,
+        prefix,
+        count,
+        decisionId);
+  }
+
+  private int awaitAndPurge(CountDownLatch start) {
+    await(start);
+    return idempotencyRetention.purgeExpired();
+  }
+
+  private void createIdempotencyProbe(String event, UUID target, long gate) {
+    dropIdempotencyProbe();
+    String returned = "DELETE".equals(event) ? "OLD" : "NEW";
+    jdbc.execute(
+        """
+        CREATE FUNCTION quotation.idempotency_retention_test_probe()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        AS $$
+        BEGIN
+          IF OLD.id = '%s'::uuid OR OLD.decision_id = '%s'::uuid THEN
+            PERFORM pg_advisory_xact_lock(%d);
+          END IF;
+          RETURN %s;
+        END;
+        $$
+        """
+            .formatted(target, target, gate, returned));
+    jdbc.execute(
+        "CREATE TRIGGER idempotency_retention_test_probe BEFORE "
+            + event
+            + " ON quotation.http_idempotency FOR EACH ROW "
+            + "EXECUTE FUNCTION quotation.idempotency_retention_test_probe()");
+  }
+
+  private void dropIdempotencyProbe() {
+    jdbc.execute(
+        "DROP TRIGGER IF EXISTS idempotency_retention_test_probe ON quotation.http_idempotency");
+    jdbc.execute("DROP FUNCTION IF EXISTS quotation.idempotency_retention_test_probe()");
+  }
+
+  private int ancientCompletedCount(UUID decisionId) {
+    Integer count =
+        jdbc.queryForObject(
+            """
+            SELECT count(*)
+              FROM quotation.http_idempotency
+             WHERE decision_id = ?::uuid
+               AND status = 'COMPLETED'
+               AND expires_at < CURRENT_TIMESTAMP - INTERVAL '99 years'
+            """,
+            Integer.class,
+            decisionId);
+    return count == null ? 0 : count;
+  }
+
   private Instant timestamp(String sql, UUID quotationId) {
     Timestamp value = jdbc.queryForObject(sql, Timestamp.class, quotationId);
     return value.toInstant();
   }
 
   private void awaitDatabaseLockWait(int blockerPid) throws Exception {
+    awaitDatabaseLockWaits(blockerPid, 1);
+  }
+
+  private int awaitDatabaseWaiter(int blockerPid) throws Exception {
+    for (int attempt = 0; attempt < 250; attempt++) {
+      List<Integer> waiting =
+          jdbc.queryForList(
+              """
+              SELECT activity.pid
+                FROM pg_stat_activity activity
+               WHERE datname = current_database()
+                 AND activity.pid <> pg_backend_pid()
+                 AND ? = ANY(pg_blocking_pids(activity.pid))
+              """,
+              Integer.class,
+              blockerPid);
+      if (!waiting.isEmpty()) {
+        return waiting.getFirst();
+      }
+      Thread.sleep(20);
+    }
+    throw new AssertionError("Expected a blocked database write");
+  }
+
+  private void awaitDatabaseLockWaits(int blockerPid, int expected) throws Exception {
     for (int attempt = 0; attempt < 250; attempt++) {
       Integer waiting =
           jdbc.queryForObject(
@@ -748,12 +1120,21 @@ class CustomerQuotationApiIntegrationTest extends PostgresIntegrationTestSupport
               """,
               Integer.class,
               blockerPid);
-      if (waiting != null && waiting > 0) {
+      if (waiting != null && waiting >= expected) {
         return;
       }
       Thread.sleep(20);
     }
-    throw new AssertionError("Expected a blocked database write");
+    throw new AssertionError("Expected " + expected + " blocked database writes");
+  }
+
+  private static int holdProbeGate(Connection connection, long gate) throws Exception {
+    connection.setAutoCommit(false);
+    try (PreparedStatement lock = connection.prepareStatement("SELECT pg_advisory_xact_lock(?)")) {
+      lock.setLong(1, gate);
+      lock.executeQuery().close();
+    }
+    return backendPid(connection);
   }
 
   private static int backendPid(Connection connection) throws Exception {
@@ -865,7 +1246,11 @@ class CustomerQuotationApiIntegrationTest extends PostgresIntegrationTestSupport
 
   record ApiResponse(int status, JsonNode body, String raw, java.net.http.HttpHeaders headers) {}
 
+  record CompletedScope(IssuedQuotation quotation, String key, UUID recordId, UUID decisionId) {}
+
   record IssuedQuotation(UUID id, String publicPath, String token) {}
+
+  record PendingAcceptance(IssuedQuotation quotation, String body) {}
 
   static final class MutableClock extends Clock {
 
