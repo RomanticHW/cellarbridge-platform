@@ -194,18 +194,27 @@ class PublicQuotationRateLimitFilterTest {
   }
 
   @Test
-  void pathParametersCannotBypassOrSplitTheDecisionBudget() throws Exception {
+  void encodedRoutesAndPathParametersCannotBypassOrSplitTheDecisionBudget() throws Exception {
     PublicQuotationRateLimitFilter filter =
         filter(new MutableTicker(), new SimpleMeterRegistry(), 10_000);
     String token = token(14);
 
-    for (int attempt = 0; attempt < 29; attempt++) {
+    for (int attempt = 0; attempt < 27; attempt++) {
       assertThat(invoke(filter, token, "acceptance").getStatus()).isEqualTo(200);
     }
     assertThat(
             invokePath(
                     filter,
-                    "/api/v1/portal/quotations/" + token + ";source=mail/rejection;intent=confirm")
+                    "/api/v1/portal/quotations/" + token + ";source=mail/rejection;intent=confirm",
+                    "POST")
+                .getStatus())
+        .isEqualTo(200);
+    assertThat(
+            invokePath(filter, "/%61pi/v%31/portal/quot%61tions/" + token + "/acceptanc%65", "POST")
+                .getStatus())
+        .isEqualTo(200);
+    assertThat(
+            invokePath(filter, "/api/v1/por%74al/quotations/" + token + "/%72ejection", "POST")
                 .getStatus())
         .isEqualTo(200);
     assertThat(invoke(filter, token, "acceptance").getStatus()).isEqualTo(429);
@@ -257,17 +266,13 @@ class PublicQuotationRateLimitFilterTest {
   private static MockHttpServletResponse invoke(
       PublicQuotationRateLimitFilter filter, String token, String action) throws Exception {
     String suffix = action == null ? "" : "/" + action;
-    return invokePath(filter, "/api/v1/portal/quotations/" + token + suffix);
+    return invokePath(
+        filter, "/api/v1/portal/quotations/" + token + suffix, action == null ? "GET" : "POST");
   }
 
   private static MockHttpServletResponse invokePath(
-      PublicQuotationRateLimitFilter filter, String requestUri) throws Exception {
-    MockHttpServletRequest request =
-        new MockHttpServletRequest(
-            requestUri.contains("/acceptance") || requestUri.contains("/rejection")
-                ? "POST"
-                : "GET",
-            requestUri);
+      PublicQuotationRateLimitFilter filter, String requestUri, String method) throws Exception {
+    MockHttpServletRequest request = new MockHttpServletRequest(method, requestUri);
     request.setRemoteAddr("192.0.2.10");
     MockHttpServletResponse response = new MockHttpServletResponse();
     filter.doFilter(request, response, new MockFilterChain());

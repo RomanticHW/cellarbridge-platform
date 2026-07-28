@@ -19,7 +19,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.LongSupplier;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,8 +34,6 @@ import tools.jackson.databind.json.JsonMapper;
 @Order(Ordered.HIGHEST_PRECEDENCE + 1)
 final class PublicQuotationRateLimitFilter extends OncePerRequestFilter {
 
-  private static final Pattern PORTAL_PATH =
-      Pattern.compile("^/api/v1/portal/quotations/([^/]+)(?:/(acceptance|rejection))?/?$");
   private static final Pattern CAPABILITY_TOKEN = Pattern.compile("^[A-Za-z0-9_-]{43}$");
   private static final Policy READ_POLICY = Policy.every(Duration.ofMillis(500), 120);
   private static final Policy DECISION_POLICY = Policy.every(Duration.ofSeconds(2), 30);
@@ -70,16 +67,16 @@ final class PublicQuotationRateLimitFilter extends OncePerRequestFilter {
   protected void doFilterInternal(
       HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
       throws ServletException, IOException {
-    Matcher path = PORTAL_PATH.matcher(withoutPathParameters(request.getRequestURI()));
-    if (!path.matches() || "OPTIONS".equals(request.getMethod())) {
+    PortalPath path = portalPath(request.getRequestURI());
+    if (path == null || "OPTIONS".equals(request.getMethod())) {
       filterChain.doFilter(request, response);
       return;
     }
 
     long now = ticker.getAsLong();
     cleanupExpiredBuckets(now);
-    Scope scope = path.group(2) == null ? Scope.READ : Scope.DECISION;
-    KeyMaterial material = keyMaterial(path.group(1));
+    Scope scope = path.scope();
+    KeyMaterial material = keyMaterial(path.rawToken());
     Admission admission = consume(scope.keyPrefix + material.key(), scope.policy, now);
     recordRequest(scope, material.keyClass(), admission.allowed() ? "allowed" : "limited");
     if (admission.allowed()) {
@@ -178,24 +175,46 @@ final class PublicQuotationRateLimitFilter extends OncePerRequestFilter {
     return invalidKey(rawToken);
   }
 
-  private static String withoutPathParameters(String requestUri) {
-    if (requestUri.indexOf(';') < 0) {
-      return requestUri;
+  private static PortalPath portalPath(String requestUri) {
+    String[] rawSegments = requestUri.split("/", -1);
+    int end = rawSegments.length;
+    if (end > 1 && rawSegments[end - 1].isEmpty()) {
+      end--;
     }
-    StringBuilder normalized = new StringBuilder(requestUri.length());
-    boolean parameter = false;
-    for (int index = 0; index < requestUri.length(); index++) {
-      char character = requestUri.charAt(index);
-      if (character == ';') {
-        parameter = true;
-      } else if (character == '/') {
-        parameter = false;
-        normalized.append(character);
-      } else if (!parameter) {
-        normalized.append(character);
+    if ((end != 6 && end != 7) || !rawSegments[0].isEmpty()) {
+      return null;
+    }
+    try {
+      if (!"api".equals(decodedPathSegment(rawSegments[1]))
+          || !"v1".equals(decodedPathSegment(rawSegments[2]))
+          || !"portal".equals(decodedPathSegment(rawSegments[3]))
+          || !"quotations".equals(decodedPathSegment(rawSegments[4]))) {
+        return null;
       }
+      String rawToken = withoutPathParameters(rawSegments[5]);
+      if (rawToken.isEmpty()) {
+        return null;
+      }
+      if (end == 6) {
+        return new PortalPath(rawToken, Scope.READ);
+      }
+      String action = decodedPathSegment(rawSegments[6]);
+      if ("acceptance".equals(action) || "rejection".equals(action)) {
+        return new PortalPath(rawToken, Scope.DECISION);
+      }
+      return null;
+    } catch (IllegalArgumentException invalidEncoding) {
+      return null;
     }
-    return normalized.toString();
+  }
+
+  private static String decodedPathSegment(String rawSegment) {
+    return URLDecoder.decode(withoutPathParameters(rawSegment), StandardCharsets.UTF_8);
+  }
+
+  private static String withoutPathParameters(String rawSegment) {
+    int parameter = rawSegment.indexOf(';');
+    return parameter < 0 ? rawSegment : rawSegment.substring(0, parameter);
   }
 
   private static KeyMaterial invalidKey(String rawToken) {
@@ -247,6 +266,8 @@ final class PublicQuotationRateLimitFilter extends OncePerRequestFilter {
   private record Bucket(long theoreticalArrivalNanos) {}
 
   private record KeyMaterial(String key, String keyClass) {}
+
+  private record PortalPath(String rawToken, Scope scope) {}
 
   private record Admission(boolean allowed, long retryAfterSeconds) {
     static Admission admitted() {
