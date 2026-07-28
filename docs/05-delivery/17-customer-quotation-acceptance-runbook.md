@@ -22,7 +22,7 @@ Requirements: **UC-QUO-004, FR-QUO-009–011**
 
 客户条款明确：报价版本冻结价格和路线绑定供给参数；实际库存仍以客户接受后的库存预占结果为准。Public DTO 不返回 Mode、Type、Pool、Policy、Hash 或 Inventory evidence。
 
-公开入口采用两层限流：nginx 按真实边缘来源地址限流，应用按 capability 摘要分别限制读取与决定请求；两层 429 都是不含 token path 的 `application/problem+json`。Compose 暴露的 backend 端口只用于本地诊断，portal 客户流量必须经过 frontend/nginx 入口。
+公开入口采用两层限流：nginx 按真实边缘来源地址限流；应用先 URL 解码并严格校验 43 字符 capability token，再按摘要执行单调时钟 GCRA。安全读取为 120 次/分钟、突发 120；接受与拒绝共享 30 次/分钟、突发 30。GCRA 配额拒绝不会推进理论到达时间，`Retry-After` 按下一次准入时刻向上取整；活跃桶容量耗尽时 fail closed，并返回 1 秒重试提示但不承诺届时准入。无效 token 在 read/decision 每个 scope 只落入 64 个固定桶，合计最多 128 个；全部指标仅使用 `scope`、`key_class`、`outcome` 低基数标签。两层 429 都是不含 token path 的 `application/problem+json`。Compose 暴露的 backend 端口只用于本地诊断，portal 客户流量必须经过 frontend/nginx 入口。
 
 ## 3. 数据与事件
 
@@ -51,7 +51,7 @@ make acceptance-e2e
 - `QuotationAggregateTest`：截止边界与接受/拒绝/到期互斥。
 - `CustomerQuotationApiIntegrationTest`：真实 PostgreSQL、token 绑定/撤销、锁等待跨截止、幂等重放/冲突、20 路并发、publisher 失败事务回滚、唯一决定/事件、终态 DTO 和到期工作。
 - `V8LegacyPortalMigrationIntegrationTest`：真实 V7→V8 升级，证明 legacy preview 被撤销、未延寿且未提升决定权限。
-- `PublicQuotationRateLimitFilterTest`：应用 capability 限流与 429 响应不回显 token。
+- `PublicQuotationRateLimitFilterTest`：GCRA 突发/平滑回补、接受与拒绝共享额度、并发原子准入、动态 `Retry-After`、桶/指标低基数，以及 429 不回显 token。
 - `QuotationWorkspace.test.tsx`、`quotations.test.ts`：loading、invalid/revoked、expired、accepted/rejected、双击保护、条款确认与 API headers。
 - `customer-quotation-acceptance.live.spec.ts`：真实 OIDC 签发、匿名接受、双击、回执、刷新和兼容路由。
 - `ModularityTest` / `ArchitectureRulesTest`：模块发现、公开事件边界与禁止 Trade Order 提前依赖/写入。
@@ -59,7 +59,7 @@ make acceptance-e2e
 ## 6. 已知限制
 
 - Customer portal 仍使用可撤销高熵 capability token；Task 07 另行增加 Buyer OIDC/Partner mapping，只用于受保护订单资源，不能替代或扩权 portal capability。
-- 应用 capability 限流是单实例内存窗口，nginx 来源限流是当前可运行边缘控制；多副本生产环境仍需要共享限流/WAF 与受限 backend ingress，不能把本地诊断端口作为公开入口。
+- 应用 capability 限流是单实例内存 GCRA；每个副本独立计算，因此 N 个副本最多形成 N 倍额度。当前 10,000 个活跃桶上限会对新桶 fail closed，完全回补的桶最多每秒清理一次。nginx 来源限流是当前可运行边缘控制；多副本生产环境仍需要共享限流/WAF 与受限 backend ingress，不能把本地诊断端口作为公开入口。
 - `PENDING` publication 已与接受事务原子持久化；Task 07 已实现本地订单消费、Inbox、有界失败重试和唯一订单。`PENDING` 继续表示外部 broker 尚未确认，本地消费不会把它改成 `PUBLISHED`。
 - 本任务按范围只可靠发布 `QuotationAcceptedV1`；拒绝和到期保存终态与安全审计，不创建订单或外部通知。
 - 公开路线日期是签发修订冻结的请求交付日期，不代表承运商实时承诺。
