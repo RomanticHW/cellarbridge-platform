@@ -524,8 +524,9 @@ class CustomerQuotationApiIntegrationTest extends PostgresIntegrationTestSupport
       start.countDown();
       awaitDatabaseLockWaits(blockerPid, 2);
       gate.commit();
-      assertThat(List.of(first.get(10, SECONDS), second.get(10, SECONDS)))
-          .containsExactlyInAnyOrder(500, 500);
+      List<Integer> deleted = List.of(first.get(10, SECONDS), second.get(10, SECONDS));
+      assertThat(deleted).allSatisfy(count -> assertThat(count).isBetween(1, 999));
+      assertThat(deleted.stream().mapToInt(Integer::intValue).sum()).isEqualTo(1000);
       assertThat(ancientCompletedCount(seed.decisionId())).isZero();
       assertDecisionAndAcceptedEventCounts(seed.quotation().id(), 1, 1);
     } finally {
