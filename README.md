@@ -10,6 +10,16 @@
 > **Release boundary:** `v1.0.0` predates MCP; its deterministic demo still covers quotation, reservation, recovery, settlement and audit.
 > **发布边界：** `v1.0.0` 不含 MCP；详见[发行说明](docs/05-delivery/25-release-notes-v1.0.0.md)和[项目指南](docs/reviewer-guide.md)。
 
+## Engineering highlights at a glance / 工程亮点速览
+
+| Boundary / 边界 | Implemented evidence / 已实现证据 | Deliberate limit / 明确边界 |
+| --- | --- | --- |
+| MCP overload control / MCP 过载控制 | Per-client token bucket; global and per-client bulkheads; request, executor and transaction-local SQL timeouts / 客户端令牌桶、全局与客户端并发舱、请求/执行器/事务内 SQL 超时 | Shares the application and connection pool; this is not a circuit breaker / 仍共享应用与连接池，不是熔断器 |
+| Public quotation admission / 公开报价准入 | Monotonic GCRA, quota-derived `Retry-After`, separate 120/min read and 30/min decision budgets / 单调时钟 GCRA、按配额计算的恢复时间、读/决定独立额度 | Process-local state can admit up to `N` times the configured budget on `N` replicas; edge limiting remains required / `N` 副本最多放大 `N` 倍，仍需边缘限流 |
+| Idempotency retention / 幂等保留 | Default 30-day replay retention; atomic reuse only for expired `COMPLETED`; hourly `500 × 10` bounded cleanup / 默认保留 30 天，仅原子复用过期 `COMPLETED`，每小时有界清理 5,000 条 | Never deletes `PROCESSING` or immutable decision, audit, finance and Inbox facts / 不删除处理中记录及不可变决定、审计、财务与 Inbox 事实 |
+| Catalog relevance / 目录相关性 | Seven-query permission-aware HTTP gold set; PostgreSQL FTS/trigram ranking; nDCG@5, MRR@5 and Recall@5 gates / 7 条权限感知 HTTP gold set、PostgreSQL FTS/trigram 排序与三类指标门禁 | Deterministic English/Chinese lexical regression, not online click quality or broad multilingual proof / 确定性中英文词法回归，不代表线上点击质量或广泛多语言能力 |
+| Deferred patterns / 暂不引入 | BM25 service, RAG and circuit breaker are not implemented / 未实现外置 BM25、RAG 与熔断器 | Introduce only with measured search scale/quality, validated unstructured knowledge, or repeated remote-failure evidence and a new ADR / 仅在检索规模或质量、非结构化知识需求、远程级联故障得到实证并新增 ADR 后评估 |
+
 ## MCP protocol quick check / MCP 协议快速检查
 
 After `make dev-core`, obtain a demo OIDC token through the [MCP runbook](docs/05-delivery/26-mcp-agent-runbook.md), then call `tools/list` to inspect all six strict `outputSchema` definitions. Never put tokens or cursors in URLs, committed files, screenshots, logs, or issue text.
@@ -60,7 +70,7 @@ flowchart LR
 | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
 | Identity, tenant and permission access             | Establishes a non-forgeable tenant context and protected operations navigation                                                              | Available      |
 | Partner onboarding and channel eligibility         | Prevents transactions with inactive or ineligible customers                                                                                 | Available      |
-| Wine product, SKU, lot, and supply-pool search     | Preserves vintage, package, provenance, availability semantics, and field-level visibility                                                  | Available      |
+| Wine product, SKU, lot, and supply-pool search     | Adds deterministic English/Chinese lexical relevance gates without weakening tenant, permission, warehouse or freshness semantics          | Available      |
 | Quotation, route and customer decision             | Freezes terms, explains route ranking, enforces approval, and preserves idempotent acceptance/rejection                                     | Available      |
 | Order and inventory correctness                    | Creates at most one order, propagates verified decisions, preserves units and proves no-oversell reservation                               | Available      |
 | Fulfillment, exception and settlement              | Applies versioned plans, source-verified recovery, and immutable receivable/payment/reversal evidence                                      | Available      |
@@ -173,9 +183,30 @@ planned and are absent from the runtime.
 
 **Explainable route decisions.** The trade-planning engine rejects invalid routes with machine-readable reason codes and scores valid routes using versioned policies. A manager may override a recommendation only with a recorded reason.
 
+**Measured lexical catalog relevance.** The live permission-aware HTTP path is protected by a
+deterministic English/Chinese lexical gold set covering accent folding, misspellings, exact
+dimensions, shared-field decoys, and empty results.
+Every positive query must reach nDCG@5 ≥ 0.85 with RR@5 and Recall@5 equal to 1.0; mean nDCG@5
+must reach 0.95 and MRR@5 must remain 1.0. PostgreSQL `tsvector(simple)`/GIN and `pg_trgm` GiST keep three indexed candidate
+paths, while `ts_rank_cd + word_similarity` and code/ID tie-breaks make ranking deterministic.
+Tenant, permission and warehouse scope remain part of the same read path. Positive results retain
+projection `dataAsOf`; an empty result uses evaluation time and does not prove projection freshness.
+
+**Search infrastructure follows evidence, not labels.** At the current 15,000 structured-SKU target,
+an external BM25 service would duplicate indexed relational fields and add synchronization and
+operations cost. ADR-009 requires representative quality, scale, language, or independent-scaling
+evidence that remains unsatisfied after PostgreSQL tuning before an external lexical engine is
+considered. RAG has a separate trigger: a validated, permission-trimmed unstructured-knowledge
+question-answering use case. Structured lexical failure alone never triggers RAG.
+
 **Concurrency demonstrated through reservation execution.** Task 08 B1 combines deterministic candidate locking with exact PostgreSQL conditional updates. Controlled contention proves no oversell and multi-line rollback. B2 serializes competing outcomes under the Trade Order row lock, validates request/decision hashes, and preserves the first terminal result across duplicate or out-of-order delivery.
 
 **Reliable asynchronous collaboration.** The current core uses persisted local event publications and idempotent Consumer Inbox handlers. Correlation and causation identifiers remain business evidence; W3C trace context is stored in event metadata and asynchronous consumers use span links rather than false synchronous parentage.
+
+**Circuit breakers require a real remote-failure boundary.** The current runtime has no circuit
+breaker: MCP token buckets, bulkheads and timeouts are overload controls, while deterministic
+fulfillment-adapter fixtures are fault simulators. A breaker is reconsidered only when an actual remote
+dependency shows repeated transient failure or latency with measured cascade risk and a new ADR.
 
 **Admission control matched to the traffic boundary.** Public quotation links use monotonic-time GCRA instead of a fixed minute window, preventing boundary double bursts while returning a dynamic `Retry-After`. Reads have an independent 120/minute budget; accept and reject share a 30/minute decision budget. Malformed tokens map to 64 fixed buckets per scope (128 total), active state is capped at 10,000 with fail-closed admission, and metrics expose only bounded labels. This state is process-local, so an `N`-replica deployment can admit up to `N` times the configured capability budget and still requires edge-source limiting. MCP retains its token bucket for its different controlled-client burst profile.
 
@@ -279,7 +310,7 @@ flowchart LR
 | --------------------------- | ------------------------------------------------------------------------------------ | -------- |
 | 身份、租户与权限访问        | 建立不可伪造的租户上下文和受保护的运营导航                                           | 可运行   |
 | 商业客户准入与渠道资格      | 防止未激活、已停用或不具备交付资格的客户参与交易                                     | 可运行   |
-| 酒款、SKU、批次与货源池检索 | 准确表达年份、包装、来源、库存位置、非承诺可用性和字段权限                           | 可运行   |
+| 酒款、SKU、批次与货源池检索 | 增加确定性中英文词法相关性门禁，同时保留租户、权限、仓库与新鲜度语义                 | 可运行   |
 | 报价、路径与客户决定        | 固化商业条件、解释路径评分、执行审批并保存幂等接受/拒绝事实                          | 可运行   |
 | 订单与库存正确性            | 保证唯一订单、传播决策证据、保留单位语义并以原子预占防止超卖                        | 可运行   |
 | 履约、异常与结算            | 应用版本化计划、执行源状态验证恢复并保存不可变应收、付款与冲正证据                  | 可运行   |
@@ -355,9 +386,26 @@ Keycloak/OIDC、React/TypeScript/Vite、OpenAPI、Spring AI MCP、OpenTelemetry 
 
 **决策过程可解释。** 贸易路径引擎先执行硬约束，再对合格方案评分。每个拒绝原因和得分项都可以展示、审计和测试。人工覆盖推荐结果时必须填写理由，并保存使用的策略版本。
 
+**目录相关性有量化门禁。** 权限感知的真实 HTTP 路径使用确定性中英文词法 gold set，覆盖重音
+归一、常见拼写偏差、精确规格、共享字段干扰和无结果查询。每个正向查询要求
+nDCG@5 ≥ 0.85，且 RR@5 与 Recall@5 均为 1.0；集合均值 nDCG@5 ≥ 0.95、
+MRR@5 = 1.0。底层保留 PostgreSQL `tsvector(simple)`/GIN、
+`pg_trgm` GiST、三路索引候选与 `ts_rank_cd + word_similarity`，再以 SKU code/ID
+稳定破同分；租户、权限与仓库范围仍在同一读取链路内生效。正向结果保留投影
+`dataAsOf`；空集使用评估时刻，不能据此证明投影新鲜度。
+
+**检索设施由证据驱动。** 当前目标约 1.5 万个结构化 SKU；外置 BM25 服务会重复关系字段并
+增加同步与运维成本。只有代表性质量、规模、语言或独立扩缩容证据在 PostgreSQL 调优后仍不
+达标，才按 ADR-009 评估外置词法引擎。RAG 的触发条件不同：必须先验证需要权限裁剪的
+非结构化知识问答场景；结构化词法检索失败本身绝不触发 RAG。
+
 **并发正确性已在预留执行链路获得证明。** Task 08 B1 将确定性候选锁定与 PostgreSQL 精确条件更新组合起来，证明不会超卖并能整单回滚。B2 在 Trade Order 行锁内串行化竞争结果，校验请求与决策哈希，并在重复或乱序投递下保留首个终态。
 
 **异步协作可恢复且可追踪。** 当前 core 使用持久化本地发布记录和幂等 Consumer Inbox，保留 correlation/causation 业务证据，并在事件 metadata 传播 W3C trace context；异步消费者使用 span link，不伪造同步父子关系。
+
+**熔断器必须对应真实远程故障边界。** 当前 runtime 没有 circuit breaker：MCP token bucket、
+bulkhead 与 timeout 属于过载控制，确定性履约适配器 fixture 只是故障模拟器。只有真实
+远程依赖出现重复瞬时故障或延迟并形成可测级联风险时，才通过新 ADR 重新评估熔断。
 
 **按流量边界选择准入算法。** 公开报价链接使用单调时钟 GCRA 取代固定分钟窗口，消除窗口边界双突发，并返回动态 `Retry-After`。读取额度独立为每分钟 120 次，接受与拒绝共享每分钟 30 次的决定额度；非法 token 在每个 scope 只映射到 64 个固定桶（合计最多 128 个），活跃状态最多 10,000 个且容量满时 fail closed，指标只使用有界标签。该状态是进程内的，部署 `N` 个副本时 capability 总额度最多放大 `N` 倍，仍需保留边缘来源限流；MCP 则因受控客户端的突发特征继续使用 token bucket。
 

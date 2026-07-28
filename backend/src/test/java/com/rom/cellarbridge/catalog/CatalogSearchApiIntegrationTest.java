@@ -13,8 +13,11 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -36,6 +39,8 @@ import tools.jackson.databind.json.JsonMapper;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class CatalogSearchApiIntegrationTest extends PostgresIntegrationTestSupport {
 
+  private static final Logger LOGGER =
+      LoggerFactory.getLogger(CatalogSearchApiIntegrationTest.class);
   private static final String NORTH_SALES = "catalog-north-sales-token";
   private static final String NORTH_BUYER = "catalog-north-buyer-token";
   private static final String NORTH_ADMIN = "catalog-north-admin-token";
@@ -82,6 +87,179 @@ class CatalogSearchApiIntegrationTest extends PostgresIntegrationTestSupport {
         get("/api/v1/catalog/skus?keyword=" + encoded("云岚") + "&countryCode=CN", NORTH_SALES);
     assertThat(chinese.body().path("items").path(0).path("sku").path("skuCode").asText())
         .isEqualTo("CB-YL-2020-750X6");
+  }
+
+  @Test
+  void preservesMeasuredLexicalRelevanceAcrossTheCatalogGoldSet() throws Exception {
+    List<String> expectedCorpus =
+        List.of(
+            "CB-ECR-2023-750X12",
+            "CB-ETB-2022-750X6",
+            "CB-MTV-2019-750X6",
+            "CB-MTV-2021-1500X3",
+            "CB-NFS-NV-750X6",
+            "CB-YL-2020-750X6");
+    ApiResponse corpus = get("/api/v1/catalog/skus?pageSize=100", NORTH_SALES);
+    assertThat(corpus.status()).withFailMessage(corpus.raw()).isEqualTo(200);
+    List<String> actualCorpus =
+        corpus
+            .body()
+            .path("items")
+            .valueStream()
+            .map(item -> item.path("sku").path("skuCode").asText())
+            .sorted()
+            .toList();
+    boolean corpusHasNext = corpus.body().path("pageInfo").path("hasNext").asBoolean();
+    LOGGER.info(
+        "catalogRelevanceCorpus expectedActive={} actualCodes={} hasNext={}",
+        expectedCorpus.size(),
+        actualCorpus,
+        corpusHasNext);
+    assertThat(actualCorpus)
+        .as("permission-trimmed North Sales corpus")
+        .containsExactlyElementsOf(expectedCorpus);
+    assertThat(corpusHasNext).as("complete evaluated corpus").isFalse();
+
+    List<GoldQuery> goldSet =
+        List.of(
+            new GoldQuery(
+                "producer-vintage-ranking",
+                "Silver Vale 2019",
+                Map.of("CB-MTV-2019-750X6", 3, "CB-MTV-2021-1500X3", 1),
+                "CB-MTV-2019-750X6"),
+            new GoldQuery(
+                "exact-dimensions-among-decoys",
+                "2019 750x6",
+                Map.of("CB-MTV-2019-750X6", 3),
+                "CB-MTV-2019-750X6"),
+            new GoldQuery(
+                "accent-folding", "Etoile", Map.of("CB-ETB-2022-750X6", 3), "CB-ETB-2022-750X6"),
+            new GoldQuery("chinese-name", "云岚", Map.of("CB-YL-2020-750X6", 3), "CB-YL-2020-750X6"),
+            new GoldQuery(
+                "producer-typo",
+                "Silvr Vale",
+                Map.of("CB-MTV-2019-750X6", 3, "CB-MTV-2021-1500X3", 3),
+                null),
+            new GoldQuery(
+                "shared-producer-recall",
+                "Maison Aurelie",
+                Map.of("CB-ETB-2022-750X6", 2, "CB-NFS-NV-750X6", 2),
+                null),
+            new GoldQuery("negative-empty", "Neverland Reserve", Map.of(), null));
+
+    double ndcgTotal = 0;
+    double reciprocalRankTotal = 0;
+    double recallTotal = 0;
+    int positiveQueries = 0;
+    int negativeQueries = 0;
+    for (GoldQuery query : goldSet) {
+      ApiResponse response =
+          get(
+              "/api/v1/catalog/skus?keyword=" + encoded(query.keyword()) + "&pageSize=5",
+              NORTH_SALES);
+      assertThat(response.status()).as(query.name()).withFailMessage(response.raw()).isEqualTo(200);
+      String dataAsOf = response.body().path("dataAsOf").asText();
+      assertThat(dataAsOf).as(query.name() + " dataAsOf").isNotBlank();
+      List<String> rankedCodes =
+          response
+              .body()
+              .path("items")
+              .valueStream()
+              .map(item -> item.path("sku").path("skuCode").asText())
+              .toList();
+      assertThat(rankedCodes).as(query.name() + " stable SKU set").doesNotHaveDuplicates();
+      assertThat(rankedCodes.size()).as(query.name() + " top-five bound").isLessThanOrEqualTo(5);
+      List<String> actualTopFive = rankedCodes.stream().limit(5).toList();
+
+      boolean negativeQuery = query.relevance().isEmpty();
+      boolean negativeEmpty = negativeQuery && actualTopFive.isEmpty();
+      if (negativeQuery) {
+        LOGGER.info(
+            "catalogRelevanceQuery queryName={} keyword={} gradedExpected={} requiredFirst={} "
+                + "actualTopFive={} ndcgAt5={} reciprocalRankAt5={} recallAt5={} "
+                + "unjudgedEmpty={} negativeEmpty={} outcome={} dataAsOf={}",
+            query.name(),
+            query.keyword(),
+            gradedExpected(query.relevance()),
+            "NONE",
+            actualTopFive,
+            "N/A",
+            "N/A",
+            "N/A",
+            negativeEmpty,
+            negativeEmpty,
+            negativeEmpty ? "PASS" : "FAIL",
+            dataAsOf);
+        assertThat(actualTopFive).as(query.name()).isEmpty();
+        negativeQueries++;
+        continue;
+      }
+
+      double ndcg = ndcgAtFive(actualTopFive, query.relevance());
+      double recall =
+          actualTopFive.stream().filter(query.relevance()::containsKey).distinct().count()
+              / (double) query.relevance().size();
+      int firstRelevantRank = firstRelevantRank(actualTopFive, query.relevance());
+      double reciprocalRank = firstRelevantRank == 0 ? 0 : 1.0 / firstRelevantRank;
+      boolean requiredFirstMatched =
+          query.requiredFirst() == null
+              || (!actualTopFive.isEmpty()
+                  && query.requiredFirst().equals(actualTopFive.getFirst()));
+      boolean unjudgedEmpty = actualTopFive.stream().allMatch(query.relevance()::containsKey);
+      boolean passed =
+          ndcg >= 0.85
+              && recall == 1.0
+              && reciprocalRank == 1.0
+              && requiredFirstMatched
+              && unjudgedEmpty;
+      LOGGER.info(
+          "catalogRelevanceQuery queryName={} keyword={} gradedExpected={} requiredFirst={} "
+              + "actualTopFive={} ndcgAt5={} reciprocalRankAt5={} recallAt5={} "
+              + "unjudgedEmpty={} negativeEmpty={} outcome={} dataAsOf={}",
+          query.name(),
+          query.keyword(),
+          gradedExpected(query.relevance()),
+          query.requiredFirst() == null ? "NONE" : query.requiredFirst(),
+          actualTopFive,
+          ndcg,
+          reciprocalRank,
+          recall,
+          unjudgedEmpty,
+          false,
+          passed ? "PASS" : "FAIL",
+          dataAsOf);
+      assertThat(ndcg).as(query.name() + " nDCG@5").isGreaterThanOrEqualTo(0.85);
+      assertThat(recall).as(query.name() + " Recall@5").isEqualTo(1.0);
+      assertThat(reciprocalRank).as(query.name() + " RR@5").isEqualTo(1.0);
+      assertThat(unjudgedEmpty).as(query.name() + " unjudged result set").isTrue();
+      if (query.requiredFirst() != null) {
+        assertThat(actualTopFive)
+            .as(query.name() + " requiredFirst")
+            .startsWith(query.requiredFirst());
+      }
+      ndcgTotal += ndcg;
+      reciprocalRankTotal += reciprocalRank;
+      recallTotal += recall;
+      positiveQueries++;
+    }
+    assertThat(goldSet).as("gold-set query count").hasSize(7);
+    assertThat(positiveQueries).as("gold-set positive query count").isEqualTo(6);
+    assertThat(negativeQueries).as("gold-set negative query count").isEqualTo(1);
+    double meanNdcg = ndcgTotal / positiveQueries;
+    double meanReciprocalRank = reciprocalRankTotal / positiveQueries;
+    double meanRecall = recallTotal / positiveQueries;
+    LOGGER.info(
+        "catalogRelevanceGoldSet queryCount={} positive={} negative={} "
+            + "meanNdcgAt5={} mrrAt5={} meanRecallAt5={}",
+        goldSet.size(),
+        positiveQueries,
+        negativeQueries,
+        meanNdcg,
+        meanReciprocalRank,
+        meanRecall);
+    assertThat(meanNdcg).as("gold-set mean nDCG@5").isGreaterThanOrEqualTo(0.95);
+    assertThat(meanReciprocalRank).as("gold-set MRR@5").isEqualTo(1.0);
+    assertThat(meanRecall).as("gold-set mean Recall@5").isEqualTo(1.0);
   }
 
   @Test
@@ -319,6 +497,42 @@ class CatalogSearchApiIntegrationTest extends PostgresIntegrationTestSupport {
   private static String encoded(String value) {
     return URLEncoder.encode(value, StandardCharsets.UTF_8);
   }
+
+  private static double ndcgAtFive(List<String> rankedCodes, Map<String, Integer> relevance) {
+    double actual = 0;
+    for (int index = 0; index < Math.min(5, rankedCodes.size()); index++) {
+      int grade = relevance.getOrDefault(rankedCodes.get(index), 0);
+      actual += (Math.pow(2, grade) - 1) / logTwo(index + 2);
+    }
+    List<Integer> ideal =
+        relevance.values().stream().sorted(java.util.Comparator.reverseOrder()).toList();
+    double best = 0;
+    for (int index = 0; index < Math.min(5, ideal.size()); index++) {
+      best += (Math.pow(2, ideal.get(index)) - 1) / logTwo(index + 2);
+    }
+    return best == 0 ? 1 : actual / best;
+  }
+
+  private static int firstRelevantRank(List<String> rankedCodes, Map<String, Integer> relevance) {
+    for (int index = 0; index < Math.min(5, rankedCodes.size()); index++) {
+      if (relevance.containsKey(rankedCodes.get(index))) return index + 1;
+    }
+    return 0;
+  }
+
+  private static List<String> gradedExpected(Map<String, Integer> relevance) {
+    return relevance.entrySet().stream()
+        .sorted(Map.Entry.comparingByKey())
+        .map(entry -> entry.getKey() + ":" + entry.getValue())
+        .toList();
+  }
+
+  private static double logTwo(int value) {
+    return Math.log(value) / Math.log(2);
+  }
+
+  record GoldQuery(
+      String name, String keyword, Map<String, Integer> relevance, String requiredFirst) {}
 
   record ApiResponse(int status, JsonNode body, String raw) {}
 
