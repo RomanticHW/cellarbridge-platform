@@ -21,7 +21,7 @@
 | 数据 | 默认 |
 |---|---|
 | 交易/审计合成数据 | 保留至 demo reset |
-| HTTP idempotency | 30 天 |
+| Quotation HTTP idempotency | 30 天；仅过期 `COMPLETED` 重放摘要可清理 |
 | Inbox | 90 天或长期摘要 |
 | 技术日志 | 7~14 天本地 |
 | Trace | 1~3 天/采样 |
@@ -30,6 +30,10 @@
 | 客户 portal token | 过期/撤销后短期摘要，原 token hash |
 
 这些是演示默认，不宣称生产合规。
+
+当前每小时保留任务仅处理 `quotation.http_idempotency`，以数据库时间分批删除已过期
+`COMPLETED` 摘要；`PROCESSING`、客户决定、交易、审计、付款/冲正、Inbox 与失败
+publication 不在该任务范围。复用过期 key 时以条件 upsert 原子替换旧摘要，不先删后写。
 
 ## 4. 删除/匿名化
 

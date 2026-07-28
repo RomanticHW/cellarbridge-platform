@@ -179,6 +179,12 @@ planned and are absent from the runtime.
 
 **Admission control matched to the traffic boundary.** Public quotation links use monotonic-time GCRA instead of a fixed minute window, preventing boundary double bursts while returning a dynamic `Retry-After`. Reads have an independent 120/minute budget; accept and reject share a 30/minute decision budget. Malformed tokens map to 64 fixed buckets per scope (128 total), active state is capped at 10,000 with fail-closed admission, and metrics expose only bounded labels. This state is process-local, so an `N`-replica deployment can admit up to `N` times the configured capability budget and still requires edge-source limiting. MCP retains its token bucket for its different controlled-client burst profile.
 
+**Bounded replay-cache retention without erasing business facts.** Customer-quotation HTTP
+idempotency hashes are retained for 30 days. PostgreSQL atomically reuses only expired
+`COMPLETED` scopes, while the hourly indexed cleanup deletes at most 5,000 rows per run with
+`SKIP LOCKED`. `PROCESSING` rows and immutable decisions, audit, finance, and Inbox facts remain
+outside this cleanup.
+
 **Architecture as an executable constraint.** Current Spring Modulith and ArchUnit tests enforce module cycles, internal-package boundaries, selected dependency directions, and domain isolation. Remaining fitness functions are explicitly marked partial or planned.
 
 **AI Agent access without a privileged back door.** The MCP adapters call the same permission-aware
@@ -354,6 +360,10 @@ Keycloak/OIDC、React/TypeScript/Vite、OpenAPI、Spring AI MCP、OpenTelemetry 
 **异步协作可恢复且可追踪。** 当前 core 使用持久化本地发布记录和幂等 Consumer Inbox，保留 correlation/causation 业务证据，并在事件 metadata 传播 W3C trace context；异步消费者使用 span link，不伪造同步父子关系。
 
 **按流量边界选择准入算法。** 公开报价链接使用单调时钟 GCRA 取代固定分钟窗口，消除窗口边界双突发，并返回动态 `Retry-After`。读取额度独立为每分钟 120 次，接受与拒绝共享每分钟 30 次的决定额度；非法 token 在每个 scope 只映射到 64 个固定桶（合计最多 128 个），活跃状态最多 10,000 个且容量满时 fail closed，指标只使用有界标签。该状态是进程内的，部署 `N` 个副本时 capability 总额度最多放大 `N` 倍，仍需保留边缘来源限流；MCP 则因受控客户端的突发特征继续使用 token bucket。
+
+**重放缓存有界，业务事实不被误删。** 客户报价 HTTP 幂等摘要默认保留 30 天；PostgreSQL
+只原子复用已过期的 `COMPLETED` 作用域，每小时通过索引和 `SKIP LOCKED` 最多清理 5,000
+条。`PROCESSING` 记录以及不可变客户决定、审计、财务和 Inbox 事实均不在该清理范围内。
 
 **架构约束可执行。** 当前 Spring Modulith 和 ArchUnit 测试验证模块循环、internal 包边界、部分依赖方向和领域隔离；其余适应度函数明确标记为部分可用或计划中。
 

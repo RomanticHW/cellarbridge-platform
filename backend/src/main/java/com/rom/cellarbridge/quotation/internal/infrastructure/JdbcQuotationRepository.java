@@ -466,6 +466,7 @@ public class JdbcQuotationRepository implements QuotationRepository {
                AND partner_id = :partnerId
                AND operation = :operation
                AND key_hash = :keyHash
+               AND status = 'COMPLETED'
                AND expires_at > CURRENT_TIMESTAMP
             """,
             new MapSqlParameterSource()
@@ -555,6 +556,27 @@ public class JdbcQuotationRepository implements QuotationRepository {
       IdempotencyWrite idempotency) {
     requireTenant(tenantId, context.tenantId(), decision.tenantId());
     insertIdempotency(context.tenantId(), context.partnerId(), decision, idempotency);
+  }
+
+  @Override
+  @GlobalRegistryAccess
+  public int deleteExpiredIdempotency(int batchSize) {
+    return jdbc.update(
+        """
+        WITH expired AS (
+          SELECT id
+            FROM quotation.http_idempotency
+           WHERE status = 'COMPLETED'
+             AND expires_at <= CURRENT_TIMESTAMP
+           ORDER BY expires_at, tenant_id, id
+           FOR UPDATE SKIP LOCKED
+           LIMIT :batchSize
+        )
+        DELETE FROM quotation.http_idempotency stored
+         USING expired
+         WHERE stored.id = expired.id
+        """,
+        new MapSqlParameterSource().addValue("batchSize", batchSize));
   }
 
   @Override
@@ -754,27 +776,42 @@ public class JdbcQuotationRepository implements QuotationRepository {
 
   private void insertIdempotency(
       TenantId tenantId, UUID partnerId, CustomerDecision decision, IdempotencyWrite idempotency) {
-    jdbc.update(
-        """
-        INSERT INTO quotation.http_idempotency
+    int affected =
+        jdbc.update(
+            """
+        INSERT INTO quotation.http_idempotency AS stored
           (id, tenant_id, partner_id, operation, key_hash, request_hash, status, decision_id,
            response_status, expires_at, created_at, updated_at, version)
         VALUES
           (:id, :tenantId, :partnerId, :operation, :keyHash, :requestHash, 'COMPLETED',
            :decisionId, :responseStatus, :expiresAt, :createdAt, :createdAt, 0)
-        ON CONFLICT (tenant_id, partner_id, operation, key_hash) DO NOTHING
+        ON CONFLICT (tenant_id, partner_id, operation, key_hash) DO UPDATE
+           SET id = EXCLUDED.id,
+               request_hash = EXCLUDED.request_hash,
+               status = EXCLUDED.status,
+               decision_id = EXCLUDED.decision_id,
+               response_status = EXCLUDED.response_status,
+               expires_at = EXCLUDED.expires_at,
+               created_at = EXCLUDED.created_at,
+               updated_at = EXCLUDED.updated_at,
+               version = stored.version + 1
+         WHERE stored.status = 'COMPLETED'
+           AND stored.expires_at <= CURRENT_TIMESTAMP
         """,
-        new MapSqlParameterSource()
-            .addValue("id", idempotency.id())
-            .addValue("tenantId", tenantId.value())
-            .addValue("partnerId", partnerId)
-            .addValue("operation", idempotency.operation().name())
-            .addValue("keyHash", idempotency.keyHash())
-            .addValue("requestHash", idempotency.requestHash())
-            .addValue("decisionId", decision.id())
-            .addValue("responseStatus", idempotency.responseStatus())
-            .addValue("expiresAt", timestamp(idempotency.expiresAt()))
-            .addValue("createdAt", timestamp(idempotency.createdAt())));
+            new MapSqlParameterSource()
+                .addValue("id", idempotency.id())
+                .addValue("tenantId", tenantId.value())
+                .addValue("partnerId", partnerId)
+                .addValue("operation", idempotency.operation().name())
+                .addValue("keyHash", idempotency.keyHash())
+                .addValue("requestHash", idempotency.requestHash())
+                .addValue("decisionId", decision.id())
+                .addValue("responseStatus", idempotency.responseStatus())
+                .addValue("expiresAt", timestamp(idempotency.expiresAt()))
+                .addValue("createdAt", timestamp(idempotency.createdAt())));
+    if (affected != 1) {
+      throw new IllegalStateException("The idempotency result was not stored atomically");
+    }
   }
 
   private void completeExpirationForQuotation(QuotationAggregate quotation, UUID actorId) {

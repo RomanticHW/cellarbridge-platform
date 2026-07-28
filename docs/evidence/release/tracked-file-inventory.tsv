@@ -248,6 +248,8 @@ backend/src/main/java/com/rom/cellarbridge/quotation/internal/application/Custom
 backend/src/main/java/com/rom/cellarbridge/quotation/internal/application/QuotationApplicationService.java	source
 backend/src/main/java/com/rom/cellarbridge/quotation/internal/application/QuotationExpirationScheduler.java	source
 backend/src/main/java/com/rom/cellarbridge/quotation/internal/application/QuotationExpirationService.java	source
+backend/src/main/java/com/rom/cellarbridge/quotation/internal/application/QuotationIdempotencyRetentionScheduler.java	source
+backend/src/main/java/com/rom/cellarbridge/quotation/internal/application/QuotationIdempotencyRetentionService.java	source
 backend/src/main/java/com/rom/cellarbridge/quotation/internal/application/QuotationProblem.java	source
 backend/src/main/java/com/rom/cellarbridge/quotation/internal/application/QuotationRepository.java	source
 backend/src/main/java/com/rom/cellarbridge/quotation/internal/application/TradeOrderCreatedEventHandler.java	source
