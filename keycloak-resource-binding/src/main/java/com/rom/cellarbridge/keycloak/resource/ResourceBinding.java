@@ -54,7 +54,7 @@ final class ResourceBinding {
   }
 
   static boolean oneExact(List<String> values, String expected) {
-    return values != null && values.size() == 1 && expected.equals(values.getFirst());
+    return expected != null && values != null && values.equals(List.of(expected));
   }
 
   static boolean allExact(String expected, String... values) {

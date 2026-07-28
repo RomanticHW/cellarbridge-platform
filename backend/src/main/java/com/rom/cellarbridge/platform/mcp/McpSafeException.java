@@ -33,6 +33,21 @@ public final class McpSafeException extends RuntimeException {
         "RESULT_TOO_LARGE", false, "Narrow the query or request a smaller page.");
   }
 
+  public static McpSafeException timeout() {
+    return new McpSafeException(
+        "DOWNSTREAM_TIMEOUT", true, "The operation exceeded its execution deadline.");
+  }
+
+  public static McpSafeException overloaded() {
+    return new McpSafeException(
+        "DEPENDENCY_OVERLOADED", true, "The operation is temporarily at capacity.");
+  }
+
+  public static McpSafeException unavailable() {
+    return new McpSafeException(
+        "DEPENDENCY_UNAVAILABLE", true, "The operation is temporarily unavailable.");
+  }
+
   public String code() {
     return code;
   }

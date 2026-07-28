@@ -1,8 +1,20 @@
 spring:
+  ai:
+    mcp:
+      server:
+        enabled: true
   datasource:
     password: cellarbridge_test
 
 cellarbridge:
+  mcp:
+    security:
+      resource: https://mcp.cellarbridge.example/mcp
+      audience: https://mcp.cellarbridge.example/mcp
+      scope: mcp:read
+      allowed-clients: cellarbridge-mcp-host
+      allowed-origins: http://localhost:5173,http://127.0.0.1:5173
+      allowed-hosts: localhost,localhost:8080,127.0.0.1,127.0.0.1:8080
   partner:
     cursor-secret: test-partner-cursor-key-not-for-production
   catalog:

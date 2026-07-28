@@ -33,7 +33,7 @@ Model Context Protocol Java SDK 2.0.0。Spring AI 使用 Apache-2.0 许可证，
 
 MCP 与现有后端同进程运行，端点固定为 `/mcp`，传输采用 Spring MVC 的无状态
 Streamable HTTP。首版不启用 SSE 兼容端点，也不建立跨请求 MCP session。MCP 服务可通过
-`CELLARBRIDGE_MCP_ENABLED` 禁用，默认启用。
+`CELLARBRIDGE_MCP_ENABLED` 启用；生产部署默认关闭，demo/test 显式开启。
 
 Spring AI 在本决策中只提供 MCP server integration，不引入 Chat Model、Embedding Model、
 Vector Store、RAG、tool-calling loop 或任何模型供应商 SDK。
@@ -72,9 +72,11 @@ Tool、Resource 和 Prompt 的输入及输出白名单见
 
 ### 3. 身份传播与授权
 
-`/mcp` 复用现有 Bearer token 校验和 `cellarbridge-api` audience。每个 HTTP 请求都从已验证
-JWT 建立新的 TenantContext，并在请求结束后清理；无状态 transport 不缓存或复用上一个请求
-的身份。
+`/mcp` 使用独立 SecurityFilterChain，只接受专用 canonical HTTPS resource/audience、
+`mcp:read` scope 和允许的 `cellarbridge-mcp-host`。RFC 9728 metadata/challenge 支持发现；
+预登记 public client 使用 Authorization Code + S256 PKCE，仓库内 Keycloak provider 在
+authorization、token 与 refresh 边界强制同一 RFC 8707 resource，并给令牌写入精确
+`aud`/`resource`。每个请求仍从 JWT 建立并清理新的 TenantContext。
 
 MCP 参数和 Prompt 文本不具有授权含义。业务 Provider 继续执行 tenant、permission、role、
 owner、partner、warehouse assignment、状态与字段级约束。客户端声明“需要分析”不能提升权限。
@@ -102,27 +104,12 @@ partner scope。
   `RESULT_TOO_LARGE` 安全错误，不返回截断 JSON；
 - 成功输出携带来源、freshness evidence、correlation 和结构化 warning；
 - SDK input schema 拒绝采用标准 MCP `isError/text`；业务校验、授权和内部异常使用稳定安全 envelope；
-- 响应、日志、Prompt 和 error data 不包含 Authorization header、JWT、portal token、
-  cursor secret、idempotency hash、SQL、表名、内部类名、路径、堆栈或原始异常消息；
+- 安全错误响应、日志、Prompt 和归档证据不泄露 Authorization header、JWT、portal token、cursor secret、idempotency hash、敏感请求载荷标记、SQL 正文、堆栈、原始异常或本地运行路径；结构化日志可保留 logger/category 等低敏实现标识；
 - 所有 MCP 响应使用 `Cache-Control: no-store`。
 
-当前阶段不实现通用 MCP OAuth discovery、动态客户端注册或独立 authorization server
-metadata。它是复用现有 API Bearer token 的受控入口，不得宣传成通用 OAuth MCP 部署。
-
-### 5. Dormant resource-binding foundation
-
-仓库内包含一个针对 Keycloak 26.7 的 resource-binding Provider 模块，作为后续专用 MCP
-resource/audience 交付的隔离基础。该模块当前只进入 Maven reactor、Java 21 测试和依赖审查：
-后端与 Keycloak 运行镜像均不复制其 JAR，realm 不注册 client policy，两个 SPI factory
-也以 `enabled=false` 为缺省值。未显式标记的 client 固定 no-op。
-
-因此本阶段不改变上述 `cellarbridge-api` audience 行为，也不构成 RFC 8707、PKCE 或
-authorization/token/refresh 运行证据。只有完成真实 Keycloak 协议负测、资源服务器隔离、
-部署与回滚验证后，才能启用或公开声明对应能力。
-
-Provider 依赖 Keycloak 26.7 的 `server-spi-private`，这部分 API 不承诺跨版本兼容。每次
-Keycloak 升级都必须重新编译并执行完整协议矩阵；若兼容性或安全门禁失败，应保持 factory
-关闭并移除模块构建接线，或在上游稳定能力可用后替换该扩展。
+Keycloak 26.7 不原生提供这里要求的严格 RFC 8707 profile；provider 是本仓库可审计、默认
+no-op、部署时显式启用的边界，不得宣传成上游原生能力。当前不实现动态客户端注册、token
+exchange、credential forwarding 或通用 OAuth proxy。
 
 ## 方案比较
 
@@ -142,6 +129,8 @@ Keycloak 升级都必须重新编译并执行完整协议矩阵；若兼容性�
 - MCP 客户端、Tool 描述和 Prompt 都视为不可信输入，不能改变服务端权限；
 - 同进程意味着 MCP 与 REST 共享 JVM 资源，必须通过输入上限、分页上限、超时和观测防止
   单个客户端无界消耗资源；
+- 请求使用专用 Host/Origin/body 校验、token-bucket、全局/每 client bulkhead、有界 executor、
+  只读事务与 PostgreSQL statement timeout，并以低基数指标和独立 MCP health 诊断；
 - 当前无写工具，所以不建立幂等写入、审批委托或无人值守执行语义。
 
 ## 后果
@@ -159,7 +148,8 @@ Keycloak 升级都必须重新编译并执行完整协议矩阵；若兼容性�
 ## 回滚
 
 1. 紧急隔离时将 `CELLARBRIDGE_MCP_ENABLED=false` 并拒绝 `/mcp` 路由；
-2. 如需完整回滚，部署前一应用版本并移除 MCP starter 与 Provider 注册；
+2. 如需完整回滚，先关闭 MCP，再部署前一应用版本并撤回 Keycloak provider；不得只关闭
+   provider 后继续接受旧的 API audience token；
 3. MCP 没有数据库 migration、业务写入或持久 session，因此不需要数据回滚；
 4. 回滚不影响 REST/OpenAPI、事件消费或读模型；客户端应把端点不可用视为能力撤回，而不是
    重试任何业务写入。

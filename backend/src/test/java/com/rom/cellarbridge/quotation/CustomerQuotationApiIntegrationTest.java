@@ -917,7 +917,7 @@ class CustomerQuotationApiIntegrationTest extends PostgresIntegrationTestSupport
         if (!NORTH_SALES.equals(token)) {
           throw new BadJwtException("Token is invalid");
         }
-        Instant now = BASE;
+        Instant now = Instant.now();
         return Jwt.withTokenValue(token)
             .header("alg", "RS256")
             .issuer("http://localhost:8081/realms/cellarbridge")

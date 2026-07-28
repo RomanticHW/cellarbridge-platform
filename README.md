@@ -5,37 +5,16 @@
 
 [English](#english) · [简体中文](#简体中文)
 
-> **Current main — authenticated read-only MCP for AI Agent workflows.** Compatible AI Agent hosts
-> can securely inspect identity, supply, work items, dashboards, timelines, and audit evidence
-> through `/mcp` without broader access than the application; timeline ownership that cannot be
-> proven fails closed. Envelope 2.0 adds strict per-tool output schemas, complete signed-cursor
-> pagination, Reporting source-watermark and Supply observation-age evidence, stable warning codes,
-> and bounded responses.
->
-> **当前 main — 已提供面向 AI Agent（智能体）的认证只读 MCP。** 兼容 MCP 的 AI Agent
-> 可通过 `/mcp` 安全读取身份、供给、工作项、经营看板、时间线与审计证据，不会扩大应用权限；
-> 无法证明对象归属的 timeline 会 fail closed。Envelope 2.0 进一步提供逐 Tool
-> 强类型输出、签名 cursor 完整翻页、Reporting source-watermark 与 Supply 观测年龄证据、
-> 稳定 warning code 和有界响应。
->
-> **Release boundary / 发布边界：** The published `v1.0.0` tag predates the MCP capability and does
-> not contain it. The `v1.0.0` demonstration release still starts a deterministic synthetic-data
-> environment; the checked reviewer journey continues from customer activation and quotation
-> through atomic reservation, failure recovery, receivable/payment evidence, dashboard and audit.
-> 已发布的 `v1.0.0` 标签早于 MCP 能力，不包含本功能。
-> See the [release notes](docs/05-delivery/25-release-notes-v1.0.0.md) and
-> [reviewer guide](docs/reviewer-guide.md).
+> **Current main — authenticated read-only MCP for AI Agent workflows.** `/mcp` combines permission-filtered operations, strict Envelope 2.0 schemas, signed cursors, truthful freshness, dedicated OAuth/PKCE/resource binding and fail-closed admission controls.
+> **当前 main — 已提供认证只读 MCP。** `/mcp` 将权限过滤、严格 Envelope 2.0 schema、签名分页、真实 freshness、专用 OAuth/PKCE/resource 绑定和 fail-closed 准入组合为一个标准入口。
+> **Release boundary:** `v1.0.0` predates MCP; its deterministic demo still covers quotation, reservation, recovery, settlement and audit.
+> **发布边界：** `v1.0.0` 不含 MCP；详见[发行说明](docs/05-delivery/25-release-notes-v1.0.0.md)和[项目指南](docs/reviewer-guide.md)。
 
 ## MCP protocol quick check / MCP 协议快速检查
 
-After `make dev-core`, obtain a demo OIDC access token using the
-[MCP runbook](docs/05-delivery/26-mcp-agent-runbook.md), then run this single shared example.
-`tools/list` exposes the six strict `outputSchema` definitions; do not put tokens or cursors in
-URLs, committed files, screenshots, logs, or issue text.
-
-执行 `make dev-core` 后，按 [MCP 运行手册](docs/05-delivery/26-mcp-agent-runbook.md)取得演示
-OIDC access token，再运行这一个中英文共用示例。`tools/list` 会返回六个严格
-`outputSchema`；不要把 token 或 cursor 放入 URL、提交文件、截图、日志或 issue 文本。
+After `make dev-core`, obtain a demo OIDC token through the [MCP runbook](docs/05-delivery/26-mcp-agent-runbook.md), then call `tools/list` to inspect all six strict `outputSchema` definitions. Never put tokens or cursors in URLs, committed files, screenshots, logs, or issue text.
+执行 `make dev-core` 后，按 [MCP 运行手册](docs/05-delivery/26-mcp-agent-runbook.md)取得演示 OIDC token，再调用 `tools/list` 检查六个严格 `outputSchema`。
+token 和 cursor 不得进入 URL、提交文件、截图、日志或 issue 文本。
 
 ```bash
 curl http://localhost:8080/mcp \
@@ -55,8 +34,6 @@ curl http://localhost:8080/mcp \
 
 CellarBridge models a realistic target workflow for a wine importer and B2B supply-chain operator. It is not a consumer storefront and it is not a collection of disconnected CRUD screens. The executable scope currently runs from customer eligibility and supply search through quotation, idempotent order creation, Inventory-owned reservation, Fulfillment, exception recovery, permission-scoped receivables, and eventually consistent audit/reporting projections.
 
-The project is designed to make engineering decisions easy to inspect. A reviewer can trace a business requirement from the product specification to a bounded context, aggregate invariant, API or event contract, database ownership rule, acceptance scenario, and implementation task.
-
 ### 2. Core business scenario
 
 In the target scenario, a sales representative prepares a customer-specific quotation for several wine SKUs. The platform evaluates eligible delivery routes, explains why each route is accepted or rejected, calculates a versioned price breakdown, and requests approval when margin or discount policies are exceeded. The executable core continues through customer acceptance, exactly-one-order creation, atomic Inventory reservation, route-specific Fulfillment, source-verified exception recovery, and fulfillment-triggered receivables with external payment and reversal evidence. Those reliable business events feed tenant-scoped audit, timeline, work-item, and metric projections.
@@ -75,7 +52,6 @@ flowchart LR
     J --> K[Receivable and payment<br/>Available]
     J --> L[Audit and reporting<br/>Available]
     K --> L
-
 ```
 
 ### 3. Product capabilities
@@ -85,20 +61,12 @@ flowchart LR
 | Identity, tenant and permission access             | Establishes a non-forgeable tenant context and protected operations navigation                                                              | Available      |
 | Partner onboarding and channel eligibility         | Prevents transactions with inactive or ineligible customers                                                                                 | Available      |
 | Wine product, SKU, lot, and supply-pool search     | Preserves vintage, package, provenance, availability semantics, and field-level visibility                                                  | Available      |
-| Customer-specific quotation workflow               | Freezes commercial terms and supports approval policies                                                                                     | Available      |
-| Explainable trade-route evaluation                 | Compares delivery options by hard constraints and weighted scores                                                                           | Available      |
-| Secure customer quotation decision                 | Provides a strict public view, idempotent accept/reject, expiry processing, and a durable acceptance fact                                   | Available      |
-| Quote-to-order conversion                          | Uses an Inbox, immutable snapshots, and database uniqueness so an accepted quote produces at most one order                                 | Available      |
-| Unit-aware inventory readiness                     | Separates CASE/BOTTLE facts and exposes warehouse priority/version only to authorized exact-stock users                                     | Available      |
-| Route-bound Supply Decision freeze and propagation | Preserves AUTO/FIXED route constraints and one verified decision from quotation to order                                                    | Available      |
-| Inventory reservation                              | Prevents overselling, applies verified order outcomes, and exposes permission-scoped operations evidence                                    | Available      |
-| Fulfillment plans and milestones                   | Applies versioned route templates, dependency rules, SLA state, simulated adapter evidence, and customer-safe milestones                    | Available      |
-| Exception center                                   | Deduplicates shortages, delays, failed steps, and terminal delivery failures into owned work with source-verified recovery                  | Available      |
-| Receivables and payment records                    | Creates one versioned fulfillment-triggered receivable and preserves idempotent, immutable payment/reversal evidence without a real gateway | Available      |
+| Quotation, route and customer decision             | Freezes terms, explains route ranking, enforces approval, and preserves idempotent acceptance/rejection                                     | Available      |
+| Order and inventory correctness                    | Creates at most one order, propagates verified decisions, preserves units and proves no-oversell reservation                               | Available      |
+| Fulfillment, exception and settlement              | Applies versioned plans, source-verified recovery, and immutable receivable/payment/reversal evidence                                      | Available      |
 | Audit trail and operational read models            | Supports immutable evidence, unified timelines, actionable work queues, and permission-filtered dashboards                                  | Available      |
-| Authenticated MCP and agent workflows               | Gives compatible agent hosts a typed, paginated and evidence-aware read-only interface to identity, supply, work, dashboards, timelines, and audit | Available      |
-| Observability and security evidence                 | Links HTTP requests to local events, exposes low-cardinality operational metrics, and provides repeatable threat/SBOM/container checks       | Available      |
-| Performance and resilience evidence                 | Records versioned datasets, SQL/JVM percentiles, concurrency invariants, bounded recovery, and controlled identity-outage evidence            | Available      |
+| Production-oriented MCP hardening and agent workflows | Adds standards discovery, dedicated PKCE/resource binding, typed bounded reads, bounded overload controls and safe diagnostics for compatible agent hosts | Available      |
+| Operational assurance evidence                     | Combines trace/metrics, threat/SBOM/container gates, versioned performance data, concurrency invariants and controlled outage recovery      | Available      |
 
 ### 4. Architecture at a glance
 
@@ -117,23 +85,14 @@ flowchart TB
     subgraph App[Java application]
         API[REST API and OpenAPI boundary]
         MCP[Authenticated read-only MCP<br/>Stateless Streamable HTTP]
-        IAM[Identity & Access]
-        PAR[Partner]
-        CAT[Catalog]
-        INV[Inventory]
-        QUO[Quotation]
-        TRD[Trade Planning]
-        ORD[Trade Order]
-        FUL[Fulfillment]
-        EXC[Exception Center]
-        SET[Settlement]
+        DOMAINS[Identity, Partner, Supply, Quotation,<br/>Planning, Order, Fulfillment, Exception, Settlement]
         REP[Reporting & Audit]
         EVT[Reliable event publication]
     end
 
     subgraph CorePlatform[Available core services]
         PG[(PostgreSQL)]
-        KC[Keycloak / OIDC]
+        KC[Keycloak / OIDC<br/>resource-binding extension]
     end
 
     subgraph OptionalPlatform[Optional platform services]
@@ -144,26 +103,14 @@ flowchart TB
     end
 
     UI -->|OIDC + REST| API
+    AGENT -->|Authorization Code + S256 + resource| KC
+    KC -->|dedicated resource-bound token| AGENT
     AGENT -->|Bearer token + /mcp| MCP
-    API --> IAM
-    API --> PAR
-    API --> CAT
-    API --> INV
-    API --> QUO
-    API --> ORD
-    API --> FUL
-    API --> EXC
-    API --> SET
-    MCP --> IAM
-    MCP --> CAT
-    MCP --> INV
+    API --> DOMAINS
+    MCP --> DOMAINS
     MCP --> REP
-    QUO --> TRD
-    ORD --> EVT
-    INV --> EVT
-    FUL --> EVT
-    EXC --> EVT
-    SET --> EVT
+    DOMAINS --> EVT
+    EVT --> REP
     EVT -.-> KAFKA
     App --> PG
     App -.-> REDIS
@@ -203,35 +150,22 @@ fixed workflow instructions and never execute tools by themselves.
 | Machine-readable result contract | Envelope `2.0`; strict JSON Schema 2020-12 output per tool; structured warning codes and safe errors |
 | Complete bounded reads | Signed cursors for supply, work items, timeline, and audit; 15-minute default TTL; 256 KiB/1,000 nested collection-item default budget |
 | Truthful freshness | Reporting uses source watermark/checkpoint evidence; supply reports `OBSERVATION_AGE/UNKNOWN` instead of claiming projector health |
+| OAuth boundary and runtime controls | RFC 9728 metadata/challenges; dedicated HTTPS resource, audience, `mcp:read` scope and public host client; real Code + S256 PKCE; RFC 8707 authorization/token/refresh binding; body, token-bucket, bulkhead, request/SQL timeout, low-cardinality metrics and separate MCP health |
 
-This interface deliberately cannot submit or approve quotations, reserve or release inventory,
-advance fulfillment, recover exceptions, record payments, reverse transactions, rebuild
-projections, or perform any other write. CellarBridge does not bundle a model, model-provider SDK,
-autonomous approval loop, RAG, vector database, persistent conversation memory, or complete MCP
-OAuth discovery. The operator supplies a compatible host and model and provides an access token for
-the existing `cellarbridge-api` audience. See the
-[MCP capability contract](docs/04-contracts/10-mcp-capability-contract.md) and
-[runbook](docs/05-delivery/26-mcp-agent-runbook.md). The real-OIDC smoke and five applicable
-official conformance scenarios are recorded in the
-[MCP verification evidence](docs/evidence/mcp/conformance-summary.md).
+This interface cannot submit or approve quotations, reserve or release inventory, advance
+fulfillment, recover exceptions, record payments, reverse transactions, rebuild projections, or
+perform any other write. CellarBridge bundles no model, provider SDK, autonomous approval loop, RAG,
+vector database or persistent memory; DCR, token exchange and credential forwarding are unsupported.
+Keycloak 26.7 needs the repository provider and otherwise fails closed; the operator supplies the host/model. See the [capability contract](docs/04-contracts/10-mcp-capability-contract.md), [runbook](docs/05-delivery/26-mcp-agent-runbook.md), and [evidence](docs/evidence/mcp/conformance-summary.md).
 
 ### 6. Technology baseline
 
-| Area          | Baseline                                                                                                                                                              |
-| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Backend       | Current: Java 21 LTS, Spring Boot 4.1, Spring Modulith 2.1, Spring Security, Spring JDBC / SQL-first. JPA is optional and not installed                               |
-| API           | REST, OpenAPI 3.1, RFC 9457-style problem details, generated TypeScript types                                                                                         |
-| MCP           | Current: Spring AI MCP Server 2.0.0, official Java SDK 2.0.0, authenticated stateless Streamable HTTP at `/mcp`                                                     |
-| Data          | PostgreSQL 18, Flyway, schema-per-module ownership, JSONB only for snapshots and event envelopes                                                                      |
-| Messaging     | Current: custom transactional local publication and Consumer Inbox. Kafka 4.3 is a planned full-profile external channel                                              |
-| Cache         | Redis 8 is planned for a future full profile and is not part of the current runtime                                                                                   |
-| Identity      | Keycloak 26, OIDC Authorization Code with PKCE, JWT resource server                                                                                                   |
-| Frontend      | Current: React 19.2, TypeScript, Vite 8, React Router, TanStack Query, Ant Design, React Hook Form, Zod, ECharts 6                                                    |
-| Quality       | JUnit, AssertJ, Testcontainers, ArchUnit, Spring Modulith verification, Vitest, Testing Library, Playwright                                                           |
-| Observability | Current: Actuator/Micrometer, OpenTelemetry/OTLP, ECS JSON logs, Tempo, Prometheus, Grafana, versioned dashboards and alert examples                                      |
-| Delivery      | Current: Maven Wrapper, pnpm, core/full Docker Compose, GitHub Actions, secret/dependency/container scans, CycloneDX SBOMs and non-root image checks                          |
-
-Current versions and planned targets are recorded separately in [the technology baseline](docs/03-architecture/13-technology-baseline.md); a planned target is not evidence that the dependency is installed.
+The executable baseline uses Java 21, Spring Boot/Modulith/Security/JDBC, PostgreSQL/Flyway,
+Keycloak/OIDC, React/TypeScript/Vite, OpenAPI, Spring AI MCP, OpenTelemetry and the Maven/pnpm
+toolchains. Testcontainers, ArchUnit, Playwright, SBOM and container gates make the boundary
+repeatable. Exact current versions and planned targets live in the
+[technology baseline](docs/03-architecture/13-technology-baseline.md); Kafka and Redis remain
+planned and are absent from the runtime.
 
 ### 7. What is technically distinctive
 
@@ -249,32 +183,16 @@ Current versions and planned targets are recorded separately in [the technology 
 application services as the REST boundary. They cannot accept tenant, actor, role, permission,
 partner, or warehouse scope from tool arguments. Strict schemas, signed cursor pagination,
 freshness evidence, bounded queries and bounded serialization make complete reads machine-checkable.
-
-**Reviewer-friendly operation.** The target release provides synthetic demo data, role-based demo accounts, a deterministic walkthrough, one-command local startup, health checks, API documentation, dashboards, and a concise technical review path.
+Dedicated OAuth binding keeps API and agent tokens distinct; admission controls bound MCP overload on the shared runtime, while safe metrics and MCP health never turn identities or payloads into labels.
 
 ### 8. Repository map
 
-```text
-.
-├── AGENTS.md                    Repository-wide engineering rules
-├── README.md                    Bilingual project overview
-├── backend/                    Spring Boot modular-monolith application
-├── frontend/                   React operations console
-├── contracts/                  OpenAPI, AsyncAPI, JSON Schemas, examples
-├── deploy/                     Core and observable full Docker Compose profiles
-├── docs/
-│   ├── 00-research/             Evidence, business model, scenario selection
-│   ├── 01-product/              Vision, requirements, workflows, page specs
-│   ├── 02-domain/               Context map, aggregates, invariants, events
-│   ├── 03-architecture/         Architecture, ADRs, security, operations
-│   ├── 04-contracts/            Data, API, permissions, audit conventions
-│   └── 05-delivery/             Roadmap, quality gates, review and release plan
-├── scripts/                     Validation and local smoke checks
-└── .github/                     Contribution templates and quality workflows
-```
-
-The executable application keeps every Spring Modulith business module as a direct child of
-`com.rom.cellarbridge`. Identity/access, partner onboarding, catalog/supply search, quotation/trade planning, customer quotation decisions, quote-to-order conversion, Inventory reservation, Fulfillment orchestration, the Exception Center, Settlement, and Audit/Reporting are available.
+| Path | Purpose |
+| --- | --- |
+| `backend/`, `frontend/` | Spring Boot modular monolith and React operations console |
+| `contracts/`, `deploy/` | Versioned interfaces and core/observable Compose profiles |
+| `docs/00-research`–`05-delivery` | Evidence, product, domain, architecture, contracts and delivery |
+| `scripts/`, `.github/` | Repeatable local verification and repository workflows |
 
 ### 9. Run current main locally
 
@@ -288,120 +206,34 @@ make demo-e2e                     # run the complete reviewer journey and captur
 make stop-demo
 ```
 
-`make demo` checks its dependencies, builds pinned runtime inputs, applies Flyway V2–V22, loads
-repeatable synthetic seed data, waits for every service and prints URLs plus role accounts. Reset
-refuses a running backend outside the `demo` profile and affects only the `cellarbridge-demo`
-Compose project. The full profile requires an untracked `.env` with replaced Grafana credentials.
-Production configuration has no default database or cursor-signing secret.
+`make demo` validates pinned inputs, migrates and seeds, waits for health, then prints URLs and roles.
+Reset is restricted to the `cellarbridge-demo` project; full requires an untracked `.env`.
+Production has no default database or cursor-signing secret.
 
-Source verification additionally requires Java 21, Node.js 24, Corepack/pnpm 11 and Python 3.12
-with the validation dependencies used by CI. The wrappers and lockfiles define build inputs.
+Source verification requires Java 21, Node.js 24, Corepack/pnpm 11 and Python 3.12. Wrappers and lockfiles fix build inputs; `make help` lists all commands. The minimum gate is `make validate`,
+`make test` and `make mcp-production-security`.
 
-```bash
-cp .env.example .env            # optional local overrides; .env is ignored
-make validate                   # static, format, generated-code, and Compose checks
-make test                       # backend integration/architecture and frontend tests
-make dev-core                   # PostgreSQL, Keycloak, backend, and frontend
-make dev-full                   # Core plus Collector, Tempo, Prometheus, and Grafana; requires .env
-make smoke-core                 # isolated build, health verification, and cleanup
-make smoke-full                 # isolated observable-profile health verification and cleanup
-make identity-e2e               # real OIDC login and two-tenant isolation
-make partner-e2e                # partner submission, independent review, and self-review denial
-make catalog-e2e                # catalog search, local quote selection, and Buyer denial
-make quotation-e2e              # quotation routing, approval, issue, and safe preview
-make acceptance-e2e             # customer acceptance, double-click, receipt, and refresh safety
-make order-e2e                  # quote conversion, Reservation operations, and Buyer-safe access
-make fulfillment-e2e            # route plan, dependency actions, milestones, and Buyer-safe access
-make exception-e2e              # failure capture, source-verified recovery, and reviewed closure
-make settlement-e2e             # fulfillment-triggered receivable, partial/full payment, and reversal
-make reporting-e2e              # projected work queue, dashboard, audit, and unified timeline
-make mcp-smoke                  # real OIDC token, MCP initialize/discovery/read-only call checks
-make mcp-conformance            # pinned official MCP 2025-11-25 server conformance scenarios
-make catalog-benchmark          # deterministic PostgreSQL search plan and p50/p95 evidence
-make performance-smoke          # correctness-backed 10-minute performance/resilience profile
-make performance-full           # 30-minute profile with controlled Keycloak outage and recovery
-```
-
-After `make dev-core`, open <http://localhost:5173/app>. Backend readiness is available at
-<http://localhost:8080/actuator/health/readiness>, and Keycloak is available at
-<http://localhost:8081>. Sign in with synthetic local account `north.sales`, `north.buyer`,
-`north.manager`, `north.trade`, `north.warehouse`, `north.admin`, `north.finance`, `north.auditor`,
-`north.operator`, or `harbor.manager`; their demo-only password is
-`CellarBridge-Demo-2026!`. These credentials exist only in the local `demo` profile and must never
-be reused in production. Stop the profile with
-`make stop-core`; see the [identity access runbook](docs/05-delivery/13-identity-access-runbook.md),
-the [partner onboarding runbook](docs/05-delivery/14-partner-onboarding-runbook.md), and the
-[catalog supply search runbook](docs/05-delivery/15-catalog-supply-search-runbook.md), and the
-[quotation and trade-planning runbook](docs/05-delivery/16-quotation-trade-planning-runbook.md), and the
-[customer quotation acceptance runbook](docs/05-delivery/17-customer-quotation-acceptance-runbook.md), and the
-[trade order conversion runbook](docs/05-delivery/18-trade-order-conversion-runbook.md), and the
-[fulfillment orchestration runbook](docs/05-delivery/19-fulfillment-orchestration-runbook.md), and the
-[Exception Center runbook](docs/05-delivery/20-exception-center-runbook.md), and the
-[Settlement runbook](docs/05-delivery/21-settlement-runbook.md), and the
-[Audit and reporting runbook](docs/05-delivery/22-audit-reporting-runbook.md), and the
-[observability and security runbook](docs/05-delivery/23-observability-security-runbook.md).
-[Performance and resilience evidence](docs/05-delivery/24-performance-resilience-runbook.md)
-documents the versioned profiles, artifact contract and fault-control boundary. MCP setup,
-client headers, discovery, permission checks, conformance scope, and rollback are documented in the
+After `make dev-core`, use <http://localhost:5173/app>; readiness and Keycloak run on ports 8080 and
+8081. The printed synthetic credentials are demo-only. Stop with `make stop-core`; procedures are
+indexed in [delivery documentation](docs/05-delivery/), with MCP setup, evidence and rollback in the
 [MCP and agent runbook](docs/05-delivery/26-mcp-agent-runbook.md).
 
-The single non-duplicated protocol request is in
-[MCP protocol quick check](#mcp-protocol-quick-check--mcp-协议快速检查); the runbook adds initialize,
-all four paginated tools, freshness checks, role/tenant negatives, and rollback.
+[OpenAPI](contracts/openapi/cellarbridge-api.yaml) owns REST and generated TypeScript;
+[implementation status](docs/05-delivery/10-implementation-status.md) owns executable inventory.
 
-Regenerate the checked-in TypeScript API boundary with `make generate-api-client`. The source
-OpenAPI remains authoritative; `/me`, `/partners*`, `/catalog/skus*`, `/quotations*`, and the
-customer-safe portal view/acceptance/rejection endpoints are implemented. Internal `/orders*` and
-Partner-scoped `/buyer/orders*`, tenant-scoped `/inventory/reservations*`, tenant-scoped
-`/fulfillment/plans*`, `/exceptions*`, failed-publication operations, order outcome consumption,
-and the Reservation/Fulfillment/Exception workbenches are also implemented. Tenant-scoped
-`/receivables*` payment/reversal commands and the Settlement workspace are available. Tenant-scoped
-`/dashboard`, `/audit/entries`, `/timeline`, and `/work-items` projections and their React views are
-also available.
+### 10. Delivery status
 
-### 10. Suggested review paths
-
-- **10 minutes:** this README → [reviewer guide](docs/reviewer-guide.md) → [architecture overview](docs/03-architecture/00-architecture-overview.md)
-- **30 minutes:** add [scenario selection](docs/00-research/07-scenario-selection.md), [aggregate invariants](docs/02-domain/04-aggregates-and-invariants.md), [inventory concurrency design](docs/03-architecture/08-performance-and-scalability.md), and the [requirement traceability matrix](docs/05-delivery/11-requirement-traceability.md)
-- **60 minutes:** add the [OpenAPI contract](contracts/openapi/cellarbridge-api.yaml), [event contract](contracts/asyncapi/cellarbridge-events.yaml), [database design](docs/04-contracts/05-database-design.md), [testing strategy](docs/05-delivery/03-testing-strategy.md), and the [technical reviewer scorecard](docs/05-delivery/12-reviewer-scorecard.md)
-
-### 11. Delivery status
-
-| Stage                                              | State     |
-| -------------------------------------------------- | --------- |
-| Evidence-backed research                           | Available |
-| Product and domain design                          | Available |
-| Architecture and contracts                         | Available |
-| Repository governance                              | Available |
-| Java and React workspace                           | Available |
-| Core local runtime and CI quality gates            | Available |
-| Identity and tenant access slice                   | Available |
-| Partner onboarding business slice                  | Available |
-| Catalog and unit-aware supply search slice         | Available |
-| Inventory unit and warehouse-priority readiness    | Available |
-| Quotation and trade-planning slice                 | Available |
-| Customer quotation decision slice                  | Available |
-| Quote-to-order conversion slice                    | Available |
-| Route-bound Supply Decision freeze and propagation | Available |
-| Inventory reservation slice                        | Available |
-| Fulfillment orchestration slice                    | Available |
-| Exception Center and recovery slice                | Available |
-| Settlement receivables and payments slice          | Available |
-| Audit and reporting slice                          | Available |
-| Authenticated read-only MCP and agent workflows    | Available |
-| Observability and security evidence                | Available |
-| Performance evidence                               | Available |
-| Public demo release                                | Available |
-
-The implementation roadmap is maintained in [docs/05-delivery/00-implementation-roadmap.md](docs/05-delivery/00-implementation-roadmap.md). The README must be updated as each capability becomes executable; planned work must never be presented as completed work.
+The [implementation status](docs/05-delivery/10-implementation-status.md) is the single source for
+capability states and evidence; the [roadmap](docs/05-delivery/00-implementation-roadmap.md) defines
+sequencing. Planned work must never be presented as delivered.
 
 The current main line includes MCP; the immutable `v1.0.0` release does not. The product remains
-deliberately bounded: payments and carriers are simulated; PostgreSQL local
-publication is the deployed event path; Kafka and Redis are absent; reporting is eventually
-consistent; MCP is read-only and reuses the API Bearer audience; and the recorded single-host
-performance measurements are not production SLAs.
+bounded: payments and carriers are simulated; PostgreSQL local publication is deployed; Kafka and
+Redis are absent; reporting is eventually consistent; single-host results are not production SLAs.
+MCP is read-only with a dedicated resource/audience/scope/client, and the repository-owned Keycloak
+provider is an explicit deployment and rollback boundary.
 
-### 12. Disclaimer
+### 11. Disclaimer
 
 CellarBridge is an independent technical demonstration based on public business information and general supply-chain domain analysis. It is not an official product of Chengdu Fine West International Trade Co., Ltd., FineWest, WineMatcher, or any related brand. Company and brand names appear only in the research record. All customers, products, prices, inventory, orders, and operational events used by the project are synthetic.
 
@@ -412,8 +244,6 @@ CellarBridge is an independent technical demonstration based on public business 
 ### 1. 项目定位
 
 CellarBridge（酒桥）模拟一家进口酒饮供应链服务商的目标企业流程。它不是面向消费者的酒类商城，也不是把若干 CRUD 页面拼在一起的后台模板。当前主线可运行闭环从客户准入、报价与路径决策继续延伸到唯一订单、库存预占、路线绑定履约、异常恢复、应收、审计与经营报表，并提供可追踪本地事件、运营指标、可复现观测环境和供应链安全门禁。当前主线还提供经过认证的只读 MCP，使兼容 MCP 的智能客户端能够在原有权限边界内读取运营上下文；已发布的 `v1.0.0` 标签早于该能力，不包含 MCP。
-
-本项目强调“设计可以被审阅”。技术评审者可以从一条业务需求出发，继续追踪到限界上下文、聚合不变量、接口或事件契约、数据库归属、验收场景和实现任务，而不需要依赖口头补充来理解系统。
 
 ### 2. 核心业务场景
 
@@ -433,7 +263,6 @@ flowchart LR
     J --> K[应收与付款<br/>可运行]
     J --> L[审计与报表<br/>可运行]
     K --> L
-
 ```
 
 ### 3. 产品能力
@@ -443,20 +272,12 @@ flowchart LR
 | 身份、租户与权限访问        | 建立不可伪造的租户上下文和受保护的运营导航                                           | 可运行   |
 | 商业客户准入与渠道资格      | 防止未激活、已停用或不具备交付资格的客户参与交易                                     | 可运行   |
 | 酒款、SKU、批次与货源池检索 | 准确表达年份、包装、来源、库存位置、非承诺可用性和字段权限                           | 可运行   |
-| 客户专属报价与审批          | 固化商业条件，管理折扣、毛利和审批责任                                               | 可运行   |
-| 可解释贸易路径评估          | 用硬约束与加权评分比较多种交付方案                                                   | 可运行   |
-| 客户安全报价决定            | 提供严格公开视图、幂等接受/拒绝、到期处理与可靠接受事实                              | 可运行   |
-| 报价转订单                  | 通过 Inbox、不可变快照与数据库唯一约束保证同一份已接受报价最多生成一个订单           | 可运行   |
-| 库存单位准备度              | 将 CASE/BOTTLE 事实分开，并只向授权精确库存用户展示仓库优先级/版本                   | 可运行   |
-| 路线绑定供给决策冻结与传播  | 将 AUTO/FIXED、路线、单位、Pool/Type 和哈希证据从报价一致传播到订单                  | 可运行   |
-| 库存预占                    | 防止超卖，并将校验后的结果幂等应用到订单                                             | 可运行   |
-| 履约计划与节点              | 应用版本化路线模板、依赖规则、SLA 状态、模拟适配器证据和客户安全里程碑               | 可运行   |
-| 异常中心                    | 将缺货、延迟、节点失败和最终投递失败去重为工作项，并执行源状态验证恢复               | 可运行   |
-| 应收与付款记录              | 通过版本化履约触发创建唯一应收，并保存幂等、不可变的付款与冲正事实，不接真实支付网关 | 可运行   |
+| 报价、路径与客户决定        | 固化商业条件、解释路径评分、执行审批并保存幂等接受/拒绝事实                          | 可运行   |
+| 订单与库存正确性            | 保证唯一订单、传播决策证据、保留单位语义并以原子预占防止超卖                        | 可运行   |
+| 履约、异常与结算            | 应用版本化计划、执行源状态验证恢复并保存不可变应收、付款与冲正证据                  | 可运行   |
 | 审计与经营读模型            | 提供不可变证据、统一时间线、工作队列和权限过滤经营看板                               | 可运行   |
-| 认证 MCP 与智能工作流       | 为兼容 MCP 的智能客户端提供强类型、可完整翻页且带证据语义的身份、供给、工作项、看板、时间线和审计只读入口 | 可运行   |
-| 可观测性与安全证据          | 将 HTTP 请求关联到本地事件，提供低基数指标、威胁模型、SBOM 与容器安全复验             | 可运行   |
-| 性能与韧性证据              | 记录版本化数据集、分位数、并发不变量、受控故障和恢复结果                             | 可运行   |
+| 面向生产约束加固的 MCP 与智能工作流 | 为兼容智能客户端提供标准发现、专用 PKCE/resource 绑定、强类型有界读取、有界过载控制与安全诊断 | 可运行   |
+| 运行保障证据                | 汇总 trace/指标、安全供应链门禁、版本化性能数据、并发不变量与受控故障恢复            | 可运行   |
 
 ### 4. 架构概览
 
@@ -465,6 +286,8 @@ flowchart LR
 ```mermaid
 flowchart LR
     HOST[兼容 MCP 的智能客户端<br/>模型由使用方选择] -->|Bearer Token + /mcp| MCP[同进程只读 MCP<br/>无状态 Streamable HTTP]
+    HOST -->|授权码 + S256 PKCE + resource| KC[Keycloak<br/>仓库内 resource-binding 扩展]
+    KC -->|专用 resource-bound Token| HOST
     UI[React 运营台与客户门户] -->|OIDC + REST| API[REST / OpenAPI]
     MCP --> IAM[身份与租户上下文]
     MCP --> SUPPLY[Catalog / Inventory 应用服务]
@@ -503,33 +326,20 @@ Prompt 只是固定工作步骤，不会自行执行 Tool。
 | 可机器消费的结果合同 | Envelope `2.0`；逐 Tool 的严格 JSON Schema 2020-12；结构化 warning code 与安全错误 |
 | 完整且有界的读取 | 供给、工作项、时间线、审计均使用签名 cursor；默认 TTL 15 分钟；默认 256 KiB/1,000 个嵌套集合元素预算 |
 | 诚实的新鲜度 | Reporting 使用 source watermark/checkpoint；Supply 返回 `OBSERVATION_AGE/UNKNOWN`，不伪称 projector 健康 |
+| OAuth 边界与运行控制 | RFC 9728 metadata/challenge；专用 HTTPS resource、audience、`mcp:read` scope 与 public host client；真实授权码 + S256 PKCE；RFC 8707 授权/换令牌/刷新绑定；请求体、token-bucket、bulkhead、请求/SQL 超时、低基数指标与独立 MCP health |
 
-这个接口不能提交或审批报价，不能预占或释放库存，不能推进履约、恢复异常、登记付款、执行冲正、
-重建投影或完成任何其他写操作。CellarBridge 不内置模型、模型供应商 SDK、自主审批循环、RAG、
-向量数据库或持久对话记忆，也尚未提供完整 MCP OAuth 自动发现。使用方需要自行选择兼容的客户端
-与模型，并为现有 `cellarbridge-api` audience 提供访问令牌。完整边界见
-[MCP 能力合同](docs/04-contracts/10-mcp-capability-contract.md)和
-[MCP 与智能客户端运行手册](docs/05-delivery/26-mcp-agent-runbook.md)。真实 OIDC smoke 与五个
-适用官方 conformance 场景的结果见
-[MCP 验证证据](docs/evidence/mcp/conformance-summary.md)。
+这个接口不能审批报价、操作库存、推进履约、恢复异常、登记或冲正付款、重建投影或执行其他写操作。
+CellarBridge 不内置模型、供应商 SDK、自主审批、RAG、向量库或持久记忆，也不支持 DCR/token exchange/credential forwarding。
+Keycloak 26.7 必须显式启用仓库内 provider，否则 MCP 令牌边界 fail closed；使用方自行选择客户端与模型。详见
+[MCP 能力合同](docs/04-contracts/10-mcp-capability-contract.md)、[运行手册](docs/05-delivery/26-mcp-agent-runbook.md)和 [验证证据](docs/evidence/mcp/conformance-summary.md)。
 
 ### 6. 技术栈基线
 
-| 领域     | 选型                                                                                                                           |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| 后端     | 当前：Java 21 LTS、Spring Boot 4.1、Spring Modulith 2.1、Spring Security、Spring JDBC / SQL-first；JPA 为未安装的未来可选项    |
-| 接口     | REST、OpenAPI 3.1、Problem Details、自动生成 TypeScript 类型                                                                   |
-| MCP      | 当前：Spring AI MCP Server 2.0.0、官方 Java SDK 2.0.0、`/mcp` 认证无状态 Streamable HTTP                                     |
-| 数据     | PostgreSQL 18、Flyway、按模块划分 Schema；JSONB 仅用于快照和事件信封                                                           |
-| 消息     | 当前：自定义事务性本地发布与 Consumer Inbox；Kafka 4.3 是计划中的 full profile 外部通道                                        |
-| 缓存     | Redis 8 属于未来 full profile 计划，当前运行环境未安装                                                                         |
-| 身份     | Keycloak 26、OIDC 授权码模式与 PKCE、后端 JWT Resource Server                                                                  |
-| 前端     | 当前：React 19.2、TypeScript、Vite 8、React Router、TanStack Query、Ant Design、React Hook Form、Zod、ECharts 6                |
-| 测试     | JUnit、AssertJ、Testcontainers、ArchUnit、Spring Modulith Verification、Vitest、Testing Library、Playwright                    |
-| 可观测性 | 当前：Actuator/Micrometer、OpenTelemetry/OTLP、ECS JSON、Tempo、Prometheus、Grafana、版本化看板和告警示例                     |
-| 交付     | 当前：Maven Wrapper、pnpm、core/full Docker Compose、秘密/依赖/容器扫描、CycloneDX SBOM 与非 root 镜像检查                    |
-
-当前版本和计划目标在[技术基线](docs/03-architecture/13-technology-baseline.md)中分别记录；计划目标不代表依赖已经安装。
+可执行基线采用 Java 21、Spring Boot/Modulith/Security/JDBC、PostgreSQL/Flyway、
+Keycloak/OIDC、React/TypeScript/Vite、OpenAPI、Spring AI MCP、OpenTelemetry 与 Maven/pnpm
+工具链，并由 Testcontainers、ArchUnit、Playwright、SBOM 和容器门禁复验。精确版本和计划目标以
+[技术基线](docs/03-architecture/13-technology-baseline.md)为准；Kafka、Redis 仍是计划项，
+当前运行环境未安装。
 
 ### 7. 技术亮点
 
@@ -545,142 +355,28 @@ Prompt 只是固定工作步骤，不会自行执行 Tool。
 
 **智能客户端没有越权后门。** MCP 适配器调用与 REST 相同的权限感知应用服务，Tool 参数不能接收
 tenant、actor、role、permission、Partner 或仓库范围。严格 schema、签名 cursor、freshness
-evidence、有界查询与有界序列化，让完整读取可以被机器校验。
+evidence、有界查询与有界序列化，让完整读取可以被机器校验。专用 OAuth 区分 API 与智能客户端
+Token，准入控制约束共享运行时过载；安全指标与 MCP health 不以身份或业务 payload 为维度。
 
-**方便运行与评审。** 目标版本将提供合成演示数据、分角色账号、固定演示脚本、一键启动、健康检查、接口文档、指标看板和技术评审路径，使评审者能够在有限时间内验证关键能力。
+### 8. 运行当前主线
 
-### 8. 文档与代码结构
+启动、重置、源码版本和最低门禁与英文[本地运行说明](#9-run-current-main-locally)共用；完整
+命令以 `make help` 为准。生产配置不提供数据库或 cursor secret 默认值，demo 合成账号和密码
+严禁复用。运行流程见[交付文档](docs/05-delivery/)；MCP 配置、权限、证据和回滚见
+[MCP 运行手册](docs/05-delivery/26-mcp-agent-runbook.md)。REST 接口以
+[OpenAPI](contracts/openapi/cellarbridge-api.yaml)为准，能力清单以
+[实现状态](docs/05-delivery/10-implementation-status.md)为准。
 
-```text
-.
-├── AGENTS.md                    全仓库工程规则
-├── README.md                    中英双语项目介绍
-├── backend/                    Spring Boot 模块化单体应用
-├── frontend/                   React 运营控制台
-├── contracts/                  OpenAPI、AsyncAPI、JSON Schema 与示例
-├── deploy/                     core 与可观测 full Docker Compose 环境
-├── docs/
-│   ├── 00-research/             证据、商业模式与场景选择
-│   ├── 01-product/              产品愿景、需求、流程和页面设计
-│   ├── 02-domain/               上下文、聚合、不变量和领域事件
-│   ├── 03-architecture/         架构、ADR、安全和运行设计
-│   ├── 04-contracts/            数据、接口、权限与审计规范
-│   └── 05-delivery/             路线图、质量门禁和发布计划
-├── scripts/                     验证与本地 smoke 脚本
-└── .github/                     贡献模板和质量门禁工作流
-```
+### 9. 当前进度
 
-可执行应用将所有 Spring Modulith 业务模块保留为 `com.rom.cellarbridge` 的直接子包。身份访问、商业客户准入、酒款/供给检索、报价与贸易路径规划、客户报价接受/拒绝、幂等报价转订单、库存预占、履约编排、异常中心、结算及审计报表均已可运行。
+[实现状态](docs/05-delivery/10-implementation-status.md)是能力状态与证据的单一事实源，
+[路线图](docs/05-delivery/00-implementation-roadmap.md)只定义实施顺序；尚未验证的能力不得
+标为已交付。
 
-### 9. 运行当前主线
+版本边界保持明确：当前主线包含 MCP，不可变的 `v1.0.0` 不包含。付款与承运商为模拟适配器；
+事件路径是 PostgreSQL 本地 publication；无 Kafka/Redis；报表最终一致；MCP 只读并使用专用
+resource/audience/scope/client；仓库内 Keycloak provider 是部署与回滚边界；单机结果不是生产 SLA。
 
-只运行打包演示时需要 Docker 与 Docker Compose：
-
-```bash
-make demo                         # core：PostgreSQL、Keycloak、后端、前端
-make demo DEMO_PROFILE=full       # 加入 Collector、Tempo、Prometheus、Grafana；需要 .env
-make demo-reset                   # 仅删除 cellarbridge-demo 的合成数据卷并重新播种
-make demo-e2e                     # 执行完整评审旅程并生成发布证据
-make stop-demo
-```
-
-`make demo` 会检查依赖、构建固定输入、执行 Flyway V2～V22、加载可重复合成数据、等待服务健康，并输出地址和角色账号。`demo-reset` 会验证运行中的后端确属 `demo` profile，只影响 `cellarbridge-demo` Compose 项目。full profile 要求未跟踪的 `.env` 已替换 Grafana 凭据；生产配置不提供数据库密码或游标签名密钥默认值。
-
-从源码执行全部验证还需要 Java 21、Node.js 24、Corepack/pnpm 11、Python 3.12（安装文档 CI 中列出的验证依赖）。仓库中的 wrapper 与 lockfile 固定构建输入。
-
-```bash
-cp .env.example .env            # 可选的本地覆盖；.env 不进入版本库
-make validate                   # 静态、格式、生成代码与 Compose 检查
-make test                       # 后端集成/架构测试与前端测试
-make dev-core                   # 启动 PostgreSQL、Keycloak、后端和前端
-make dev-full                   # 叠加 Collector、Tempo、Prometheus 和 Grafana；需要 .env
-make smoke-core                 # 隔离构建、健康检查并自动清理
-make smoke-full                 # 隔离验证完整可观测 profile 并自动清理
-make identity-e2e               # 真实 OIDC 登录与双租户隔离
-make partner-e2e                # 客户提交、独立审核与自审拒绝
-make catalog-e2e                # 酒款供给检索、本地待报价选择与 Buyer 拒绝
-make quotation-e2e              # 报价、路径、审批、签发与客户安全预览
-make acceptance-e2e             # 客户接受、双击防重、回执与刷新安全
-make order-e2e                  # 报价转订单、Reservation 操作与 Buyer 安全访问
-make fulfillment-e2e            # 路线计划、依赖动作、里程碑与 Buyer 安全访问
-make exception-e2e              # 失败建单、源状态验证恢复与审核关闭
-make settlement-e2e             # 履约触发应收、部分/全额付款与部分冲正
-make reporting-e2e              # 投影工作队列、驾驶舱、审计和统一时间线
-make mcp-smoke                  # 真实 OIDC Token、MCP 初始化/发现/只读调用检查
-make mcp-conformance            # 锁定版本的官方 MCP 2025-11-25 服务端一致性场景
-make catalog-benchmark          # 确定性 PostgreSQL 查询计划与 p50/p95 证据
-make performance-smoke          # 带正确性断言的 10 分钟性能/韧性 profile
-make performance-full           # 含 Keycloak 受控中断与恢复的 30 分钟 profile
-```
-
-`make dev-core` 成功后访问 <http://localhost:5173/app>。后端 readiness 地址为
-<http://localhost:8080/actuator/health/readiness>，Keycloak 地址为 <http://localhost:8081>。
-可使用合成本地账号 `north.sales`、`north.buyer`、`north.manager`、`north.trade`、
-`north.warehouse`、`north.admin`、`north.finance`、`north.auditor`、`north.operator` 或
-`harbor.manager` 登录；仅用于 demo profile 的密码为 `CellarBridge-Demo-2026!`，严禁复用于生产。
-使用 `make stop-core` 停止环境，详细行为和安全控制见
-[身份访问运行手册](docs/05-delivery/13-identity-access-runbook.md)、
-[商业客户准入运行手册](docs/05-delivery/14-partner-onboarding-runbook.md)与
-[酒款供给检索运行手册](docs/05-delivery/15-catalog-supply-search-runbook.md)与
-[报价及贸易路径运行手册](docs/05-delivery/16-quotation-trade-planning-runbook.md)与
-[客户报价决定运行手册](docs/05-delivery/17-customer-quotation-acceptance-runbook.md)与
-[报价转订单运行手册](docs/05-delivery/18-trade-order-conversion-runbook.md)与
-[履约编排运行手册](docs/05-delivery/19-fulfillment-orchestration-runbook.md)与
-[异常中心运行手册](docs/05-delivery/20-exception-center-runbook.md)与
-[结算运行手册](docs/05-delivery/21-settlement-runbook.md)与
-[审计报表运行手册](docs/05-delivery/22-audit-reporting-runbook.md)与
-[可观测性与安全运行手册](docs/05-delivery/23-observability-security-runbook.md)。
-[性能与韧性证据运行手册](docs/05-delivery/24-performance-resilience-runbook.md)
-说明版本化 profile、工件契约与故障控制边界。MCP 客户端请求头、能力发现、权限检查、
-conformance 范围和回滚步骤见
-[MCP 与智能客户端运行手册](docs/05-delivery/26-mcp-agent-runbook.md)。
-
-README 只保留一份可执行请求，见
-[MCP 协议快速检查](#mcp-protocol-quick-check--mcp-协议快速检查)；运行手册继续覆盖 initialize、
-四个分页 Tool、freshness、角色/租户负向矩阵与回滚。
-
-执行 `make generate-api-client` 可从 OpenAPI 重新生成并提交 TypeScript API 边界。OpenAPI
-仍是权威契约；`/me`、`/partners*`、`/catalog/skus*`、`/quotations*` 与客户安全报价查看/接受/拒绝均已实现。内部 `/orders*`、Partner-scoped `/buyer/orders*`、tenant-scoped `/inventory/reservations*`、tenant-scoped `/fulfillment/plans*`、`/exceptions*`、失败 publication 操作、订单 outcome 消费以及 Reservation、Fulfillment、Exception 工作台也已实现。Tenant-scoped `/receivables*`、付款/冲正命令和结算工作台已可运行；tenant-scoped `/dashboard`、`/audit/entries`、`/timeline`、`/work-items` 投影及对应 React 页面也已可运行。
-
-### 10. 推荐评审路径
-
-- **10 分钟：** 本 README → [技术评审指南](docs/reviewer-guide.md) → [架构总览](docs/03-architecture/00-architecture-overview.md)
-- **30 分钟：** 再阅读[场景选择报告](docs/00-research/07-scenario-selection.md)、[聚合不变量](docs/02-domain/04-aggregates-and-invariants.md)、[库存并发设计](docs/03-architecture/08-performance-and-scalability.md)和[需求追踪矩阵](docs/05-delivery/11-requirement-traceability.md)
-- **60 分钟：** 再检查 [OpenAPI](contracts/openapi/cellarbridge-api.yaml)、[事件契约](contracts/asyncapi/cellarbridge-events.yaml)、[数据库设计](docs/04-contracts/05-database-design.md)、[测试策略](docs/05-delivery/03-testing-strategy.md)和[技术评审评分卡](docs/05-delivery/12-reviewer-scorecard.md)
-
-### 11. 当前进度
-
-| 阶段                       | 状态   |
-| -------------------------- | ------ |
-| 有证据支撑的业务调研       | 可审阅 |
-| 产品与领域设计             | 可审阅 |
-| 架构与契约                 | 可审阅 |
-| 仓库工程治理               | 可审阅 |
-| Java 与 React 工程骨架     | 可运行 |
-| 核心本地环境与 CI 质量门禁 | 可运行 |
-| 身份与租户访问切片         | 可运行 |
-| 商业客户准入切片           | 可运行 |
-| 单位化酒款与供给检索切片   | 可运行 |
-| 库存单位与仓库优先级准备度 | 可运行 |
-| 报价与贸易路径切片         | 可运行 |
-| 客户报价决定切片           | 可运行 |
-| 报价转订单切片             | 可运行 |
-| 库存预占切片               | 可运行 |
-| 履约编排切片               | 可运行 |
-| 异常中心与恢复切片         | 可运行 |
-| 应收与付款结算切片         | 可运行 |
-| 审计与经营报表切片         | 可运行 |
-| 认证只读 MCP 与智能工作流  | 可运行 |
-| 可观测性与安全证据         | 可运行 |
-| 性能与故障证据             | 可运行 |
-| 公开演示版本               | 可运行 |
-
-实现路线见 [docs/05-delivery/00-implementation-roadmap.md](docs/05-delivery/00-implementation-roadmap.md)。每完成一个可执行能力，都必须同步更新 README；尚未完成的内容不得包装成已经交付的功能。
-
-版本边界保持明确：当前主线包含 MCP，不可变的 `v1.0.0` 发布不包含。付款和承运商为模拟适配器；
-已部署事件路径是 PostgreSQL 本地 publication；未引入 Kafka/Redis；报表最终一致；MCP 只读并复用
-现有 API Bearer audience；单机性能结果不代表生产 SLA。
-
-### 12. 非官方声明
+### 10. 非官方声明
 
 CellarBridge 是基于公开商业信息和通用供应链领域分析构建的独立技术演示项目，与成都优自西方国际贸易有限公司、FineWest、WineMatcher 或相关品牌不存在隶属、授权或合作关系。公司及品牌名称只出现在调研记录中。项目中的客户、酒款、价格、库存、订单和履约事件均为合成数据。

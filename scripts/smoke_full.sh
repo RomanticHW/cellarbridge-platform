@@ -11,6 +11,7 @@ export POSTGRES_USER=cellarbridge
 export POSTGRES_PASSWORD=full-smoke-postgres-only
 export KEYCLOAK_ADMIN_USERNAME=full-smoke-admin
 export KEYCLOAK_ADMIN_PASSWORD=full-smoke-keycloak-only
+export KEYCLOAK_DB_PASSWORD=full-smoke-keycloak-database-only
 export GRAFANA_ADMIN_USER=full-smoke-observer
 export GRAFANA_ADMIN_PASSWORD=full-smoke-grafana-only
 

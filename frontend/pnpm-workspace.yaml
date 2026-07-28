@@ -1,6 +1,9 @@
 overrides:
   js-yaml: 4.3.0
 
+auditConfig: # GHSA-qwww-vcr4-c8h2 only affects unstable RSC APIs; this client-only SPA has no RSC runtime.
+  ignoreGhsas: [GHSA-qwww-vcr4-c8h2]
+
 minimumReleaseAge: 1440
 minimumReleaseAgeStrict: true
 minimumReleaseAgeExclude:

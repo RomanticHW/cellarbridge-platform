@@ -1,5 +1,6 @@
 package com.rom.cellarbridge.identityaccess.internal.security;
 
+import java.util.List;
 import java.util.Objects;
 import org.springframework.security.oauth2.core.OAuth2Error;
 import org.springframework.security.oauth2.core.OAuth2TokenValidator;
@@ -18,7 +19,8 @@ final class AudienceValidator implements OAuth2TokenValidator<Jwt> {
 
   @Override
   public OAuth2TokenValidatorResult validate(Jwt token) {
-    return token.getAudience().contains(audience)
+    List<String> audiences = token.getAudience();
+    return audiences != null && audiences.size() == 1 && audience.equals(audiences.getFirst())
         ? OAuth2TokenValidatorResult.success()
         : OAuth2TokenValidatorResult.failure(ERROR);
   }

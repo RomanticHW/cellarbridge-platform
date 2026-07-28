@@ -44,16 +44,12 @@ Design Baseline
 | 14 | 性能/故障验证 | benchmark、chaos profile | 报告、可重现脚本 |
 | 15 | 公开 v1.0 | README、演示、Release | 一键启动、Playwright、审阅路径 |
 | 16 | 认证只读 MCP 与智能客户端工作流 | 同进程 `/mcp`、6 tools、3 resources、3 prompts | OIDC、权限/租户/字段边界、smoke、官方 conformance |
+| 17A/17B | MCP 契约与面向生产约束加固 | Envelope 2.0、严格 schema/cursor/freshness；标准 discovery、专用 resource/client/scope 与有界运行控制 | 真实 PKCE/RFC 8707、bounded demand/DB/telemetry、production-security evidence |
 
 每个任务的可执行 Prompt 位于私有控制仓库，公共仓库只保存可长期维护的设计与实现证据。
 
-Task 08 已为 **Available**：A1/A2/A2C、B1/B2、C1/C2 已按顺序完成原子预占、订单结果、幂等 release/consume、内部 API、Order workbench 与真实后端 E2E。
-
-Task 09 已为 **Available**：V18 路线模板、不可变计划快照、依赖动作、SLA、模拟适配器、Trade Order 联动、Fulfillment 工作台、客户安全里程碑和契约已完成合并门禁。
-
-Task 10 已为 **Available**：去重异常、分派与状态流转、源状态验证恢复、失败 publication 掩码视图与受控重放、React 工作台和自动验证已通过合并门禁。
-
-Task 16 已为 **Available**：当前 `main` 通过 STATELESS Streamable HTTP 暴露认证只读 MCP，直接复用既有应用服务与安全边界；已发布标签 `v1.0.0` 早于该任务，不回写发布资产。
+路线图只定义顺序与验收方向；当前能力状态及证据统一以
+[实现状态](10-implementation-status.md)为准，避免在两处维护交付声明。
 
 ## 3. 纵向切片定义
 
