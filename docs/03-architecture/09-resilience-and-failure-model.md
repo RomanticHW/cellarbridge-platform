@@ -5,7 +5,7 @@
 - 先确保状态不被破坏，再追求自动恢复；
 - 每个外部边界有超时、幂等和失败分类；
 - 重试必须有上限；
-- Circuit breaker 只在真实远程依赖出现时使用；
+- Circuit breaker 只在真实远程依赖达到故障证据门槛后评估；
 - 失败对用户可见为明确状态，不返回虚假成功。
 
 ## 2. 组件故障矩阵
@@ -30,17 +30,30 @@
 - 用户请求线程不等待长时间业务流程；
 - retry count 和原因可观测。
 
-## 4. Circuit Breaker
+## 4. Circuit Breaker（当前未实现）
 
-P1 只在模拟外部适配器中演示：
+当前 runtime 没有 circuit breaker。确定性的模拟外部适配器只是用于验证 delay、failure、
+timeout 与恢复语义的 fault fixture，不是 breaker，也不证明生产远程依赖已经具备熔断能力。
 
-- failure threshold；
-- open duration；
-- half-open probes；
-- fallback 不是伪造成功，而是标记步骤等待/异常；
-- 状态指标。
+只有接入真实远程依赖后，观测到重复瞬时故障或高延迟，并有线程、连接、队列等资源被持续占用或
+级联放大的证据，才评估 circuit breaker。评估前必须先具备：
 
-内部模块调用不使用 circuit breaker，因同进程失败应直接暴露。
+- 明确的 connect/read/overall timeout；
+- 幂等键，以及应对超时后结果不明的查询或对账路径；
+- 仅针对可重试失败的有界 retry budget；
+- permanent、transient、ambiguous 等失败分类；
+- 独立线程池、连接池或并发舱等资源隔离。
+
+fallback 必须诚实持久化 `WAITING`、`UNKNOWN` 或异常状态，保留后续查询、对账和恢复路径；
+不得合成 `COMPLETED` 或其他成功结果。
+
+若证据支持引入，必须由新 ADR 明确 failure/slow-call threshold、统计窗口与最小调用数、
+open duration、half-open probe 数量、低基数状态指标、打开及恢复测试，以及负责阈值调优和
+事故响应的 owner。
+
+以下边界禁止使用 circuit breaker：进程内模块调用、PostgreSQL 事务与正确性路径、本地
+publication/Inbox，以及确定性 simulator。它也不替代 MCP 的 token bucket 与
+global/per-client bulkhead，或公开报价入口的 GCRA 准入控制。
 
 ## 5. Bulkhead
 

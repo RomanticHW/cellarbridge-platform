@@ -1,8 +1,11 @@
 # Performance evidence report
 
-Status: **Available in Task 14**
+Status: **Performance harness available in Task 14; catalog relevance gate added 2026-07-28**
 
-This report describes repeatable evidence for the committed modular-monolith runtime. It is not a production capacity claim. Results are valid only for the recorded revision, profile, seed, host resources, container limits, JVM and PostgreSQL version in `target/performance-evidence/<profile>/result.json`.
+This report describes repeatable evidence for the committed modular-monolith runtime. It is not a
+production capacity claim. Performance-profile results are valid only for the recorded revision,
+profile, seed, host resources, container limits, JVM and PostgreSQL version in
+`target/performance-evidence/<profile>/result.json`.
 
 ## Evidence design
 
@@ -37,9 +40,45 @@ A local candidate run on 2026-07-22 completed with zero failed correctness scena
 
 The catalog plan used the unit-aware projection index, every query succeeded, and all expected fixture cardinalities matched.
 
+## Catalog relevance quality
+
+The runtime HTTP search path has a deterministic seven-query lexical gold set. A fresh demo database
+contains six searchable `ACTIVE` SKUs for the North tenant; the inactive North fixture and active
+cross-tenant fixture are excluded before evaluation. Every request uses the North Sales identity,
+the normal Spring Security/application path and the public API's first five SKU codes. All responses
+also returned a non-empty `dataAsOf`: positive results retained the projection timestamp
+`2026-07-13T00:00:00Z`; the empty result used its evaluation time, which is not projection-freshness
+evidence.
+
+The authoritative reproduction entry point for this table is
+`CatalogSearchApiIntegrationTest#preservesMeasuredLexicalRelevanceAcrossTheCatalogGoldSet`; its
+Surefire report records each query and the aggregate metrics.
+
+| Query | Graded expected SKU codes | Required first | Actual top five | nDCG@5 | RR@5 | Recall@5 | Outcome |
+|---|---|---|---|---:|---:|---:|---|
+| `Silver Vale 2019` | `CB-MTV-2019-750X6:3`, `CB-MTV-2021-1500X3:1` | `CB-MTV-2019-750X6` | `CB-MTV-2019-750X6`, `CB-MTV-2021-1500X3` | 1.000 | 1.000 | 1.000 | Pass |
+| `2019 750x6` | `CB-MTV-2019-750X6:3` | `CB-MTV-2019-750X6` | `CB-MTV-2019-750X6` | 1.000 | 1.000 | 1.000 | Pass |
+| `Etoile` | `CB-ETB-2022-750X6:3` | `CB-ETB-2022-750X6` | `CB-ETB-2022-750X6` | 1.000 | 1.000 | 1.000 | Pass |
+| `云岚` | `CB-YL-2020-750X6:3` | `CB-YL-2020-750X6` | `CB-YL-2020-750X6` | 1.000 | 1.000 | 1.000 | Pass |
+| `Silvr Vale` | `CB-MTV-2019-750X6:3`, `CB-MTV-2021-1500X3:3` | — | `CB-MTV-2019-750X6`, `CB-MTV-2021-1500X3` | 1.000 | 1.000 | 1.000 | Pass |
+| `Maison Aurelie` | `CB-ETB-2022-750X6:2`, `CB-NFS-NV-750X6:2` | — | `CB-ETB-2022-750X6`, `CB-NFS-NV-750X6` | 1.000 | 1.000 | 1.000 | Pass |
+| `Neverland Reserve` | empty | — | empty | n/a | n/a | n/a | Pass |
+
+The 2026-07-28 Java 21/PostgreSQL 18.4 candidate run therefore scored mean nDCG@5 **1.000**,
+MRR@5 **1.000** and mean Recall@5 **1.000**, satisfied both navigational `requiredFirst`
+requirements, and kept the negative query empty.
+
+This is a deterministic English/Chinese lexical regression gate, not a benchmark, production click
+model, SLA or broad multilingual-generalization claim. It measures the existing
+`tsvector(simple)`/GIN + `pg_trgm` GiST, three-branch candidate retrieval and
+`ts_rank_cd + word_similarity` ranking. The separate 15,000-SKU target and SQL benchmark describe
+capacity/performance; they are not this gold set's corpus. No BM25 or RAG result is claimed.
+
 ## Representative full result
 
-The same local candidate completed the full harness in **184.512 seconds**, within the 30-minute profile budget. It generated the 1,000,000-event corpus and passed all 16 selected correctness tests plus the Keycloak stop/recovery scenario.
+The recorded 2026-07-22 Task 14 local candidate completed the full harness in **184.512 seconds**,
+within the 30-minute profile budget. It generated the 1,000,000-event corpus and passed all 16
+selected correctness tests plus the Keycloak stop/recovery scenario.
 
 | Scenario | Scale | Result |
 |---|---:|---:|

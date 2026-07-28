@@ -1,6 +1,6 @@
 # 酒款与供给检索运行手册
 
-Status: **Available in Tasks 04 and 07B**
+Status: **Available in Tasks 04 and 07B; relevance gate added 2026-07-28**
 
 Requirements: **UC-CAT-001, UC-INV-001, FR-CAT-001–004, FR-INV-001–003**
 
@@ -40,6 +40,55 @@ OpenAPI 1.5.0 实现 `/catalog/skus` 和 `/catalog/skus/{skuId}`，并显式声�
 
 关键词候选由 FTS、整串 trigram 和 word-similarity 三个索引友好分支合并，再应用 tenant、供给条件、稳定排序和页大小。代表性计划实际使用 `ix_catalog_sku_search_trigram` 的普通与 bitmap index scan；不通过 `enable_seqscan=off` 等 planner 开关制造证据。
 
+### 3.1 相关性质量门禁
+
+`CatalogSearchApiIntegrationTest#preservesMeasuredLexicalRelevanceAcrossTheCatalogGoldSet`
+通过真实随机端口 HTTP、Spring Security 权限链路（测试 JwtDecoder）、fresh PostgreSQL 18
+Testcontainer 和 V2～V22 migration 执行 gold set；真实 Keycloak/OIDC 仍由独立 E2E 覆盖。
+用例覆盖英文商品 + 年份导航、精确规格干扰、重音归一、中文名称、
+生产者拼写偏差、共享生产者召回和负向空集；排名只读取公开 API 返回的前五个 SKU code。
+
+门禁要求每个正向查询 nDCG@5 ≥ 0.85、RR@5 = 1、Recall@5 = 1，集合均值
+nDCG@5 ≥ 0.95、MRR@5 = 1；导航型查询还要求 `requiredFirst`。2026-07-28 基线运行的
+六个正向查询均为 nDCG@5 = 1、RR@5 = 1、Recall@5 = 1，集合 MRR@5 = 1，
+负向查询为空，因此未修改生产评分器。该门禁验证
+当前 `ts_rank_cd + word_similarity` 的排序质量，不把 PostgreSQL FTS 描述为 BM25，也不把
+结构化检索描述为 RAG。
+
+```bash
+./mvnw -pl backend -am \
+  '-Dtest=CatalogSearchApiIntegrationTest#preservesMeasuredLexicalRelevanceAcrossTheCatalogGoldSet' \
+  -Dsurefire.failIfNoSpecifiedTests=false test
+```
+
+### 3.2 检索演进触发与禁区
+
+当前运行时只实现 PostgreSQL FTS、`pg_trgm` 和结构化索引；没有外置 lexical/BM25
+搜索服务、embedding、向量库或 RAG。技术名称本身不是升级理由，后续边界必须由代表性证据
+和新的 ADR 决定。
+
+只有在生产代表性数据与查询集上获得可复现证据，证明 PostgreSQL 索引、查询、排序、统计信息
+和数据模型调优后仍无法满足以下至少一项要求，才评估外置 lexical/BM25 搜索：
+
+- 相关性质量门禁或真实业务语言的分词、规范化与排序要求；
+- 目标数据规模、混合负载下的延迟/吞吐或资源成本；
+- 搜索工作负载必须与交易数据库独立扩缩容。
+
+若评估外置搜索，tenant、SKU 状态和请求中的供给范围必须在排名前裁剪，不得先跨租户或跨
+状态召回再在结果阶段过滤。warehouse assignment 只约束 exact-lot 证据，不应误删合法的普通
+供给摘要；如果受保护的 exact-lot 文档或字段进入外置索引，则 permission 与 assignment 必须
+在 retrieval/ranking 前生效，否则该数据不得进入索引和排名。方案还必须明确关系事实到搜索
+索引的同步协议，覆盖新增、变更和删除，定义 `dataAsOf`、索引延迟与 freshness 目标，并提供
+全量回填、断点恢复、对账、降级、回滚、监控、值守和长期运维成本证据。单次合成查询失败、
+工具流行度或“更先进”的标签都不满足该触发条件。
+
+RAG 是独立决策，只能由已验证的非结构化知识问答用例触发：需证明目标问题来自有归属的文档
+语料，且结构化 API、目录词法搜索或常规文档搜索不足以回答。新 ADR 至少要指定 corpus owner，
+在 retrieval 前执行 tenant/permission trimming，返回可核验引用，覆盖语料 freshness、变更与
+删除传播、隐私与保留策略、prompt injection 防护，并通过独立于实现数据的检索与答案评测。
+结构化目录的词法质量或规模不达标本身绝不触发 RAG；该问题应继续调优 PostgreSQL，或按上一段
+证据评估外置 lexical/BM25 搜索。
+
 ## 4. 权限与隔离
 
 | 视图 | 必需权限 | 范围与字段 |
@@ -76,22 +125,24 @@ make catalog-benchmark
 
 ## 6. 性能证据
 
-本地执行日期：**2026-07-15**。脚本使用独立 PostgreSQL 18.4 容器，从空库应用 V4/V5/V10/V11，确定性写入 **12,000 SKU、36,000 单位化供给投影、36,000 Inventory lot**；SQL 门禁确认 projection 与 lot 各有 **4,000** 个同 tenant/SKU/pool 的 CASE+BOTTLE 组。执行 `ANALYZE`，热身 5 次后测量 30 次；ARM64 macOS 的 Docker Desktop 分配 10 CPU、8,321,515,520 bytes memory。
+本地执行日期：**2026-07-28**。脚本使用独立 PostgreSQL 18.4 容器，从空库应用 V4/V5/V10/V11，确定性写入 **12,000 SKU、36,000 单位化供给投影、36,000 Inventory lot**；SQL 门禁确认 projection 与 lot 各有 **4,000** 个同 tenant/SKU/pool 的 CASE+BOTTLE 组。执行 `ANALYZE`，热身 5 次后测量 30 次；ARM64 macOS 的 Docker Desktop 分配 10 CPU、8,321,515,520 bytes memory。
 
 代表查询为 tenant 内关键词 `starling` + `DOMESTIC_ON_HAND` + `BOTTLE` + `AVAILABLE`，限制 26 行，并执行 `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)`：
 
 | Metric | Result |
 |---|---:|
-| Execution p50 | 7.971 ms |
-| Execution p95 | 11.478 ms |
-| Sample min / max | 7.262 / 16.838 ms |
-| Representative execution | 7.567 ms |
-| Representative planning | 2.915 ms |
-| Top-level shared hit / read blocks | 2,911 / 0 |
+| Execution p50 | 7.308 ms |
+| Execution p95 | 8.128 ms |
+| Execution p99 | 8.843 ms |
+| Sample min / max | 6.568 / 8.843 ms |
+| Throughput / error rate | 135.336 q/s / 0% |
+| Representative execution | 7.745 ms |
+| Representative planning | 3.213 ms |
+| Top-level shared hit / read blocks | 2,913 / 0 |
 
-主搜索计划包含 trigram GiST `Index Scan` / `Bitmap Index Scan`、供给投影和产品主键 `Index Scan`。planner 对相关供给子查询选择旧组合索引并把 `quantity_unit` 保留为 Filter；tenant-first 证据查询则通过 `ix_catalog_supply_projection_unit_filter` 的 `Index Only Scan` 将单位放入 `Index Cond`，执行 0.302 ms。所有计划均未关闭 seqscan。
+主搜索计划包含 trigram GiST `Index Scan` / `Bitmap Index Scan`、供给投影和产品主键 `Index Scan`。planner 对相关供给子查询选择旧组合索引并把 `quantity_unit` 保留为 Filter；tenant-first 证据查询则通过 `ix_catalog_supply_projection_unit_filter` 的 `Index Only Scan` 将单位放入 `Index Cond`，执行 0.210 ms。所有计划均未关闭 seqscan。
 
-Task 04 文档基线为 p50 **18.144 ms** / p95 **18.736 ms**；本次分别低约 56.1% / 38.7%，未发现回归。该比较只用于本地变化方向，不构成跨环境 SLA；完整 JSON 和逐次时间写入 ignored 的 `target/catalog-search-benchmark/`。
+Task 04 文档基线为 p50 **18.144 ms** / p95 **18.736 ms**；本次分别低约 59.7% / 56.6%，未发现回归。该比较只用于本地变化方向，不构成跨环境 SLA；完整 JSON 和逐次时间写入 ignored 的 `target/catalog-search-benchmark/`。
 
 这些结果只描述上述本机、容器配额、数据分布和 warm-cache 查询，不是生产 SLA，也不替代生产容量测试。
 
@@ -101,6 +152,7 @@ Task 04 文档基线为 p50 **18.144 ms** / p95 **18.736 ms**；本次分别低�
 - `InventoryUnitMigrationIntegrationTest`：fresh V2～V11 + repeatable seed、真实 V9 → V11 ID/行数/旧字段保留、列/约束/PK/索引、非法数据与 seed 单次版本递增证据。
 - `InventorySupplyQueryIntegrationTest`：同一 route/pool/SKU 的 CASE/BOTTLE 分组，以及 exact Lot 的 priority/version 和确定性查询顺序。
 - `CatalogSearchApiIntegrationTest`：真实 PostgreSQL migration、双单位/filter、游标绑定、401/403、Sales 字段隐藏、tenant/warehouse assignment 与跨单位/跨 SKU 隔离。
+- 同一集成测试的 relevance gold set：真实 HTTP 前五名的逐查询/均值 nDCG、MRR、Recall、导航首位和负向空集门禁。
 - `CatalogSearchPage.test.tsx` / `catalog.test.ts`：生成契约客户端、单位 URL filter、双卡片、Sales 隐藏、exact priority/version、loading/empty/error/403 和本地选择区。
 - `catalog-supply-search.live.spec.ts`：真实 OIDC 的 Sales/Warehouse/Buyer/双租户矩阵、单位展示、assignment 边界与零业务写入。
 - `ModularityTest` / `ArchitectureRulesTest`：Catalog/Inventory 为根包直接子模块，Inventory 只经 Catalog 公开查询契约组合结果，并自动禁止反向 `Catalog → Inventory` 依赖。
@@ -111,5 +163,7 @@ Task 04 文档基线为 p50 **18.144 ms** / p95 **18.736 ms**；本次分别低�
 - Task 07B 只提供读取准备度和合成 seed，不提供 Catalog/Inventory 管理 API、priority 运行时修改、库存调整或移动。
 - `sku_supply_projection` 已定义所有权、版本和 staleness 字段，但实时 Inventory 变更与投影消费者将在引入对应写用例时实现；当前 demo 投影由确定性 seed 写入。
 - 数量带是非承诺展示，精确批次、priority 和 warehouse version 也只是读取时快照；查询不执行 CASE/BOTTLE 换算、路线绑定供给决策或确定性分配。最终可分配数量由原子预占用例在写入时重新校验。
-- A2 的 Reservation/Allocation/Movement/Attempt/Shortage 表与原子 release/consume 数据库原语已实现并处于 review；订单执行入口、业务 release/consume 用例和 `RESERVED` 迁移仍不存在，Inventory reservation 整体保持 Designed / In progress。
+- Inventory 原子预占与 release/consume 已可运行，但本检索端点仍是非承诺读取；任何最终分配都在写事务内重新校验数量、单位与版本。
 - 本地 benchmark 不覆盖冷缓存、并发混合负载、生产数据倾斜、跨区域网络或长期写放大。
+- gold set 是确定性合成目录的回归门禁，不替代线上点击判断；代表性质量、规模、语言或独立扩缩容证据经 PostgreSQL 调优后仍不达标时，才按 ADR-009 评估外置 lexical/BM25 搜索。
+- 当前没有经验证的非结构化知识问答用例，因此不实现 RAG；结构化目录词法检索不达标也不构成 RAG 触发条件。

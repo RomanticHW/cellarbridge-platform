@@ -1,7 +1,7 @@
 # 实现状态
 
 Baseline version: **Design Baseline v1.0**  
-Status date: **2026-07-23**
+Status date: **2026-07-28**
 
 ## 1. 状态定义
 
@@ -29,7 +29,7 @@ Status date: **2026-07-23**
 | Identity, tenant and permission access           | Available                   | OIDC Code + PKCE, JWT validation, `/me`, two-tenant mapping/isolation and protected permission-aware navigation                                                                                                                                                               |
 | Broader application security controls            | Available                   | STRIDE、tenant × role × ownership × state × field evidence matrix、safe headers/CORS/404/rate limit、日志脱敏、secret/dependency/container gates                                                                                                                            |
 | Partner onboarding and eligibility               | Available                   | tenant-scoped draft/review lifecycle, duplicate controls, immutable eligibility, React workspace and real OIDC Playwright flow                                                                                                                                                |
-| Catalog and supply search                        | Available                   | Catalog/Inventory model, FTS + trigram search, field/warehouse permissions, React workspace, real OIDC E2E and reproducible benchmark                                                                                                                                         |
+| Catalog and supply search                        | Available                   | Catalog/Inventory model, FTS + trigram search, HTTP relevance gold set (nDCG@5/MRR@5/Recall@5), field/warehouse permissions, React workspace, real OIDC E2E and reproducible benchmark                                                                                          |
 | Inventory unit readiness                         | Available                   | CASE/BOTTLE Lot 与 Catalog projection 分离；Warehouse priority/version 仅在授权 exact-lot 视图可见；fresh seed、V9 → V11 保留性、约束、权限、E2E 与双单位 benchmark 证据                                                                                                      |
 | Quotation and trade planning                     | Available                   | revisioned snapshots/pricing, ROUTE-2026-03 route-bound supply evidence, independent approval, issue token, customer-safe preview, React workspace, Testcontainers and real OIDC E2E                                                                                          |
 | Route supply-decision Planning evidence          | Available                   | ROUTE-2026-03 single-source eligibility/confidence, one microsecond evaluation time, canonical input schema 3, V12 selected-route evidence and historical reads                                                                                                               |
