@@ -155,7 +155,7 @@ def verify_production(root, metadata_id, issuer, artifact, tempo, correlations):
                for name in ("security-request-client-slow", "security-statement-timeout"))
     metrics = "".join(text(root, name)
                       for name in ("prometheus-ingress.txt", "prometheus-rate.txt", "prometheus.txt"))
-    series = lambda name: sum(line.startswith("cellarbridge_mcp_")
+    series = lambda name: sum(line.startswith("cellarbridge_mcp_") and 'outcome="success"' in line
                               for line in text(root, name).splitlines())
     assert series("cardinality-before.txt") == series("cardinality-after.txt")
     metric_names = ("cellarbridge_mcp_requests_total", "cellarbridge_mcp_latency_seconds",

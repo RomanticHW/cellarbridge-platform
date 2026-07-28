@@ -12,8 +12,7 @@
 
 ## MCP protocol quick check / MCP 协议快速检查
 
-After `make dev-core`, obtain a demo OIDC token through the [MCP runbook](docs/05-delivery/26-mcp-agent-runbook.md), then call `tools/list` to inspect all six strict `outputSchema` definitions.
-Never put tokens or cursors in URLs, committed files, screenshots, logs, or issue text.
+After `make dev-core`, obtain a demo OIDC token through the [MCP runbook](docs/05-delivery/26-mcp-agent-runbook.md), then call `tools/list` to inspect all six strict `outputSchema` definitions. Never put tokens or cursors in URLs, committed files, screenshots, logs, or issue text.
 执行 `make dev-core` 后，按 [MCP 运行手册](docs/05-delivery/26-mcp-agent-runbook.md)取得演示 OIDC token，再调用 `tools/list` 检查六个严格 `outputSchema`。
 token 和 cursor 不得进入 URL、提交文件、截图、日志或 issue 文本。
 
@@ -53,7 +52,6 @@ flowchart LR
     J --> K[Receivable and payment<br/>Available]
     J --> L[Audit and reporting<br/>Available]
     K --> L
-
 ```
 
 ### 3. Product capabilities
@@ -265,7 +263,6 @@ flowchart LR
     J --> K[应收与付款<br/>可运行]
     J --> L[审计与报表<br/>可运行]
     K --> L
-
 ```
 
 ### 3. 产品能力
