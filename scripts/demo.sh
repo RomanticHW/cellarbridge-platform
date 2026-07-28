@@ -37,8 +37,8 @@ case "${PROFILE}" in
       printf 'Full profile requires an untracked .env file. Copy .env.example and replace its full-profile passwords.\n' >&2
       exit 1
     fi
-    if grep -Eq '^GRAFANA_ADMIN_PASSWORD=(replace-before-full-profile)?$' "${ENV_FILE}"; then
-      printf 'Replace GRAFANA_ADMIN_PASSWORD in %s before starting the full profile.\n' "${ENV_FILE}" >&2
+    if grep -Eq '^(GRAFANA_ADMIN_PASSWORD|KEYCLOAK_DB_PASSWORD)=(replace-before-full-profile)?$' "${ENV_FILE}"; then
+      printf 'Replace full-profile passwords in %s before starting the full profile.\n' "${ENV_FILE}" >&2
       exit 1
     fi
     COMPOSE_FILES=(--file "${CORE_COMPOSE_FILE}" --file "${FULL_COMPOSE_FILE}")

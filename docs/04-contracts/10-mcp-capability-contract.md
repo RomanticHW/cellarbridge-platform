@@ -17,7 +17,12 @@ schema、OpenAPI 或 AsyncAPI。
 - Transport：无状态 Streamable HTTP
 - Framing：JSON-RPC 2.0
 - 认证：`Authorization: Bearer <access-token>`
-- Audience：首版复用 `cellarbridge-api`
+- Protected Resource Metadata：`/.well-known/oauth-protected-resource/mcp`（RFC 9728 path insertion）
+- Resource/Audience：配置的同一个 canonical HTTPS MCP URI；演示值为
+  `https://mcp.cellarbridge.example/mcp`
+- Client/Scope：仅预登记 public client `cellarbridge-mcp-host` 与 `mcp:read`
+- 授权：Authorization Code + S256 PKCE；authorization、token 与 refresh 都必须携带同一个
+  canonical `resource`，由仓库内 Keycloak provider 在授权服务器边界强制绑定
 - 请求媒体类型：`application/json`
 - 响应协商：`application/json, text/event-stream`
 - Origin：浏览器请求必须发送；请求携带 Origin 时必须匹配部署白名单，非法 Origin 返回 403
@@ -117,7 +122,8 @@ Tool 业务失败同时设置协议级 `CallToolResult.isError=true` 和返回 e
 允许复用的稳定码包括 `VALIDATION_FAILED`、`MALFORMED_REQUEST`、
 `AUTHENTICATION_REQUIRED`、`INVALID_ACCESS_TOKEN`、`ACCESS_DENIED`,
 `RESOURCE_NOT_FOUND`、`CURSOR_INVALID`、`RESULT_TOO_LARGE`、
-`DEPENDENCY_UNAVAILABLE` 和 `INTERNAL_ERROR`。`CURSOR_INVALID` 覆盖畸形、签名错误、过期、
+`DEPENDENCY_UNAVAILABLE`、`DOWNSTREAM_TIMEOUT`、`DEPENDENCY_OVERLOADED` 和
+`INTERNAL_ERROR`。`CURSOR_INVALID` 覆盖畸形、签名错误、过期、
 跨 tenant、跨 capability、跨规范化查询或跨授权范围，不指出具体失败原因，也不回显 cursor。
 `RESULT_TOO_LARGE` 要求客户端缩小 page 或筛选条件，固定 `retryable=false`。认证失败仍由
 HTTP 401 表达，非法 Origin 仍由 HTTP 403 表达；JSON-RPC parse、invalid request、method not
@@ -239,7 +245,7 @@ Prompt 只返回公开的任务步骤、输入说明和建议 Tool。它不执�
 - 任意 SQL、Repository、文件系统、shell、网络抓取或动态 Tool 注册；
 - 自动审批、无人值守业务执行或跨请求授权委托；
 - 内置模型、模型路由、RAG、向量数据库或对话记忆；
-- 完整 MCP OAuth discovery、动态客户端注册或通用第三方 authorization server；
+- 动态客户端注册、token exchange、credential forwarding 或通用 OAuth proxy；
 - 将最终一致投影表示为交易源事实。
 
 ## 9. 验收合同
@@ -251,4 +257,6 @@ HMAC/TTL、篡改/跨查询/跨 tenant/跨权限 cursor；验证 256 KiB/1,000 �
 验证安静同步、source 领先、pending、dead letter、rebuild、无 generation 与 Supply
 `OBSERVATION_AGE/UNKNOWN`。既有双 tenant、角色/owner/partner/warehouse 字段边界、非法
 Origin、无效 token、猜测 UUID 和安全错误仍必须通过。MCP Provider 不得为了测试通过而放宽
-源应用服务权限。
+源应用服务权限。面向生产的安全门禁还必须用真实 Keycloak 签名令牌验证 RFC 9728 metadata/challenge、
+RFC 8707 两阶段/refresh 绑定、API/MCP 双向 audience 隔离，以及 body/rate/bulkhead/request
+timeout/PostgreSQL statement timeout、连接池恢复、共享池下 REST headroom 和低基数 telemetry。

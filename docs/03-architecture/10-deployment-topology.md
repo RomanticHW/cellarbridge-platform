@@ -67,8 +67,11 @@ Task 13 不为掩盖本地事件缺陷引入 Kafka/Redis。full profile 对 DB�
 - feature/profile 只控制技术适配器，不改变核心业务不变量；
 - policy/template 版本作为受控种子/配置；
 - 配置启动时验证，非法权重/URL/issuer 直接失败。
-- `CELLARBRIDGE_MCP_ENABLED=true|false` 控制同进程 MCP 适配器，默认启用；
+- `CELLARBRIDGE_MCP_ENABLED=true|false` 控制同进程 MCP 适配器，生产部署默认关闭；demo/test
+  显式启用且必须同时给出 canonical resource/audience、scope、client、Host/Origin 与容量边界；
 - MCP endpoint 固定为 `/mcp`、模式固定为 `SYNC` + `STATELESS`，关闭后不影响 REST 主链路；
+- Compose 构建仓库内 Keycloak resource-binding provider 并用两个 SPI flag 显式启用；回滚时
+  先关闭 MCP，再撤回 provider，不允许退回仅静态 audience 的令牌；
 - Agent Host 不属于 Compose，也不由 CellarBridge 托管；生产反向代理必须保留
   `Authorization`、`Origin`、`MCP-Protocol-Version` 与内容协商头。
 
@@ -113,7 +116,7 @@ Main/Release：
 - 多区域；
 - 正式 SRE on-call；
 - Agent Host 的凭据托管、模型治理、DLP 与终端批准策略；
-- 完整 MCP OAuth discovery/dynamic client registration；
+- MCP 动态客户端注册、token exchange 与 credential forwarding；
 - 真实合规/数据驻留；
 - 容量规划和成本预算。
 

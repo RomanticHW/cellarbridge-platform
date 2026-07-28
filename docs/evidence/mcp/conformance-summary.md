@@ -5,17 +5,18 @@ Date: 2026-07-23
 ## Verified runtime path
 
 The repository verification path built the Java 21 backend image, started PostgreSQL 18 and
-Keycloak 26, obtained short-lived access tokens through Authorization Code + PKCE, and exercised
-the authenticated `/mcp` endpoint. Tokens were neither printed nor retained as evidence.
+Keycloak 26 with the repository-owned resource-binding provider, obtained short-lived access tokens
+through Authorization Code + S256 PKCE with the same RFC 8707 resource at authorization/token, and
+exercised the authenticated `/mcp` endpoint. Tokens were neither printed nor retained as evidence.
 
 ```bash
-make mcp-conformance
+make mcp-production-security
 ```
 
-The pre-conformance smoke passed with:
+The combined production-security smoke and official conformance run passed with:
 
 - MCP protocol `2025-11-25`;
-- real OIDC Bearer authentication;
+- RFC 9728 metadata/challenge and real resource-bound OIDC Bearer authentication;
 - exactly 6 tools, 1 fixed resource, 2 resource templates and 3 prompts;
 - initialize, discovery, tool call and resource read;
 - unauthenticated `401`, invalid Origin `403`, tenant-aware identity and Buyer supply denial;
@@ -42,6 +43,8 @@ did not log the token. Raw runner output remains a disposable build artifact und
 
 ## Claim boundary
 
-This evidence covers the server capabilities declared by the current read-only implementation. It
-does not claim complete MCP OAuth discovery, dynamic client registration, write tools, model
-sampling, RAG, vector storage or autonomous business actions.
+This evidence covers the server capabilities declared by the current read-only implementation,
+including Protected Resource Metadata and the pre-registered host flow. It does not claim dynamic
+client registration, token exchange, credential forwarding, write tools, model sampling, RAG,
+vector storage or autonomous business actions. The RFC 8707 behavior comes from the repository
+provider, not native Keycloak 26.7 support.

@@ -43,7 +43,7 @@ class ResourceBindingTest {
     assertTrue(ResourceBinding.isCanonical(RESOURCE));
     assertTrue(ResourceBinding.oneExact(List.of(RESOURCE), RESOURCE));
     assertFalse(ResourceBinding.isCanonical("http://localhost:8080/mcp"));
-    assertFalse(ResourceBinding.oneExact(List.of(), RESOURCE));
+    assertFalse(ResourceBinding.oneExact(List.of(RESOURCE), null));
     assertFalse(ResourceBinding.oneExact(List.of(RESOURCE, RESOURCE), RESOURCE));
     assertFalse(ResourceBinding.oneExact(List.of("https://other.example/mcp"), RESOURCE));
   }

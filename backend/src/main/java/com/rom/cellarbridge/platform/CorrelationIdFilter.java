@@ -1,5 +1,6 @@
 package com.rom.cellarbridge.platform;
 
+import com.rom.cellarbridge.platform.mcp.McpSecuritySupport;
 import io.micrometer.tracing.Span;
 import io.micrometer.tracing.Tracer;
 import jakarta.servlet.FilterChain;
@@ -38,25 +39,27 @@ public final class CorrelationIdFilter extends OncePerRequestFilter {
   protected void doFilterInternal(
       HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
       throws ServletException, IOException {
-    String correlationId = normalize(request.getHeader(HEADER_NAME));
+    boolean mcp = McpSecuritySupport.isMcpNamespace(request);
+    String correlationId = normalize(mcp ? null : request.getHeader(HEADER_NAME));
     response.setHeader(HEADER_NAME, correlationId);
     Span current = tracer.currentSpan();
     boolean ownsSpan = current == null || current.isNoop();
-    Span requestSpan =
-        ownsSpan
-            ? tracer
-                .nextSpan()
-                .name("cellarbridge.http.request")
-                .tag("http.request.method", request.getMethod())
-                .tag("cellarbridge.correlation_id", correlationId)
-                .start()
-            : current;
+    Span requestSpan = current;
+    if (ownsSpan) {
+      requestSpan =
+          tracer
+              .nextSpan()
+              .name("cellarbridge.http.request")
+              .tag("http.request.method", request.getMethod());
+      if (!mcp) requestSpan.tag("cellarbridge.correlation_id", correlationId);
+      requestSpan.start();
+    }
 
     try (MDC.MDCCloseable ignored = MDC.putCloseable(MDC_KEY, correlationId);
         Tracer.SpanInScope spanScope = tracer.withSpan(requestSpan)) {
       filterChain.doFilter(request, response);
     } catch (ServletException | IOException | RuntimeException failure) {
-      requestSpan.error(failure);
+      if (!mcp) requestSpan.error(failure);
       throw failure;
     } finally {
       if (ownsSpan) {

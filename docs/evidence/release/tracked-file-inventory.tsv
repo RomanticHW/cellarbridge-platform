@@ -9,6 +9,7 @@ path	category
 .github/ISSUE_TEMPLATE/feature_request.yml	release_asset
 .github/dependabot.yml	release_asset
 .github/pull_request_template.md	release_asset
+.github/security/keycloak.openvex.json	release_asset
 .github/workflows/audit-reporting.yml	release_asset
 .github/workflows/backend.yml	release_asset
 .github/workflows/catalog-supply-search.yml	release_asset
@@ -126,7 +127,6 @@ backend/src/main/java/com/rom/cellarbridge/identityaccess/internal/infrastructur
 backend/src/main/java/com/rom/cellarbridge/identityaccess/internal/mcp/IdentityMcpProvider.java	source
 backend/src/main/java/com/rom/cellarbridge/identityaccess/internal/security/AudienceValidator.java	source
 backend/src/main/java/com/rom/cellarbridge/identityaccess/internal/security/JwtConfiguration.java	source
-backend/src/main/java/com/rom/cellarbridge/identityaccess/internal/security/McpProtocolVersionFilter.java	source
 backend/src/main/java/com/rom/cellarbridge/identityaccess/internal/security/ProblemAccessDeniedHandler.java	source
 backend/src/main/java/com/rom/cellarbridge/identityaccess/internal/security/ProblemAuthenticationEntryPoint.java	source
 backend/src/main/java/com/rom/cellarbridge/identityaccess/internal/security/SafeIdentifierHasher.java	source
@@ -230,10 +230,13 @@ backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpCapabilitySupport.jav
 backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpFreshnessEvidence.java	source
 backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpInputValidation.java	source
 backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpReadEnvelope.java	source
+backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpReadExecutor.java	source
 backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpReadPayload.java	source
 backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpResponseProperties.java	source
 backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpSafeException.java	source
 backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpSchemaSupport.java	source
+backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpSecurityProperties.java	source
+backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpSecuritySupport.java	source
 backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpWarning.java	source
 backend/src/main/java/com/rom/cellarbridge/platform/mcp/package-info.java	source
 backend/src/main/java/com/rom/cellarbridge/platform/package-info.java	source
@@ -476,6 +479,7 @@ contracts/schemas/events/receivable-paid-v1.schema.json	contract
 contracts/schemas/events/trade-order-created-v1.schema.json	contract
 deploy/compose/core.compose.yaml	release_asset
 deploy/compose/full.compose.yaml	release_asset
+deploy/keycloak/Dockerfile	release_asset
 deploy/keycloak/cellarbridge-realm.json	release_asset
 deploy/observability/alert-rules.yaml	release_asset
 deploy/observability/grafana/dashboards/cellarbridge-operations.json	release_asset

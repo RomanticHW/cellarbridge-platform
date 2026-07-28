@@ -7,12 +7,17 @@ import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
 import com.nimbusds.jose.proc.SecurityContext;
+import com.rom.cellarbridge.platform.mcp.McpSecurityProperties;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm;
@@ -21,6 +26,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
+import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 
@@ -70,6 +76,122 @@ class JwtValidationTest {
     assertRejected(token(untrustedKey, ISSUER, AUDIENCE, Instant.now().plusSeconds(60)));
   }
 
+  @Test
+  void validatesMcpResourceAndCanonicalConfiguration() {
+    McpSecurityProperties mcp = mcpProperties("https://mcp.example/mcp");
+    var validator = JwtConfiguration.mcpValidators(mcp);
+    assertThat(mcp.configured()).isTrue();
+    assertThat(mcp.configured(10)).isTrue();
+    assertThat(mcp.configured(9)).isFalse();
+    assertThat(validator.validate(mcpJwt("https://mcp.example/mcp")).hasErrors()).isFalse();
+    assertThat(validator.validate(mcpJwt("https://mcp.example/mcp", "wrong", "client")).hasErrors())
+        .isTrue();
+    assertThat(validator.validate(mcpJwt(mcp.resource(), mcp.resource(), "wrong")).hasErrors())
+        .isTrue();
+    Jwt crossover = mcpJwt(mcp.resource(), List.of(mcp.resource(), "cellarbridge-api"), "client");
+    assertThat(validator.validate(crossover).hasErrors()).isTrue();
+    assertThat(new AudienceValidator(AUDIENCE).validate(crossover).hasErrors()).isTrue();
+    Jwt missingAudience =
+        Jwt.withTokenValue("token").header("alg", "RS256").subject("subject").build();
+    assertThat(new AudienceValidator(AUDIENCE).validate(missingAudience).hasErrors()).isTrue();
+    for (Object resource :
+        List.of(
+            "https://mcp.example/other",
+            List.of("https://mcp.example/mcp"),
+            List.of("https://mcp.example/mcp", "https://mcp.example/other"))) {
+      assertThat(validator.validate(mcpJwt(resource)).hasErrors()).isTrue();
+    }
+    assertThat(validator.validate(mcpJwt(null)).hasErrors()).isTrue();
+    assertThat(mcpProperties("https:/mcp").configured()).isFalse();
+    assertThat(mcpProperties("https://user@mcp.example/mcp").configured()).isFalse();
+    assertThat(mcpProperties("https://mcp.example/mcp", "https://mcp.example/other").configured())
+        .isFalse();
+    assertThat(mcpProperties(mcp.resource(), mcp.audience(), Double.POSITIVE_INFINITY).configured())
+        .isFalse();
+    McpSecurityProperties invalid =
+        new McpSecurityProperties(
+            mcp.resource(),
+            mcp.resource(),
+            "",
+            List.of("client"),
+            List.of(),
+            List.of("mcp.example"),
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            Duration.ZERO,
+            Duration.ZERO);
+    assertThat(invalid.configured()).isFalse();
+    assertThat(invalid.scope()).isEmpty();
+    assertThat(invalid.maxConcurrency()).isZero();
+    assertThat(invalid.metadataResource()).isEqualTo("https://invalid.invalid/mcp");
+
+    for (String invalidResource :
+        List.of(
+            "https://mcp.example/other",
+            "https://mcp.example/mcp?return=%2Fready",
+            "https://mcp.example/mcp#fragment",
+            "https://mcp.example/a%2Fb?return=%2Fready")) {
+      assertThat(mcpProperties(invalidResource).configured()).isFalse();
+    }
+  }
+
+  @Test
+  void boundsMcpTokenDecodingByTotalTimeAndRetainsCapacityUntilWorkerExit() throws Exception {
+    McpSecurityProperties mcp = mcpProperties("https://mcp.example/mcp");
+    var queued = new java.util.ArrayList<Runnable>();
+    JwtDecoder queuedDecoder =
+        JwtConfiguration.validated(
+            ignored -> mcpJwt(mcp.resource()),
+            JwtConfiguration.mcpValidators(mcp),
+            Duration.ZERO,
+            1,
+            queued::add);
+    for (int attempt = 0; attempt < 2; attempt++) {
+      assertThatThrownBy(() -> queuedDecoder.decode("token"))
+          .isInstanceOf(JwtException.class)
+          .hasCauseInstanceOf(java.util.concurrent.TimeoutException.class);
+    }
+    queued.forEach(Runnable::run);
+
+    CountDownLatch entered = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    CountDownLatch exited = new CountDownLatch(1);
+    JwtDecoder slow =
+        ignored -> {
+          entered.countDown();
+          try {
+            while (release.getCount() != 0)
+              try {
+                release.await();
+              } catch (InterruptedException interruption) {
+                Thread.interrupted();
+              }
+            return mcpJwt(mcp.resource());
+          } finally {
+            exited.countDown();
+          }
+        };
+    JwtDecoder bounded =
+        JwtConfiguration.validated(
+            slow, JwtConfiguration.mcpValidators(mcp), Duration.ofMillis(50), 1);
+    long started = System.nanoTime();
+    try {
+      assertThatThrownBy(() -> bounded.decode("token")).isInstanceOf(JwtException.class);
+      assertThat(entered.await(1, TimeUnit.SECONDS)).isTrue();
+      assertThatThrownBy(() -> bounded.decode("token"))
+          .hasRootCauseInstanceOf(RejectedExecutionException.class);
+      assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofMillis(500));
+    } finally {
+      release.countDown();
+    }
+    assertThat(exited.await(1, TimeUnit.SECONDS)).isTrue();
+    assertThat(bounded.decode("token").getSubject()).isEqualTo("subject");
+  }
+
   private static void assertRejected(String token) {
     assertThatThrownBy(() -> decoder(trustedKey).decode(token))
         .isInstanceOf(org.springframework.security.oauth2.jwt.JwtException.class);
@@ -80,6 +202,54 @@ class JwtValidationTest {
         NimbusJwtDecoder.withPublicKey((RSAPublicKey) keyPair.getPublic()).build();
     decoder.setJwtValidator(JwtConfiguration.validators(ISSUER, AUDIENCE));
     return decoder;
+  }
+
+  private static McpSecurityProperties mcpProperties(String resource) {
+    return mcpProperties(resource, resource);
+  }
+
+  private static McpSecurityProperties mcpProperties(String resource, String audience) {
+    return mcpProperties(resource, audience, 1);
+  }
+
+  private static McpSecurityProperties mcpProperties(
+      String resource, String audience, double refill) {
+    return new McpSecurityProperties(
+        resource,
+        audience,
+        "mcp:read",
+        List.of("client"),
+        List.of(),
+        List.of("mcp.example"),
+        1,
+        1,
+        refill,
+        8,
+        4,
+        2,
+        Duration.ofSeconds(2),
+        Duration.ofSeconds(1));
+  }
+
+  private static Jwt mcpJwt(Object resource) {
+    return mcpJwt(resource, "https://mcp.example/mcp", "client");
+  }
+
+  private static Jwt mcpJwt(Object resource, String audience, String client) {
+    return mcpJwt(resource, List.of(audience), client);
+  }
+
+  private static Jwt mcpJwt(Object resource, List<String> audience, String client) {
+    Instant now = Instant.now();
+    return Jwt.withTokenValue("token")
+        .header("alg", "RS256")
+        .subject("subject")
+        .audience(audience)
+        .issuedAt(now)
+        .expiresAt(now.plusSeconds(60))
+        .claim("resource", resource)
+        .claim("azp", client)
+        .build();
   }
 
   private static String token(KeyPair keyPair, String issuer, String audience, Instant expiresAt) {
