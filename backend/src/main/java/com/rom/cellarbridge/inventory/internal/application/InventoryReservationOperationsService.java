@@ -5,6 +5,11 @@ import com.rom.cellarbridge.identityaccess.PermissionCode;
 import com.rom.cellarbridge.identityaccess.TenantContext;
 import com.rom.cellarbridge.identityaccess.TenantContextHolder;
 import com.rom.cellarbridge.identityaccess.TenantId;
+import com.rom.cellarbridge.inventory.InventoryReservationInvestigationQuery;
+import com.rom.cellarbridge.inventory.InventoryReservationInvestigationQuery.ExactAllocation;
+import com.rom.cellarbridge.inventory.InventoryReservationInvestigationQuery.ExactShortage;
+import com.rom.cellarbridge.inventory.InventoryReservationInvestigationQuery.ReservationSource;
+import com.rom.cellarbridge.inventory.InventoryReservationInvestigationQuery.UntrustedBusinessData;
 import com.rom.cellarbridge.inventory.InventorySupplyQuery;
 import com.rom.cellarbridge.inventory.QuantityUnit;
 import com.rom.cellarbridge.inventory.internal.application.InventoryReservationMutationService.MutationConflict;
@@ -44,7 +49,8 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.databind.json.JsonMapper;
 
 @Service
-public class InventoryReservationOperationsService {
+public class InventoryReservationOperationsService
+    implements InventoryReservationInvestigationQuery {
 
   private static final Pattern IDEMPOTENCY_KEY = Pattern.compile("[A-Za-z0-9._~-]{20,200}");
   private static final Comparator<Allocation> ALLOCATION_ORDER =
@@ -54,7 +60,7 @@ public class InventoryReservationOperationsService {
 
   private final TenantContextHolder contextHolder;
   private final AuthorizationService authorization;
-  private final InventorySupplyQuery supplyQuery;
+  private final JdbcInventorySupplyQuery supplyQuery;
   private final InventoryReservationRepository reservations;
   private final ReservationOperationRepository operations;
   private final InventoryReservationMutationService mutations;
@@ -65,7 +71,7 @@ public class InventoryReservationOperationsService {
   InventoryReservationOperationsService(
       TenantContextHolder contextHolder,
       AuthorizationService authorization,
-      InventorySupplyQuery supplyQuery,
+      JdbcInventorySupplyQuery supplyQuery,
       InventoryReservationRepository reservations,
       ReservationOperationRepository operations,
       InventoryReservationMutationService mutations,
@@ -81,6 +87,38 @@ public class InventoryReservationOperationsService {
     this.json = json;
     this.meters = meters;
     this.clock = clock;
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public java.util.Optional<ReservationSource> findById(UUID reservationId) {
+    TenantContext context = investigationContext();
+    return reservations
+        .findById(context.tenantId(), Objects.requireNonNull(reservationId, "reservationId"))
+        .flatMap(aggregate -> investigationSource(context, aggregate));
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public java.util.Optional<ReservationSource> findByOrderId(UUID orderId) {
+    TenantContext context = investigationContext();
+    return reservations
+        .findByTenantAndOrder(context.tenantId(), Objects.requireNonNull(orderId, "orderId"))
+        .flatMap(aggregate -> investigationSource(context, aggregate));
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public boolean hasCurrentWarehouseAssignment(UUID reservationId) {
+    TenantContext context = contextHolder.requireCurrent();
+    if (context.partnerId() != null
+        || !context.hasPermission(PermissionCode.INVENTORY_READ)
+        || !context.hasRoleCode("warehouse-operator")) {
+      return false;
+    }
+    return supplyQuery
+        .reservationAssignmentScope(Objects.requireNonNull(reservationId, "reservationId"))
+        .hasAllocation();
   }
 
   @Transactional(readOnly = true)
@@ -478,10 +516,96 @@ public class InventoryReservationOperationsService {
         allowed);
   }
 
+  private java.util.Optional<ReservationSource> investigationSource(
+      TenantContext context, ReservationAggregate aggregate) {
+    var scope = supplyQuery.reservationAssignmentScope(aggregate.reservation().id());
+    if (context.hasRoleCode("warehouse-operator") && !scope.hasAllocation()) {
+      return java.util.Optional.empty();
+    }
+    boolean exact = context.hasPermission(PermissionCode.INVENTORY_READ_EXACT);
+    Map<UUID, Reservation.Line> lines =
+        aggregate.reservation().lines().stream()
+            .collect(
+                java.util.stream.Collectors.toMap(Reservation.Line::orderLineId, line -> line));
+    List<ExactAllocation> allocations =
+        exact
+            ? aggregate.allocations().stream()
+                .filter(item -> scope.warehouseLabels().containsKey(item.supplyPoolId()))
+                .map(
+                    item -> {
+                      Reservation.Line line = lines.get(item.orderLineId());
+                      return new ExactAllocation(
+                          item.id(),
+                          item.orderLineId(),
+                          item.skuId(),
+                          line == null ? null : quantity(line.requestedQuantity()),
+                          quantity(item.allocatedQuantity()),
+                          quantity(item.releasedQuantity()),
+                          quantity(item.consumedQuantity()),
+                          quantity(item.remainingReservedQuantity()),
+                          item.quantityUnit().name(),
+                          item.supplyPoolId(),
+                          item.lotId(),
+                          businessText(scope.warehouseLabels().get(item.supplyPoolId())));
+                    })
+                .toList()
+            : List.of();
+    List<ExactShortage> shortages =
+        exact
+            ? aggregate.shortages().stream()
+                .filter(
+                    item ->
+                        item.supplyPoolId() != null
+                            && scope.warehouseLabels().containsKey(item.supplyPoolId()))
+                .map(
+                    item ->
+                        new ExactShortage(
+                            item.orderLineId(),
+                            item.skuId(),
+                            quantity(item.requestedQuantity()),
+                            quantity(item.availableQuantity()),
+                            quantity(item.shortageQuantity()),
+                            item.quantityUnit().name(),
+                            item.failureCode(),
+                            item.supplyPoolId(),
+                            businessText(scope.warehouseLabels().get(item.supplyPoolId()))))
+                .toList()
+            : List.of();
+    Integer latestAttempt =
+        aggregate.attempts().isEmpty() ? null : aggregate.attempts().getLast().attemptNumber();
+    Reservation reservation = aggregate.reservation();
+    return java.util.Optional.of(
+        new ReservationSource(
+            reservation.id(),
+            reservation.orderId(),
+            reservation.status().name(),
+            reservation.failureCode(),
+            latestAttempt,
+            reservation.version(),
+            reservation.updatedAt(),
+            allocations,
+            shortages));
+  }
+
   private TenantContext readableContext() {
     TenantContext context = contextHolder.requireCurrent();
     authorization.require(PermissionCode.INVENTORY_READ, context.tenantId());
     return context;
+  }
+
+  private TenantContext investigationContext() {
+    TenantContext context = readableContext();
+    if (context.partnerId() != null) {
+      throw new AccessDeniedException("Customer cannot read Inventory Reservation source facts");
+    }
+    return context;
+  }
+
+  private static UntrustedBusinessData businessText(String value) {
+    int count = value.codePointCount(0, value.length());
+    boolean truncated = count > 2_000;
+    String visible = truncated ? value.substring(0, value.offsetByCodePoints(0, 2_000)) : value;
+    return new UntrustedBusinessData("UNTRUSTED_BUSINESS_DATA", visible, truncated);
   }
 
   private static Set<String> allowedActions(

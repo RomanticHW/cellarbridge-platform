@@ -14,6 +14,7 @@ import com.rom.cellarbridge.settlement.PaymentMethod;
 import com.rom.cellarbridge.settlement.PaymentRecordedV1;
 import com.rom.cellarbridge.settlement.PaymentReversedV1;
 import com.rom.cellarbridge.settlement.ReceivableCreatedV1;
+import com.rom.cellarbridge.settlement.ReceivableInvestigationQuery;
 import com.rom.cellarbridge.settlement.ReceivableOverdueV1;
 import com.rom.cellarbridge.settlement.ReceivablePaidV1;
 import com.rom.cellarbridge.settlement.ReceivableStatus;
@@ -49,9 +50,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-public class SettlementService {
+public class SettlementService implements ReceivableInvestigationQuery {
   private static final int DEFAULT_PAGE_SIZE = 25;
   private static final int MAX_PAGE_SIZE = 100;
+  private static final String FULFILLMENT_TRIGGER = "FULFILLMENT_COMPLETED";
   private static final Pattern HASH = Pattern.compile("^[0-9a-f]{64}$");
   private static final Pattern REFERENCE = Pattern.compile("^[A-Za-z0-9][A-Za-z0-9._:/-]{2,99}$");
 
@@ -252,6 +254,43 @@ public class SettlementService {
     TenantContext context = requireRead();
     ReceivableRecord value = find(context, receivableId, false);
     return detail(context, value);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public ReceivableInvestigation investigateReceivable(UUID receivableId) {
+    TenantContext context = requireRead();
+    return investigation(context, find(context, receivableId, false));
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public ReceivableInvestigations investigateByOrder(UUID orderId, int limit) {
+    TenantContext context = requireRead();
+    if (orderId == null || limit < 1 || limit > 20) {
+      throw validation("Order id and a limit between 1 and 20 are required");
+    }
+    List<ReceivableRecord> rows =
+        store.findByOrder(context.tenantId(), orderId, context.partnerId(), limit + 1);
+    boolean hasMore = rows.size() > limit;
+    if (hasMore) rows = rows.subList(0, limit);
+    return new ReceivableInvestigations(
+        rows.stream().map(value -> investigation(context, value)).toList(), hasMore);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public java.util.Optional<ReceivableInvestigation> investigateByFulfillment(
+      UUID fulfillmentPlanId) {
+    TenantContext context = requireRead();
+    if (fulfillmentPlanId == null) throw validation("Fulfillment plan id is required");
+    if (context.partnerId() != null || !context.hasPermission(PermissionCode.FULFILLMENT_READ)) {
+      return java.util.Optional.empty();
+    }
+    return store
+        .findByTrigger(
+            context.tenantId(), FULFILLMENT_TRIGGER, fulfillmentPlanId, context.partnerId())
+        .map(value -> investigation(context, value));
   }
 
   @Transactional
@@ -626,6 +665,65 @@ public class SettlementService {
         history,
         allowedActions(context, value),
         moneyVisible);
+  }
+
+  private ReceivableInvestigation investigation(TenantContext context, ReceivableRecord value) {
+    boolean visible = visibleMoney(context);
+    List<PaymentFact> payments =
+        context.partnerId() == null
+            ? paymentViews(
+                    store.payments(context.tenantId(), value.id()),
+                    store.reversals(context.tenantId(), value.id()),
+                    visible)
+                .stream()
+                .map(
+                    payment ->
+                        new PaymentFact(
+                            payment.id(),
+                            PaymentFactType.valueOf(payment.type()),
+                            visible && payment.amount() != null
+                                ? new InvestigationMoney(
+                                    payment.amount().amount(), payment.amount().currency())
+                                : null,
+                            visible ? untrusted(payment.externalReference()) : null,
+                            payment.reversedPaymentId(),
+                            visible ? untrusted(payment.reason()) : null,
+                            payment.method(),
+                            payment.occurredOn(),
+                            payment.recordedAt(),
+                            visible ? payment.actorId() : null))
+                .toList()
+            : List.of();
+    return new ReceivableInvestigation(
+        value.id(),
+        value.number(),
+        value.orderId(),
+        value.orderNumber(),
+        value.status(),
+        value.currency(),
+        value.dueDate(),
+        context.partnerId() == null
+                && context.hasPermission(PermissionCode.FULFILLMENT_READ)
+                && FULFILLMENT_TRIGGER.equals(value.triggerType())
+            ? new FulfillmentTrigger(
+                value.triggerId(), value.triggerPolicyCode(), value.triggerPolicyVersion())
+            : null,
+        visible ? new InvestigationMoney(amount(value.originalAmount()), value.currency()) : null,
+        visible
+            ? new InvestigationMoney(amount(value.outstandingAmount()), value.currency())
+            : null,
+        payments,
+        value.createdAt(),
+        value.updatedAt(),
+        value.version());
+  }
+
+  private static UntrustedText untrusted(String value) {
+    if (value == null) return null;
+    int count = value.codePointCount(0, value.length());
+    boolean truncated = count > 2_000;
+    String visible = truncated ? value.substring(0, value.offsetByCodePoints(0, 2_000)) : value;
+    return new UntrustedText(DataClassification.UNTRUSTED_BUSINESS_DATA, visible, truncated);
   }
 
   private static List<PaymentView> paymentViews(

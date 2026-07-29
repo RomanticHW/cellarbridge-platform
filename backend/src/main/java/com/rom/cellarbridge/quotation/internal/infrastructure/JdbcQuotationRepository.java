@@ -59,13 +59,13 @@ public class JdbcQuotationRepository implements QuotationRepository {
 
   private static final DateTimeFormatter NUMBER_PERIOD =
       DateTimeFormatter.ofPattern("yyyyMM").withZone(ZoneOffset.UTC);
-  private static final String CURRENT_SELECT =
+  private static final String SOURCE_SELECT =
       """
       SELECT q.id AS quotation_id, q.tenant_id, q.number AS quotation_number,
              q.partner_id, q.status, q.current_revision_no, q.owner_id,
              q.submitted_by_id, q.version AS quotation_version,
              q.created_at AS quotation_created_at, q.updated_at AS quotation_updated_at,
-             r.id AS revision_id, r.partner_number, r.partner_display_name,
+             r.id AS revision_id, r.revision_no, r.partner_number, r.partner_display_name,
              r.partner_payment_term_days, r.partner_source_version, r.partner_captured_at,
              r.currency, r.requested_delivery_date, r.expires_at, r.payment_term_days,
              r.delivery_country_code, r.delivery_province, r.delivery_city,
@@ -81,8 +81,9 @@ public class JdbcQuotationRepository implements QuotationRepository {
         FROM quotation.quotation q
         JOIN quotation.quotation_revision r
           ON r.tenant_id = q.tenant_id
-         AND r.id = q.current_revision_id
+         AND r.quotation_id = q.id
       """;
+  private static final String CURRENT_SELECT = SOURCE_SELECT + " AND r.id = q.current_revision_id";
 
   private final NamedParameterJdbcTemplate jdbc;
   private final JsonMapper jsonMapper;
@@ -174,6 +175,33 @@ public class JdbcQuotationRepository implements QuotationRepository {
                 .addValue("quotationId", quotationId),
             (resultSet, rowNumber) -> mapAggregate(resultSet));
     return rows.stream().findFirst();
+  }
+
+  @Override
+  public Optional<QuotationAggregate> findForInvestigation(
+      TenantId tenantId, UUID quotationId, UUID revisionId, UUID partnerScope, UUID ownerScope) {
+    String sql =
+        SOURCE_SELECT
+            + """
+             WHERE q.tenant_id = :tenantId
+               AND q.id = :quotationId
+               AND r.id = COALESCE(:revisionId, q.current_revision_id)
+            """;
+    MapSqlParameterSource parameters =
+        new MapSqlParameterSource()
+            .addValue("tenantId", tenantId.value())
+            .addValue("quotationId", quotationId)
+            .addValue("revisionId", revisionId);
+    if (partnerScope != null) {
+      sql += " AND q.partner_id = :partnerScope";
+      parameters.addValue("partnerScope", partnerScope);
+    }
+    if (ownerScope != null) {
+      sql += " AND q.owner_id = :ownerScope";
+      parameters.addValue("ownerScope", ownerScope);
+    }
+    return jdbc.query(sql, parameters, (resultSet, rowNumber) -> mapAggregate(resultSet)).stream()
+        .findFirst();
   }
 
   @Override
@@ -873,7 +901,7 @@ public class JdbcQuotationRepository implements QuotationRepository {
     Revision revision =
         new Revision(
             revisionId,
-            resultSet.getInt("current_revision_no"),
+            resultSet.getInt("revision_no"),
             partner,
             terms,
             pricing,

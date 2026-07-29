@@ -21,10 +21,10 @@
 | Partner | →security context | — |  |  |  |  |  |  |  |  | →event |
 | Catalog | → |  | — |  |  |  |  |  |  |  | →event |
 | Inventory | → |  | →SkuRef contract | — |  |  |  |  |  |  | →event |
-| Quotation | → | →snapshot API | →snapshot API |  | — | →evaluate API |  |  |  |  | →event |
+| Quotation | → | →snapshot API | →snapshot API | →exact assignment query | — | →evaluate API |  |  |  |  | →event |
 | TradePlanning | → | →eligibility snapshot | →SKU attributes | →availability query |  | — |  |  |  |  | →event |
 | Order | → |  |  |  | →accepted event contract |  | — |  |  |  | →event |
-| Fulfillment | → |  |  | →reservation event |  | →route/template code | →order event | — |  |  | →event |
+| Fulfillment | → |  |  | →reservation event/auth facade |  | →route/template code | →order event | — |  |  | →event |
 | Exception | → |  |  | public recovery API |  |  | public recovery API | public recovery API | — |  | →event |
 | Settlement | → |  |  |  |  |  | →event/snapshot | →event |  | — | →event |
 | Audit | → |  |  |  |  |  |  |  |  |  | — |

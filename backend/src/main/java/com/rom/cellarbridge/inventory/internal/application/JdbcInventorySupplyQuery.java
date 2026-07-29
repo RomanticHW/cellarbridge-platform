@@ -11,7 +11,10 @@ import com.rom.cellarbridge.inventory.QuantityUnit;
 import com.rom.cellarbridge.inventory.SupplyType;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -212,6 +215,59 @@ public class JdbcInventorySupplyQuery implements InventorySupplyQuery {
     TenantContext context = contextHolder.requireCurrent();
     authorizationService.require(PermissionCode.INVENTORY_READ_EXACT, context.tenantId());
     return context;
+  }
+
+  ReservationAssignmentScope reservationAssignmentScope(UUID reservationId) {
+    TenantContext context = contextHolder.requireCurrent();
+    Set<UUID> allocationPoolIds = new HashSet<>();
+    Map<UUID, String> warehouseLabels = new HashMap<>();
+    jdbc.query(
+        """
+        SELECT referenced.supply_pool_id, referenced.has_allocation, w.name AS warehouse_label
+          FROM (
+                SELECT supply_pool_id, TRUE AS has_allocation
+                  FROM inventory.allocation
+                 WHERE tenant_id = :tenantId AND reservation_id = :reservationId
+                UNION
+                SELECT supply_pool_id, FALSE AS has_allocation
+                  FROM inventory.shortage_snapshot
+                 WHERE tenant_id = :tenantId
+                   AND reservation_id = :reservationId
+                   AND supply_pool_id IS NOT NULL
+               ) referenced
+          JOIN inventory.supply_pool sp
+            ON sp.tenant_id = :tenantId
+           AND sp.id = referenced.supply_pool_id
+          JOIN inventory.warehouse w
+            ON w.tenant_id = sp.tenant_id
+           AND w.id = sp.warehouse_id
+          JOIN inventory.warehouse_assignment wa
+            ON wa.tenant_id = sp.tenant_id
+           AND wa.warehouse_id = sp.warehouse_id
+           AND wa.user_id = :userId
+         ORDER BY referenced.supply_pool_id
+        """,
+        parameters(context).addValue("reservationId", reservationId),
+        (org.springframework.jdbc.core.RowCallbackHandler)
+            resultSet -> {
+              UUID poolId = resultSet.getObject("supply_pool_id", UUID.class);
+              warehouseLabels.put(poolId, resultSet.getString("warehouse_label"));
+              if (resultSet.getBoolean("has_allocation")) allocationPoolIds.add(poolId);
+            });
+    return new ReservationAssignmentScope(allocationPoolIds, warehouseLabels);
+  }
+
+  record ReservationAssignmentScope(
+      Set<UUID> allocationPoolIds, Map<UUID, String> warehouseLabels) {
+
+    ReservationAssignmentScope {
+      allocationPoolIds = Set.copyOf(allocationPoolIds);
+      warehouseLabels = Map.copyOf(warehouseLabels);
+    }
+
+    boolean hasAllocation() {
+      return !allocationPoolIds.isEmpty();
+    }
   }
 
   private static MapSqlParameterSource parameters(TenantContext context) {

@@ -151,10 +151,22 @@ class ArchitectureRulesTest {
     noClasses()
         .that()
         .resideInAPackage("..quotation..")
+        .and()
+        .doNotHaveFullyQualifiedName(
+            "com.rom.cellarbridge.quotation.internal.application.QuotationApplicationService")
         .should()
         .dependOnClassesThat()
         .resideInAPackage("..inventory..")
         .check(productionClasses);
+    assertThat(
+            productionClasses
+                .get(
+                    "com.rom.cellarbridge.quotation.internal.application.QuotationApplicationService")
+                .getDirectDependenciesFromSelf())
+        .filteredOn(
+            dependency -> dependency.getTargetClass().getPackageName().contains(".inventory"))
+        .extracting(dependency -> dependency.getTargetClass().getName())
+        .containsOnly("com.rom.cellarbridge.inventory.InventorySupplyQuery");
     noClasses()
         .that()
         .resideInAPackage("..tradeplanning..")

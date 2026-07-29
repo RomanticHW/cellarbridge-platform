@@ -31,6 +31,12 @@ public interface FulfillmentPlanStore {
 
   Optional<Plan> findByOrder(TenantId tenantId, UUID orderId);
 
+  Optional<Plan> findByReservation(TenantId tenantId, UUID reservationId);
+
+  Optional<Plan> findByStep(TenantId tenantId, UUID stepId);
+
+  boolean hasCurrentWarehouseTask(TenantId tenantId, UUID planId);
+
   Optional<Plan> find(TenantId tenantId, UUID planId, boolean forUpdate);
 
   List<Plan> list(

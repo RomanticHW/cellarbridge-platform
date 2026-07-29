@@ -24,6 +24,9 @@ public interface QuotationRepository {
 
   Optional<QuotationAggregate> find(TenantId tenantId, UUID quotationId);
 
+  Optional<QuotationAggregate> findForInvestigation(
+      TenantId tenantId, UUID quotationId, UUID revisionId, UUID partnerScope, UUID ownerScope);
+
   List<QuotationAggregate> list(
       TenantId tenantId, Set<QuotationStatus> statuses, UUID ownerId, UUID partnerId, int limit);
 

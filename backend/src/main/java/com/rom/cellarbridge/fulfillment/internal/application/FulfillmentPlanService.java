@@ -1,6 +1,9 @@
 package com.rom.cellarbridge.fulfillment.internal.application;
 
 import com.rom.cellarbridge.fulfillment.FulfillmentCompletedV1;
+import com.rom.cellarbridge.fulfillment.FulfillmentInvestigationQuery;
+import com.rom.cellarbridge.fulfillment.FulfillmentInvestigationQuery.CurrentStep;
+import com.rom.cellarbridge.fulfillment.FulfillmentInvestigationQuery.FulfillmentSource;
 import com.rom.cellarbridge.fulfillment.FulfillmentPlanCreatedV1;
 import com.rom.cellarbridge.fulfillment.FulfillmentStatus;
 import com.rom.cellarbridge.fulfillment.FulfillmentStepFailedV1;
@@ -18,6 +21,7 @@ import com.rom.cellarbridge.identityaccess.PermissionCode;
 import com.rom.cellarbridge.identityaccess.TenantContext;
 import com.rom.cellarbridge.identityaccess.TenantContextHolder;
 import com.rom.cellarbridge.identityaccess.TenantId;
+import com.rom.cellarbridge.inventory.InventoryReservationInvestigationQuery;
 import com.rom.cellarbridge.platform.EventDelivery;
 import com.rom.cellarbridge.platform.PendingEvent;
 import com.rom.cellarbridge.platform.ReliableEventPublisher;
@@ -42,11 +46,12 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.databind.json.JsonMapper;
 
 @Service
-public class FulfillmentPlanService {
+public class FulfillmentPlanService implements FulfillmentInvestigationQuery {
 
   private static final Pattern IDEMPOTENCY_KEY = Pattern.compile("[A-Za-z0-9._~-]{20,200}");
   private final TenantContextHolder contextHolder;
   private final AuthorizationService authorization;
+  private final InventoryReservationInvestigationQuery reservations;
   private final FulfillmentPlanStore store;
   private final SimulatedFulfillmentAdapter adapter;
   private final ReliableEventPublisher events;
@@ -56,6 +61,7 @@ public class FulfillmentPlanService {
   FulfillmentPlanService(
       TenantContextHolder contextHolder,
       AuthorizationService authorization,
+      InventoryReservationInvestigationQuery reservations,
       FulfillmentPlanStore store,
       SimulatedFulfillmentAdapter adapter,
       ReliableEventPublisher events,
@@ -63,11 +69,49 @@ public class FulfillmentPlanService {
       Clock clock) {
     this.contextHolder = contextHolder;
     this.authorization = authorization;
+    this.reservations = reservations;
     this.store = store;
     this.adapter = adapter;
     this.events = events;
     this.json = json;
     this.clock = clock;
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public java.util.Optional<FulfillmentSource> findById(UUID planId) {
+    TenantContext context = investigationContext();
+    return store
+        .find(context.tenantId(), Objects.requireNonNull(planId, "planId"), false)
+        .flatMap(plan -> investigationSource(context, plan));
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public java.util.Optional<FulfillmentSource> findByOrderId(UUID orderId) {
+    TenantContext context = investigationContext();
+    return store
+        .findByOrder(context.tenantId(), Objects.requireNonNull(orderId, "orderId"))
+        .flatMap(plan -> investigationSource(context, plan));
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public java.util.Optional<FulfillmentSource> findByReservationId(UUID reservationId) {
+    TenantContext context = investigationContext();
+    return store
+        .findByReservation(
+            context.tenantId(), Objects.requireNonNull(reservationId, "reservationId"))
+        .flatMap(plan -> investigationSource(context, plan));
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public java.util.Optional<FulfillmentSource> findByStepId(UUID stepId) {
+    TenantContext context = investigationContext();
+    return store
+        .findByStep(context.tenantId(), Objects.requireNonNull(stepId, "stepId"))
+        .flatMap(plan -> investigationSource(context, plan));
   }
 
   @Transactional
@@ -511,6 +555,36 @@ public class FulfillmentPlanService {
         steps.stream().flatMap(step -> step.allowedActions().stream()).distinct().toList());
   }
 
+  private java.util.Optional<FulfillmentSource> investigationSource(
+      TenantContext context, Plan plan) {
+    List<Step> steps = store.steps(context.tenantId(), plan.id());
+    boolean warehouse = context.hasRoleCode("warehouse-operator");
+    if (warehouse) {
+      if (!store.hasCurrentWarehouseTask(context.tenantId(), plan.id())
+          || !reservations.hasCurrentWarehouseAssignment(plan.reservationId())) {
+        return java.util.Optional.empty();
+      }
+    }
+    Step current =
+        steps.stream()
+            .filter(
+                step -> !terminal(step.status()) && step.status() != FulfillmentStepStatus.BLOCKED)
+            .filter(step -> !warehouse || "WAREHOUSE_OPERATOR".equals(step.ownerRole()))
+            .findFirst()
+            .orElse(null);
+    return java.util.Optional.of(
+        new FulfillmentSource(
+            plan.id(),
+            plan.orderId(),
+            plan.reservationId(),
+            plan.status(),
+            current == null
+                ? null
+                : new CurrentStep(current.code(), current.status(), current.ownerRole()),
+            plan.version(),
+            plan.updatedAt()));
+  }
+
   private SummaryView summary(TenantId tenantId, Plan plan) {
     List<Step> steps = store.steps(tenantId, plan.id());
     Step current =
@@ -540,6 +614,10 @@ public class FulfillmentPlanService {
           "Customer milestones are available through the order timeline");
     }
     return context;
+  }
+
+  private TenantContext investigationContext() {
+    return readableContext();
   }
 
   private TenantContext operatingContext() {

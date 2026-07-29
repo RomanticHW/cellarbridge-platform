@@ -9,10 +9,16 @@ import com.rom.cellarbridge.identityaccess.AuthorizationService;
 import com.rom.cellarbridge.identityaccess.PermissionCode;
 import com.rom.cellarbridge.identityaccess.TenantContext;
 import com.rom.cellarbridge.identityaccess.TenantContextHolder;
+import com.rom.cellarbridge.inventory.InventorySupplyQuery;
 import com.rom.cellarbridge.partner.PartnerEligibilityException;
 import com.rom.cellarbridge.partner.PartnerEligibilityService;
 import com.rom.cellarbridge.partner.PartnerEligibilityService.AddressSnapshot;
 import com.rom.cellarbridge.partner.PartnerEligibilityService.EligibilitySnapshot;
+import com.rom.cellarbridge.quotation.QuotationInvestigationQuery;
+import com.rom.cellarbridge.quotation.QuotationInvestigationQuery.ExactSupplyEvidence;
+import com.rom.cellarbridge.quotation.QuotationInvestigationQuery.ExactSupplyLine;
+import com.rom.cellarbridge.quotation.QuotationInvestigationQuery.QuotationFact;
+import com.rom.cellarbridge.quotation.QuotationInvestigationQuery.UntrustedBusinessData;
 import com.rom.cellarbridge.quotation.QuotationStatus;
 import com.rom.cellarbridge.quotation.QuotationSupplyDecisionStatus;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationAggregate;
@@ -55,6 +61,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -63,15 +70,17 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-public class QuotationApplicationService {
+public class QuotationApplicationService implements QuotationInvestigationQuery {
 
   private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+  private static final int MAX_BUSINESS_TEXT_CODE_POINTS = 2_000;
   static final String TERMS_VERSION = "TERMS-2026-01";
   private static final Duration PORTAL_READ_RETENTION = Duration.ofDays(30);
   private final QuotationRepository repository;
   private final PartnerEligibilityService partnerEligibilityService;
   private final CatalogSearchQuery catalogSearchQuery;
   private final TradePlanningService tradePlanningService;
+  private final InventorySupplyQuery inventorySupplyQuery;
   private final TenantContextHolder contextHolder;
   private final AuthorizationService authorizationService;
   private final Clock clock;
@@ -81,6 +90,7 @@ public class QuotationApplicationService {
       PartnerEligibilityService partnerEligibilityService,
       CatalogSearchQuery catalogSearchQuery,
       TradePlanningService tradePlanningService,
+      InventorySupplyQuery inventorySupplyQuery,
       TenantContextHolder contextHolder,
       AuthorizationService authorizationService,
       Clock clock) {
@@ -88,6 +98,7 @@ public class QuotationApplicationService {
     this.partnerEligibilityService = partnerEligibilityService;
     this.catalogSearchQuery = catalogSearchQuery;
     this.tradePlanningService = tradePlanningService;
+    this.inventorySupplyQuery = inventorySupplyQuery;
     this.contextHolder = contextHolder;
     this.authorizationService = authorizationService;
     this.clock = clock;
@@ -121,6 +132,18 @@ public class QuotationApplicationService {
     QuotationAggregate quotation = requireQuotation(context, quotationId);
     quotation.requireOwnerOrManager(context.userId(), canManage(context));
     return detail(quotation, context);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public Optional<QuotationFact> find(UUID quotationId, UUID revisionId) {
+    TenantContext context = context();
+    authorizationService.require(PermissionCode.QUOTATION_READ, context.tenantId());
+    UUID partnerScope = context.partnerId();
+    UUID ownerScope = partnerScope == null && !canManage(context) ? context.userId() : null;
+    return repository
+        .findForInvestigation(context.tenantId(), quotationId, revisionId, partnerScope, ownerScope)
+        .map(quotation -> investigationFact(quotation, context));
   }
 
   @Transactional(readOnly = true)
@@ -485,6 +508,128 @@ public class QuotationApplicationService {
         allowedActions(quotation, context),
         quotation.approvals(),
         quotation.timeline());
+  }
+
+  private QuotationFact investigationFact(QuotationAggregate quotation, TenantContext context) {
+    boolean sensitive = context.hasPermission(PermissionCode.QUOTATION_READ_COMMERCIAL_SENSITIVE);
+    boolean sourceSummaryOnly =
+        context.hasRoleCode("finance-specialist")
+            || context.hasRoleCode("auditor")
+            || context.hasRoleCode("warehouse-operator")
+            || context.hasRoleCode("system-operator");
+    PricingResult pricing = quotation.revision().pricing();
+    return new QuotationFact(
+        quotation.id(),
+        quotation.number(),
+        quotation.revision().id(),
+        quotation.revision().number(),
+        quotation.status(),
+        businessText(quotation.revision().partnerSnapshot().displayName()),
+        quotation.revision().terms().currency(),
+        pricing.total(),
+        sensitive ? pricing.totalCost() : null,
+        sensitive ? pricing.marginRate() : null,
+        sourceSummaryOnly ? null : quotation.revision().selectedRouteCode(),
+        sourceSummaryOnly ? null : quotation.revision().supplyDecisionStatus(),
+        context.partnerId() == null && !sourceSummaryOnly
+            ? routeDecision(quotation, sensitive)
+            : null,
+        sourceSummaryOnly
+            ? null
+            : exactSupplyEvidence(quotation.revision().supplyDecision(), context),
+        quotation.version(),
+        quotation.updatedAt());
+  }
+
+  private QuotationInvestigationQuery.RouteDecision routeDecision(
+      QuotationAggregate quotation, boolean sensitive) {
+    if (quotation.revision().routeEvaluationId() == null) return null;
+    RouteEvaluation evaluation =
+        tradePlanningService.get(quotation.tenantId(), quotation.revision().routeEvaluationId());
+    SupplyDecisionSnapshot supply = evaluation.supplyDecision();
+    return new QuotationInvestigationQuery.RouteDecision(
+        evaluation.evaluationId(),
+        evaluation.policyVersion(),
+        evaluation.evaluatedAt(),
+        evaluation.recommendedRouteCode(),
+        evaluation.selectedRouteCode(),
+        evaluation.candidates().stream()
+            .map(
+                candidate ->
+                    new QuotationInvestigationQuery.RouteCandidate(
+                        candidate.routeCode(),
+                        candidate.eligibility(),
+                        sensitive && candidate.score() != null
+                            ? new QuotationInvestigationQuery.RouteScore(
+                                candidate.score().cost(),
+                                candidate.score().leadTime(),
+                                candidate.score().supplyConfidence(),
+                                candidate.score().operationalSimplicity(),
+                                candidate.score().total())
+                            : null,
+                        candidate.estimatedDeliveryDate(),
+                        sensitive ? candidate.estimatedCharges() : null,
+                        candidate.currency(),
+                        candidate.rejections().stream()
+                            .map(
+                                rejection ->
+                                    new QuotationInvestigationQuery.RouteRule(
+                                        rejection.ruleId(), rejection.code()))
+                            .toList()))
+            .toList(),
+        sensitive && evaluation.override() != null
+            ? new QuotationInvestigationQuery.RouteOverride(
+                businessText(evaluation.override().reason()),
+                evaluation.override().actorId(),
+                evaluation.override().occurredAt(),
+                evaluation.override().originalRecommendation())
+            : null,
+        supply == null
+            ? null
+            : new QuotationInvestigationQuery.SupplyDecisionEvidence(
+                supply.policyVersion(),
+                supply.decidedAt(),
+                supply.inventoryDataAsOf(),
+                supply.decisionHash()));
+  }
+
+  private ExactSupplyEvidence exactSupplyEvidence(
+      SupplyDecisionSnapshot supply, TenantContext context) {
+    if (supply == null
+        || context.partnerId() != null
+        || !context.hasPermission(PermissionCode.INVENTORY_READ)
+        || !context.hasPermission(PermissionCode.INVENTORY_READ_EXACT)) return null;
+    Set<UUID> poolIds =
+        supply.lineDecisions().stream()
+            .map(SupplyDecisionSnapshot.LineDecision::supplyPoolId)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toUnmodifiableSet());
+    Set<UUID> visiblePoolIds = inventorySupplyQuery.authorizedSupplyPoolIds(poolIds);
+    List<ExactSupplyLine> lines =
+        supply.lineDecisions().stream()
+            .filter(line -> visiblePoolIds.contains(line.supplyPoolId()))
+            .map(
+                line ->
+                    new ExactSupplyLine(
+                        line.quotationLineId(),
+                        line.skuId(),
+                        line.requestedQuantity(),
+                        line.quantityUnit(),
+                        line.allocationMode(),
+                        line.supplyPoolId(),
+                        line.supplyType()))
+            .toList();
+    return lines.isEmpty() ? null : new ExactSupplyEvidence(lines);
+  }
+
+  private static UntrustedBusinessData businessText(String value) {
+    int length = value.codePointCount(0, value.length());
+    boolean truncated = length > MAX_BUSINESS_TEXT_CODE_POINTS;
+    String visible =
+        truncated
+            ? value.substring(0, value.offsetByCodePoints(0, MAX_BUSINESS_TEXT_CODE_POINTS))
+            : value;
+    return new UntrustedBusinessData("UNTRUSTED_BUSINESS_DATA", visible, truncated);
   }
 
   private SummaryView summary(QuotationAggregate quotation) {

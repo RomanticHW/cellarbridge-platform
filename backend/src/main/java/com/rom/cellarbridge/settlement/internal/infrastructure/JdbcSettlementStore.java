@@ -118,6 +118,21 @@ public class JdbcSettlementStore implements SettlementStore {
   }
 
   @Override
+  public Optional<ReceivableRecord> findByTrigger(
+      TenantId tenantId, String triggerType, UUID triggerId, UUID partnerScope) {
+    String sql =
+        "SELECT * FROM settlement.receivable WHERE tenant_id = :tenantId"
+            + " AND trigger_type = :triggerType AND trigger_id = :triggerId";
+    MapSqlParameterSource parameters =
+        params(tenantId).addValue("triggerType", triggerType).addValue("triggerId", triggerId);
+    if (partnerScope != null) {
+      sql += " AND partner_id = :partnerId";
+      parameters.addValue("partnerId", partnerScope);
+    }
+    return queryReceivable(sql, parameters);
+  }
+
+  @Override
   public Optional<ReceivableRecord> find(
       TenantId tenantId, UUID receivableId, UUID partnerScope, boolean lock) {
     String sql =
@@ -129,6 +144,23 @@ public class JdbcSettlementStore implements SettlementStore {
     }
     if (lock) sql += " FOR UPDATE";
     return queryReceivable(sql, parameters);
+  }
+
+  @Override
+  public List<ReceivableRecord> findByOrder(
+      TenantId tenantId, UUID orderId, UUID partnerScope, int limit) {
+    String sql =
+        "SELECT * FROM settlement.receivable WHERE tenant_id = :tenantId AND order_id = :orderId";
+    MapSqlParameterSource parameters =
+        params(tenantId).addValue("orderId", orderId).addValue("limit", limit);
+    if (partnerScope != null) {
+      sql += " AND partner_id = :partnerId";
+      parameters.addValue("partnerId", partnerScope);
+    }
+    return jdbc.query(
+        sql + " ORDER BY created_at DESC, id DESC LIMIT :limit",
+        parameters,
+        (rs, row) -> receivable(rs));
   }
 
   @Override

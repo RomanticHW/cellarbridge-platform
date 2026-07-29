@@ -239,6 +239,53 @@ public class JdbcFulfillmentPlanStore implements FulfillmentPlanStore {
   }
 
   @Override
+  public Optional<Plan> findByReservation(TenantId tenantId, UUID reservationId) {
+    return queryPlan(
+        SELECT_PLAN + " WHERE tenant_id = :tenantId AND reservation_id = :reservationId",
+        new MapSqlParameterSource()
+            .addValue("tenantId", tenantId.value())
+            .addValue("reservationId", reservationId));
+  }
+
+  @Override
+  public Optional<Plan> findByStep(TenantId tenantId, UUID stepId) {
+    return queryPlan(
+        SELECT_PLAN
+            + """
+              WHERE tenant_id = :tenantId
+                AND id = (
+                  SELECT plan_id
+                    FROM fulfillment.fulfillment_step
+                   WHERE tenant_id = :tenantId
+                     AND id = :stepId
+                )
+              """,
+        new MapSqlParameterSource()
+            .addValue("tenantId", tenantId.value())
+            .addValue("stepId", stepId));
+  }
+
+  @Override
+  public boolean hasCurrentWarehouseTask(TenantId tenantId, UUID planId) {
+    return Boolean.TRUE.equals(
+        jdbc.queryForObject(
+            """
+            SELECT EXISTS (
+              SELECT 1
+                FROM fulfillment.fulfillment_step
+               WHERE tenant_id = :tenantId
+                 AND plan_id = :planId
+                 AND owner_role = 'WAREHOUSE_OPERATOR'
+                 AND status IN ('READY', 'IN_PROGRESS', 'FAILED', 'OVERDUE')
+            )
+            """,
+            new MapSqlParameterSource()
+                .addValue("tenantId", tenantId.value())
+                .addValue("planId", planId),
+            Boolean.class));
+  }
+
+  @Override
   public Optional<Plan> find(TenantId tenantId, UUID planId, boolean forUpdate) {
     return queryPlan(
         SELECT_PLAN
