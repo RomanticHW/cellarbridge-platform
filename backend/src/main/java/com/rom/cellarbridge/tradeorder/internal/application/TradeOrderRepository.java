@@ -18,6 +18,9 @@ public interface TradeOrderRepository {
 
   Optional<TradeOrder> findBySourceQuotation(TenantId tenantId, UUID sourceQuotationId);
 
+  Optional<TradeOrder> findBySourceQuotation(
+      TenantId tenantId, UUID sourceQuotationId, UUID partnerScope, UUID ownerScope);
+
   Optional<TradeOrder> find(TenantId tenantId, UUID orderId, UUID partnerScope, UUID ownerScope);
 
   /** Locks one tenant-scoped order while an asynchronous lifecycle outcome is applied. */
@@ -48,7 +51,11 @@ public interface TradeOrderRepository {
       CursorPosition after,
       int limit);
 
-  List<TimelineEntry> timeline(TenantId tenantId, UUID orderId, boolean customerOnly);
+  default List<TimelineEntry> timeline(TenantId tenantId, UUID orderId, boolean customerOnly) {
+    return timeline(tenantId, orderId, customerOnly, Integer.MAX_VALUE);
+  }
+
+  List<TimelineEntry> timeline(TenantId tenantId, UUID orderId, boolean customerOnly, int limit);
 
   record CursorPosition(Instant createdAt, UUID id) {}
 

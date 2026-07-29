@@ -38,6 +38,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.oauth2.jwt.BadJwtException;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
@@ -74,11 +75,15 @@ class FulfillmentOrchestrationIntegrationTest extends PostgresIntegrationTestSup
   void exposesFulfillmentRoutesOnlyToAuthenticatedInternalReaders() throws Exception {
     UUID orderId = UUID.randomUUID();
     handler.handle(confirmed(orderId, "SH_GENERAL_TRADE"));
+    UUID planId = planId(orderId);
 
     assertThat(get("/api/v1/fulfillment/plans?pageSize=100", NORTH_ADMIN).statusCode())
         .isEqualTo(200);
     assertThat(get("/api/v1/fulfillment/plans", NORTH_BUYER).statusCode()).isEqualTo(403);
     assertThat(get("/api/v1/fulfillment/plans", null).statusCode()).isEqualTo(401);
+    try (var ignored = contexts.open(buyer(TENANT))) {
+      assertThatThrownBy(() -> service.findById(planId)).isInstanceOf(AccessDeniedException.class);
+    }
   }
 
   @Test
@@ -92,6 +97,13 @@ class FulfillmentOrchestrationIntegrationTest extends PostgresIntegrationTestSup
     UUID planId = planId(orderId);
     assertThat(countPlans(orderId)).isEqualTo(1);
     assertThat(templateVersion(planId)).isEqualTo("2026.1");
+    try (var ignored = contexts.open(tradeOperator(TENANT))) {
+      var source = service.findById(planId).orElseThrow();
+      assertThat(service.findByOrderId(orderId)).isPresent();
+      assertThat(service.findByReservationId(source.reservationId())).isPresent();
+      assertThat(service.findByStepId(firstStep(planId))).isPresent();
+      assertThat(service.findById(UUID.randomUUID())).isEmpty();
+    }
     try (TenantContextHolder.Scope ignored = contexts.open(operator(TENANT))) {
       DetailView detail = service.get(planId);
       assertThat(detail.steps()).hasSize(5);
@@ -343,6 +355,51 @@ class FulfillmentOrchestrationIntegrationTest extends PostgresIntegrationTestSup
               FulfillmentProblem.class,
               problem -> assertThat(problem.code()).isEqualTo("RESOURCE_NOT_FOUND"));
     }
+    try (var ignored = contexts.open(tradeOperator(OTHER_TENANT))) {
+      assertThat(service.findById(planId)).isEmpty();
+    }
+    try (var ignored = contexts.open(tradeOperator(TENANT))) {
+      assertThat(service.findById(planId)).isPresent();
+    }
+    try (var ignored = contexts.open(tradeOperator(TENANT, Set.of()))) {
+      assertThatThrownBy(() -> service.findById(planId)).isInstanceOf(AccessDeniedException.class);
+    }
+  }
+
+  @Test
+  void scopesWarehouseInvestigationToAssignedActiveWarehouseSteps() {
+    UUID orderId = UUID.randomUUID();
+    EventDelivery event = confirmed(orderId, "NB_BONDED_B2B");
+    handler.handle(event);
+    UUID planId = planId(orderId);
+    UUID reservationId =
+        jdbc.queryForObject(
+            "SELECT reservation_id FROM fulfillment.fulfillment_plan WHERE id = ?",
+            UUID.class,
+            planId);
+    UUID warehouseStep =
+        jdbc.queryForObject(
+            "SELECT id FROM fulfillment.fulfillment_step WHERE plan_id = ? AND owner_role = 'WAREHOUSE_OPERATOR' ORDER BY sequence_number LIMIT 1",
+            UUID.class,
+            planId);
+    insertAssignedReservation(reservationId, orderId);
+    try (var ignored = contexts.open(warehouseOperator(TENANT))) {
+      assertThat(service.findById(planId)).isEmpty();
+    }
+    jdbc.update(
+        "UPDATE fulfillment.fulfillment_step SET status = 'READY' WHERE id = ?", warehouseStep);
+    try (var ignored = contexts.open(warehouseOperator(TENANT))) {
+      var source = service.findById(planId).orElseThrow();
+      assertThat(source.currentStep().ownerRole()).isEqualTo("WAREHOUSE_OPERATOR");
+    }
+    try (var ignored =
+        contexts.open(
+            warehouseOperator(TENANT, UUID.fromString("11200000-0000-4000-8000-000000000003")))) {
+      assertThat(service.findById(planId)).isEmpty();
+    }
+    try (var ignored = contexts.open(operator(TENANT))) {
+      assertThat(service.findById(planId)).isEmpty();
+    }
   }
 
   @Test
@@ -472,33 +529,97 @@ class FulfillmentOrchestrationIntegrationTest extends PostgresIntegrationTestSup
   }
 
   private static TenantContext operator(TenantId tenantId) {
-    return new TenantContext(
+    return context(
         ACTOR,
+        tenantId,
+        null,
         "Fulfillment Operator",
+        Set.of("trade-operator", "warehouse-operator"),
+        Set.of(PermissionCode.FULFILLMENT_READ, PermissionCode.FULFILLMENT_OPERATE));
+  }
+
+  private static TenantContext tradeOperator(TenantId tenantId) {
+    return tradeOperator(
+        tenantId, Set.of(PermissionCode.FULFILLMENT_READ, PermissionCode.FULFILLMENT_OPERATE));
+  }
+
+  private static TenantContext tradeOperator(TenantId tenantId, Set<PermissionCode> permissions) {
+    return context(ACTOR, tenantId, null, "Trade Operator", Set.of("trade-operator"), permissions);
+  }
+
+  private static TenantContext warehouseOperator(TenantId tenantId) {
+    return warehouseOperator(tenantId, ACTOR);
+  }
+
+  private static TenantContext warehouseOperator(TenantId tenantId, UUID actor) {
+    return context(
+        actor,
+        tenantId,
+        null,
+        "Warehouse Operator",
+        Set.of("warehouse-operator"),
+        Set.of(PermissionCode.FULFILLMENT_READ, PermissionCode.INVENTORY_READ));
+  }
+
+  private static TenantContext buyer(TenantId tenantId) {
+    return context(
+        ACTOR,
+        tenantId,
+        UUID.randomUUID(),
+        "Buyer",
+        Set.of("buyer"),
+        Set.of(PermissionCode.FULFILLMENT_READ));
+  }
+
+  private static TenantContext context(
+      UUID actor,
+      TenantId tenantId,
+      UUID partnerId,
+      String role,
+      Set<String> roleCodes,
+      Set<PermissionCode> permissions) {
+    return new TenantContext(
+        actor,
+        role,
         tenantId,
         "Synthetic Cellars",
         "ACTIVE",
-        null,
-        Set.of("Trade Operator", "Warehouse Operator"),
-        Set.of("trade-operator", "warehouse-operator"),
-        Set.of(PermissionCode.FULFILLMENT_READ, PermissionCode.FULFILLMENT_OPERATE),
+        partnerId,
+        Set.of(role),
+        roleCodes,
+        permissions,
         "subject-fulfillment",
         "tenant-fulfillment");
   }
 
-  private static TenantContext tradeOperator(TenantId tenantId) {
-    return new TenantContext(
-        ACTOR,
-        "Trade Operator",
-        tenantId,
-        "Synthetic Cellars",
-        "ACTIVE",
-        null,
-        Set.of("Trade Operator"),
-        Set.of("trade-operator"),
-        Set.of(PermissionCode.FULFILLMENT_READ, PermissionCode.FULFILLMENT_OPERATE),
-        "subject-trade-operator",
-        "tenant-fulfillment");
+  private void insertAssignedReservation(UUID reservationId, UUID orderId) {
+    jdbc.update(
+        """
+        INSERT INTO inventory.reservation
+          (id, tenant_id, order_id, request_hash, supply_decision_hash, route_code, status,
+           request_schema_version, request_lines, version, created_at, updated_at)
+        VALUES (?, ?, ?, repeat('a', 64), repeat('b', 64), 'SH_GENERAL_TRADE', 'CONFIRMED',
+                1, '[{}]'::jsonb, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        """,
+        reservationId,
+        TENANT.value(),
+        orderId);
+    jdbc.update(
+        """
+        INSERT INTO inventory.allocation
+          (id, tenant_id, reservation_id, order_line_id, source_quotation_line_id, sku_id,
+           quantity_unit, supply_type, allocation_mode, supply_pool_id, lot_id,
+           allocated_quantity, released_quantity, consumed_quantity, remaining_reserved_quantity,
+           warehouse_priority, warehouse_version, created_at)
+        VALUES (?, ?, ?, ?, ?, '34000000-0000-4000-8000-000000000001', 'CASE',
+                'DOMESTIC_ON_HAND', 'FIXED_POOL', '36000000-0000-4000-8000-000000000001',
+                '37000000-0000-4000-8000-000000000001', 1, 0, 0, 1, 10, 0, CURRENT_TIMESTAMP)
+        """,
+        UUID.randomUUID(),
+        TENANT.value(),
+        reservationId,
+        UUID.randomUUID(),
+        UUID.randomUUID());
   }
 
   private UUID planId(UUID orderId) {

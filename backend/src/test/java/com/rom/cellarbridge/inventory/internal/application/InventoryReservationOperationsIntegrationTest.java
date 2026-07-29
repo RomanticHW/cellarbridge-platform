@@ -17,6 +17,7 @@ import com.rom.cellarbridge.inventory.internal.domain.InventoryMovement;
 import com.rom.cellarbridge.inventory.internal.domain.Reservation;
 import com.rom.cellarbridge.inventory.internal.domain.Reservation.AllocationMode;
 import com.rom.cellarbridge.inventory.internal.domain.ReservationAttempt;
+import com.rom.cellarbridge.inventory.internal.domain.ShortageSnapshot;
 import com.rom.cellarbridge.test.PostgresIntegrationTestSupport;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.math.BigDecimal;
@@ -297,6 +298,8 @@ class InventoryReservationOperationsIntegrationTest extends PostgresIntegrationT
   void permissionTenantAndValidationFailuresHaveNoPersistentSideEffects() {
     Fixture fixture = confirmed("2");
     Allocation allocation = fixture.allocations().getFirst();
+    Reservation noAllocation = pending();
+    Reservation failed = failed();
 
     try (TenantContextHolder.Scope ignored = contexts.open(context(TENANT, Set.of()))) {
       assertThatThrownBy(
@@ -306,6 +309,86 @@ class InventoryReservationOperationsIntegrationTest extends PostgresIntegrationT
                       OperationType.RELEASE,
                       key("denied"),
                       List.of(item(allocation, "1"))))
+          .isInstanceOf(AccessDeniedException.class);
+    }
+    try (var ignored =
+        contexts.open(
+            context(
+                TENANT,
+                Set.of(PermissionCode.INVENTORY_READ, PermissionCode.INVENTORY_READ_EXACT)))) {
+      var source = service.findById(fixture.reservation().id()).orElseThrow();
+      assertThat(service.findByOrderId(source.orderId())).isPresent();
+      assertThat(source.allocations())
+          .singleElement()
+          .satisfies(
+              exact -> {
+                assertThat(new BigDecimal(exact.requestedQuantity())).isEqualByComparingTo("2");
+                assertThat(new BigDecimal(exact.allocatedQuantity())).isEqualByComparingTo("2");
+                assertThat(new BigDecimal(exact.releasedQuantity())).isEqualByComparingTo("0");
+                assertThat(new BigDecimal(exact.consumedQuantity())).isEqualByComparingTo("0");
+                assertThat(new BigDecimal(exact.remainingReservedQuantity()))
+                    .isEqualByComparingTo("2");
+                assertThat(exact.quantityUnit()).isEqualTo("CASE");
+                assertThat(exact.allocationId()).isNotNull();
+                assertThat(exact.orderLineId()).isNotNull();
+                assertThat(exact.skuId()).isEqualTo(SKU);
+                assertThat(exact.supplyPoolId()).isEqualTo(POOL);
+                assertThat(exact.lotId()).isNotNull();
+                assertThat(exact.warehouseLabel())
+                    .returns("UNTRUSTED_BUSINESS_DATA", value -> value.classification())
+                    .returns(false, value -> value.truncated())
+                    .extracting(value -> value.value())
+                    .asString()
+                    .isNotBlank();
+              });
+      var failure = service.findById(failed.id()).orElseThrow();
+      assertThat(failure.failureCode()).isEqualTo("INSUFFICIENT_INVENTORY");
+      assertThat(failure.latestAttemptNumber()).isOne();
+      assertThat(failure.shortages())
+          .singleElement()
+          .satisfies(
+              shortage -> {
+                assertThat(new BigDecimal(shortage.requestedQuantity())).isEqualByComparingTo("1");
+                assertThat(new BigDecimal(shortage.availableQuantity())).isEqualByComparingTo("0");
+                assertThat(new BigDecimal(shortage.shortageQuantity())).isEqualByComparingTo("1");
+                assertThat(shortage.quantityUnit()).isEqualTo("CASE");
+                assertThat(shortage.orderLineId()).isNotNull();
+                assertThat(shortage.skuId()).isEqualTo(SKU);
+                assertThat(shortage.failureCode()).isEqualTo("INSUFFICIENT_INVENTORY");
+                assertThat(shortage.supplyPoolId()).isEqualTo(POOL);
+                assertThat(shortage.warehouseLabel())
+                    .returns("UNTRUSTED_BUSINESS_DATA", value -> value.classification())
+                    .returns(false, value -> value.truncated())
+                    .extracting(value -> value.value())
+                    .asString()
+                    .isNotBlank();
+              });
+    }
+    try (var ignored = contexts.open(context(TENANT, Set.of(PermissionCode.INVENTORY_READ)))) {
+      assertThat(service.findById(failed.id()).orElseThrow().shortages()).isEmpty();
+      assertThat(service.findById(fixture.reservation().id()).orElseThrow().allocations())
+          .isEmpty();
+      assertThat(service.findById(UUID.randomUUID())).isEmpty();
+    }
+    try (var ignored =
+        contexts.open(context(TENANT, Set.of(PermissionCode.INVENTORY_READ_EXACT)))) {
+      assertThatThrownBy(() -> service.findById(fixture.reservation().id()))
+          .isInstanceOf(AccessDeniedException.class);
+    }
+    try (var ignored = contexts.open(warehouse(TENANT, ACTOR))) {
+      assertThat(service.findById(fixture.reservation().id())).isPresent();
+      assertThat(service.findById(noAllocation.id())).isEmpty();
+    }
+    try (var ignored =
+        contexts.open(warehouse(TENANT, UUID.fromString("11200000-0000-4000-8000-000000000003")))) {
+      assertThat(service.findById(fixture.reservation().id())).isEmpty();
+    }
+    try (var ignored =
+        contexts.open(context(OTHER_TENANT, Set.of(PermissionCode.INVENTORY_READ)))) {
+      assertThat(service.findById(fixture.reservation().id())).isEmpty();
+    }
+    try (var ignored = contexts.open(context(TENANT, Set.of()))) {
+      assertThatThrownBy(() -> service.findById(fixture.reservation().id()))
           .isInstanceOf(AccessDeniedException.class);
     }
     try (TenantContextHolder.Scope ignored = contexts.open(operator(OTHER_TENANT))) {
@@ -493,6 +576,46 @@ class InventoryReservationOperationsIntegrationTest extends PostgresIntegrationT
     return reservation;
   }
 
+  private Reservation failed() {
+    Reservation pending = pending();
+    Reservation.Line line = pending.lines().getFirst();
+    String failure = "INSUFFICIENT_INVENTORY";
+    reservations.appendAttempt(
+        TENANT,
+        new ReservationAttempt(
+            UUID.randomUUID(),
+            TENANT,
+            pending.id(),
+            1,
+            pending.requestHash(),
+            ReservationAttempt.Trigger.EVENT,
+            NOW,
+            NOW.plusSeconds(1),
+            ReservationAttempt.Outcome.FAILED,
+            failure,
+            UUID.randomUUID(),
+            UUID.randomUUID()));
+    reservations.appendShortage(
+        TENANT,
+        new ShortageSnapshot(
+            UUID.randomUUID(),
+            TENANT,
+            pending.id(),
+            line.orderLineId(),
+            line.skuId(),
+            line.quantityUnit(),
+            line.requestedQuantity(),
+            BigDecimal.ZERO,
+            line.requestedQuantity(),
+            failure,
+            line.supplyPoolId(),
+            line.supplyType(),
+            NOW.plusSeconds(1)));
+    Reservation failed = pending.transition(Reservation.Status.FAILED, failure, NOW.plusSeconds(2));
+    reservations.updateState(TENANT, failed, 0);
+    return failed;
+  }
+
   private UUID insertLot(String reserved) {
     UUID lotId = UUID.randomUUID();
     jdbc.update(
@@ -542,15 +665,33 @@ class InventoryReservationOperationsIntegrationTest extends PostgresIntegrationT
 
   private static TenantContext context(
       TenantId tenantId, UUID actorId, Set<PermissionCode> permissions) {
+    return context(tenantId, actorId, "Inventory Operator", "inventory-operator", permissions);
+  }
+
+  private static TenantContext warehouse(TenantId tenantId, UUID actorId) {
+    return context(
+        tenantId,
+        actorId,
+        "Warehouse Operator",
+        "warehouse-operator",
+        Set.of(PermissionCode.INVENTORY_READ, PermissionCode.INVENTORY_READ_EXACT));
+  }
+
+  private static TenantContext context(
+      TenantId tenantId,
+      UUID actorId,
+      String role,
+      String roleCode,
+      Set<PermissionCode> permissions) {
     return new TenantContext(
         actorId,
-        "Inventory Operator",
+        role,
         tenantId,
         "Synthetic Cellars",
         "ACTIVE",
         null,
-        Set.of("Inventory Operator"),
-        Set.of("inventory-operator"),
+        Set.of(role),
+        Set.of(roleCode),
         permissions,
         "subject-operations",
         "tenant-operations");

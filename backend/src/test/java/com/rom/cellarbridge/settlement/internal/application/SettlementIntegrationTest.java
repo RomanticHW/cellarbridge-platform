@@ -13,6 +13,9 @@ import com.rom.cellarbridge.settlement.PaymentMethod;
 import com.rom.cellarbridge.settlement.PaymentRecordedV1;
 import com.rom.cellarbridge.settlement.PaymentReversedV1;
 import com.rom.cellarbridge.settlement.ReceivableCreatedV1;
+import com.rom.cellarbridge.settlement.ReceivableInvestigationQuery.DataClassification;
+import com.rom.cellarbridge.settlement.ReceivableInvestigationQuery.PaymentFact;
+import com.rom.cellarbridge.settlement.ReceivableInvestigationQuery.PaymentFactType;
 import com.rom.cellarbridge.settlement.ReceivableOverdueV1;
 import com.rom.cellarbridge.settlement.ReceivablePaidV1;
 import com.rom.cellarbridge.settlement.ReceivableStatus;
@@ -24,6 +27,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -193,6 +197,23 @@ class SettlementIntegrationTest extends PostgresIntegrationTestSupport {
               "Remaining transfer was returned");
       assertThat(secondReversal.detail().summary().outstandingAmount().amount())
           .isEqualTo("60.0000");
+      List<PaymentFact> facts = service.investigateReceivable(created.receivableId()).payments();
+      assertPayment(facts, PaymentFactType.PAYMENT, "40.0000", "BANK-SETTLEMENT-001", null, null);
+      assertPayment(facts, PaymentFactType.PAYMENT, "60.0000", "BANK-SETTLEMENT-002", null, null);
+      assertPayment(
+          facts,
+          PaymentFactType.REVERSAL,
+          "-10.0000",
+          "BANK-SETTLEMENT-002",
+          secondPayment,
+          "Bank reconciliation correction");
+      assertPayment(
+          facts,
+          PaymentFactType.REVERSAL,
+          "-50.0000",
+          "BANK-SETTLEMENT-002",
+          secondPayment,
+          "Remaining transfer was returned");
 
       assertThatThrownBy(
               () ->
@@ -208,6 +229,17 @@ class SettlementIntegrationTest extends PostgresIntegrationTestSupport {
               SettlementProblem.class,
               problem ->
                   assertThat(problem.code()).isEqualTo("PAYMENT_REVERSAL_EXCEEDS_AVAILABLE"));
+    }
+    try (var ignored = contexts.open(auditor(TENANT))) {
+      assertThat(service.investigateReceivable(created.receivableId()).payments())
+          .hasSize(4)
+          .allSatisfy(
+              fact -> {
+                assertThat(fact.amount()).isNull();
+                assertThat(fact.externalReference()).isNull();
+                assertThat(fact.reversalReason()).isNull();
+                assertThat(fact.actorId()).isNull();
+              });
     }
 
     assertThat(eventCount(created.receivableId(), PaymentRecordedV1.TYPE)).isEqualTo(2);
@@ -292,37 +324,90 @@ class SettlementIntegrationTest extends PostgresIntegrationTestSupport {
   @Test
   void enforcesTenantPartnerAndCommercialVisibilityBoundaries() {
     Created created = createReceivable("75.0000", 30, BASE.minusSeconds(86_400));
+    UUID guessed = UUID.randomUUID();
 
     try (TenantContextHolder.Scope ignored = contexts.open(finance(TENANT))) {
       assertThat(service.get(created.receivableId()).commercialAmountVisible()).isTrue();
+      var source = service.investigateReceivable(created.receivableId());
+      assertThat(source.originalAmount()).isNotNull();
+      assertThat(source.trigger()).isNull();
+      assertThat(service.investigateByFulfillment(created.planId())).isEmpty();
+      assertThat(service.investigateByOrder(created.orderId(), 20).items())
+          .extracting(item -> item.id())
+          .containsExactly(created.receivableId());
+    }
+    try (var ignored = contexts.open(finance(TENANT, PermissionCode.FULFILLMENT_READ))) {
+      assertThat(service.investigateReceivable(created.receivableId()).trigger()).isNotNull();
+      assertThat(service.investigateByFulfillment(created.planId())).isPresent();
+      assertThatThrownBy(() -> service.investigateReceivable(guessed))
+          .isInstanceOfSatisfying(
+              SettlementProblem.class,
+              problem -> assertThat(problem.code()).isEqualTo("RESOURCE_NOT_FOUND"));
+      assertThat(service.investigateByOrder(guessed, 20).items()).isEmpty();
+      assertThat(service.investigateByFulfillment(guessed)).isEmpty();
     }
     try (TenantContextHolder.Scope ignored = contexts.open(buyer(TENANT, PARTNER))) {
       var detail = service.get(created.receivableId());
       assertThat(detail.commercialAmountVisible()).isTrue();
       assertThat(detail.payments()).isEmpty();
       assertThat(detail.allowedActions()).isEmpty();
+      var source = service.investigateReceivable(created.receivableId());
+      assertThat(source.originalAmount()).isNotNull();
+      assertThat(source.trigger()).isNull();
+      assertThat(source.payments()).isEmpty();
+      assertThat(service.investigateByOrder(created.orderId(), 20).items())
+          .extracting(item -> item.id())
+          .containsExactly(created.receivableId());
+    }
+    try (var ignored = contexts.open(buyer(TENANT, PARTNER, PermissionCode.FULFILLMENT_READ))) {
+      assertThat(service.investigateByFulfillment(created.planId())).isEmpty();
     }
     try (TenantContextHolder.Scope ignored = contexts.open(buyer(TENANT, UUID.randomUUID()))) {
       assertThatThrownBy(() -> service.get(created.receivableId()))
           .isInstanceOfSatisfying(
               SettlementProblem.class,
               problem -> assertThat(problem.code()).isEqualTo("RESOURCE_NOT_FOUND"));
+      assertThatThrownBy(() -> service.investigateReceivable(created.receivableId()))
+          .isInstanceOfSatisfying(
+              SettlementProblem.class,
+              problem -> assertThat(problem.code()).isEqualTo("RESOURCE_NOT_FOUND"));
+      assertThat(service.investigateByOrder(created.orderId(), 20).items()).isEmpty();
+      assertThat(service.investigateByFulfillment(created.planId())).isEmpty();
     }
     try (TenantContextHolder.Scope ignored = contexts.open(auditor(TENANT))) {
       var detail = service.get(created.receivableId());
       assertThat(detail.commercialAmountVisible()).isFalse();
       assertThat(detail.summary().originalAmount()).isNull();
       assertThat(detail.summary().outstandingAmount()).isNull();
+      assertThat(service.investigateReceivable(created.receivableId()).originalAmount()).isNull();
+      assertThat(service.investigateReceivable(created.receivableId()).outstandingAmount())
+          .isNull();
     }
     try (TenantContextHolder.Scope ignored = contexts.open(systemOperator(TENANT))) {
       assertThatThrownBy(() -> service.get(created.receivableId()))
           .isInstanceOf(AccessDeniedException.class);
+      assertThatThrownBy(() -> service.investigateReceivable(created.receivableId()))
+          .isInstanceOf(AccessDeniedException.class);
     }
-    try (TenantContextHolder.Scope ignored = contexts.open(finance(OTHER_TENANT))) {
+    try (TenantContextHolder.Scope ignored =
+        contexts.open(finance(OTHER_TENANT, PermissionCode.FULFILLMENT_READ))) {
       assertThatThrownBy(() -> service.get(created.receivableId()))
           .isInstanceOfSatisfying(
               SettlementProblem.class,
               problem -> assertThat(problem.code()).isEqualTo("RESOURCE_NOT_FOUND"));
+      assertThatThrownBy(() -> service.investigateReceivable(created.receivableId()))
+          .isInstanceOfSatisfying(
+              SettlementProblem.class,
+              problem -> assertThat(problem.code()).isEqualTo("RESOURCE_NOT_FOUND"));
+      assertThat(service.investigateByOrder(created.orderId(), 20).items()).isEmpty();
+      assertThat(service.investigateByFulfillment(created.planId())).isEmpty();
+    }
+    jdbc.update(
+        "UPDATE settlement.receivable SET trigger_type = 'NON_FULFILLMENT_SOURCE' WHERE id = ?",
+        created.receivableId());
+    try (var ignored = contexts.open(finance(TENANT, PermissionCode.FULFILLMENT_READ))) {
+      assertThat(service.investigateByFulfillment(created.planId())).isEmpty();
+      assertThat(service.investigateReceivable(created.receivableId()).trigger()).isNull();
     }
   }
 
@@ -458,20 +543,54 @@ class SettlementIntegrationTest extends PostgresIntegrationTestSupport {
     return "settlement-integration-" + suffix;
   }
 
-  private static TenantContext finance(TenantId tenantId) {
-    return context(
-        tenantId,
-        null,
-        "Finance Specialist",
-        Set.of(
-            PermissionCode.SETTLEMENT_READ,
-            PermissionCode.SETTLEMENT_READ_COMMERCIAL_SENSITIVE,
-            PermissionCode.SETTLEMENT_RECORD_PAYMENT,
-            PermissionCode.SETTLEMENT_REVERSE_PAYMENT));
+  private static void assertPayment(
+      List<PaymentFact> facts,
+      PaymentFactType type,
+      String amount,
+      String reference,
+      UUID reversedPayment,
+      String reversalReason) {
+    assertThat(facts)
+        .filteredOn(fact -> fact.type() == type && fact.amount().amount().equals(amount))
+        .singleElement()
+        .satisfies(
+            fact -> {
+              assertThat(fact.externalReference())
+                  .returns(
+                      DataClassification.UNTRUSTED_BUSINESS_DATA, text -> text.classification())
+                  .returns(reference, text -> text.value())
+                  .returns(false, text -> text.truncated());
+              assertThat(fact.reversedPaymentId()).isEqualTo(reversedPayment);
+              if (reversalReason == null) {
+                assertThat(fact.reversalReason()).isNull();
+              } else {
+                assertThat(fact.reversalReason())
+                    .returns(
+                        DataClassification.UNTRUSTED_BUSINESS_DATA, text -> text.classification())
+                    .returns(reversalReason, text -> text.value())
+                    .returns(false, text -> text.truncated());
+              }
+              assertThat(fact.actorId()).isEqualTo(ACTOR);
+            });
   }
 
-  private static TenantContext buyer(TenantId tenantId, UUID partnerId) {
-    return context(tenantId, partnerId, "Buyer", Set.of(PermissionCode.SETTLEMENT_READ));
+  private static TenantContext finance(TenantId tenantId, PermissionCode... additional) {
+    Set<PermissionCode> permissions =
+        new HashSet<>(
+            Set.of(
+                PermissionCode.SETTLEMENT_READ,
+                PermissionCode.SETTLEMENT_READ_COMMERCIAL_SENSITIVE,
+                PermissionCode.SETTLEMENT_RECORD_PAYMENT,
+                PermissionCode.SETTLEMENT_REVERSE_PAYMENT));
+    permissions.addAll(List.of(additional));
+    return context(tenantId, null, "Finance Specialist", Set.copyOf(permissions));
+  }
+
+  private static TenantContext buyer(
+      TenantId tenantId, UUID partnerId, PermissionCode... additional) {
+    Set<PermissionCode> permissions = new HashSet<>(Set.of(PermissionCode.SETTLEMENT_READ));
+    permissions.addAll(List.of(additional));
+    return context(tenantId, partnerId, "Buyer", Set.copyOf(permissions));
   }
 
   private static TenantContext auditor(TenantId tenantId) {

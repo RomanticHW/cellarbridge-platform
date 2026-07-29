@@ -3,6 +3,9 @@ package com.rom.cellarbridge.exceptioncenter.internal.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.rom.cellarbridge.exceptioncenter.ExceptionCategory;
+import com.rom.cellarbridge.exceptioncenter.ExceptionInvestigationQuery.DataClassification;
+import com.rom.cellarbridge.exceptioncenter.ExceptionInvestigationQuery.ExceptionSourceType;
 import com.rom.cellarbridge.exceptioncenter.ExceptionStatus;
 import com.rom.cellarbridge.exceptioncenter.RecoveryAction;
 import com.rom.cellarbridge.fulfillment.FulfillmentRecoveryOperations;
@@ -38,6 +41,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -82,6 +86,42 @@ class ExceptionCenterIntegrationTest extends PostgresIntegrationTestSupport {
     failedHandler.handle(exactReplay);
 
     UUID caseId = caseId(TENANT, stepId);
+    try (var ignored = contexts.open(tradeOperator(TENANT))) {
+      var item = service.investigateCase(caseId);
+      assertThat(item.category()).isEqualTo(ExceptionCategory.FULFILLMENT_STEP_FAILED);
+      assertThat(item.source())
+          .returns(ExceptionSourceType.FULFILLMENT_STEP, value -> value.type())
+          .returns(stepId, value -> value.id());
+      assertThat(item.source().number())
+          .returns(DataClassification.UNTRUSTED_BUSINESS_DATA, value -> value.classification())
+          .returns(false, value -> value.truncated());
+      assertThat(item.summary())
+          .returns(DataClassification.UNTRUSTED_BUSINESS_DATA, value -> value.classification())
+          .returns(false, value -> value.truncated());
+      assertThat(
+              service.investigateBySource(ExceptionSourceType.FULFILLMENT_STEP, stepId, 20).items())
+          .containsExactly(item);
+      assertThat(
+              service
+                  .investigateBySource(ExceptionSourceType.EVENT_PUBLICATION, stepId, 20)
+                  .items())
+          .isEmpty();
+      UUID guessed = UUID.randomUUID();
+      assertThat(
+              service
+                  .investigateBySource(ExceptionSourceType.FULFILLMENT_STEP, guessed, 20)
+                  .items())
+          .isEmpty();
+      assertThatThrownBy(() -> service.investigateCase(guessed))
+          .isInstanceOfSatisfying(
+              ExceptionProblem.class,
+              problem -> assertThat(problem.code()).isEqualTo("RESOURCE_NOT_FOUND"));
+    }
+    try (var ignored =
+        contexts.open(context(TRADE_ACTOR, TENANT, Set.of("trade-operator"), Set.of()))) {
+      assertThatThrownBy(() -> service.investigateCase(caseId))
+          .isInstanceOf(AccessDeniedException.class);
+    }
     assertThat(count("exception_center.exception_case", "source_id", stepId)).isEqualTo(1);
     assertThat(count("exception_center.case_occurrence", "case_id", caseId)).isEqualTo(3);
     assertThat(count("exception_center.work_item", "case_id", caseId)).isEqualTo(1);
@@ -109,6 +149,15 @@ class ExceptionCenterIntegrationTest extends PostgresIntegrationTestSupport {
           .isInstanceOfSatisfying(
               ExceptionProblem.class,
               problem -> assertThat(problem.code()).isEqualTo("RESOURCE_NOT_FOUND"));
+      assertThatThrownBy(() -> service.investigateCase(businessCase))
+          .isInstanceOfSatisfying(
+              ExceptionProblem.class,
+              problem -> assertThat(problem.code()).isEqualTo("RESOURCE_NOT_FOUND"));
+      assertThat(
+              service
+                  .investigateBySource(ExceptionSourceType.FULFILLMENT_STEP, businessStep, 20)
+                  .items())
+          .isEmpty();
       assertThatThrownBy(
               () -> service.acknowledge(businessCase, 0, "Review the commercial failure"))
           .isInstanceOfSatisfying(
@@ -121,6 +170,15 @@ class ExceptionCenterIntegrationTest extends PostgresIntegrationTestSupport {
           .isInstanceOfSatisfying(
               ExceptionProblem.class,
               problem -> assertThat(problem.code()).isEqualTo("RESOURCE_NOT_FOUND"));
+      assertThatThrownBy(() -> service.investigateCase(businessCase))
+          .isInstanceOfSatisfying(
+              ExceptionProblem.class,
+              problem -> assertThat(problem.code()).isEqualTo("RESOURCE_NOT_FOUND"));
+      assertThat(
+              service
+                  .investigateBySource(ExceptionSourceType.FULFILLMENT_STEP, businessStep, 20)
+                  .items())
+          .isEmpty();
     }
 
     try (TenantContextHolder.Scope ignored = contexts.open(tradeOperator(TENANT))) {
@@ -421,6 +479,16 @@ class ExceptionCenterIntegrationTest extends PostgresIntegrationTestSupport {
       assertThat(service.list(Set.of(), null, null, null, null, 100, null).items())
           .extracting("id")
           .containsExactly(technicalCase);
+      var item = service.investigateCase(technicalCase);
+      assertThat(item.category()).isEqualTo(ExceptionCategory.EVENT_DELIVERY_FAILED);
+      assertThat(item.source())
+          .returns(ExceptionSourceType.EVENT_PUBLICATION, value -> value.type())
+          .returns(eventId, value -> value.id());
+      assertThat(
+              service
+                  .investigateBySource(ExceptionSourceType.EVENT_PUBLICATION, eventId, 20)
+                  .items())
+          .containsExactly(item);
 
       long recoveryVersion = begin(technicalCase).summary().version();
       var replayed =

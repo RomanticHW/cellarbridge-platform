@@ -69,6 +69,7 @@ backend/src/main/java/com/rom/cellarbridge/catalog/internal/infrastructure/JdbcC
 backend/src/main/java/com/rom/cellarbridge/catalog/package-info.java	source
 backend/src/main/java/com/rom/cellarbridge/exceptioncenter/ExceptionCategory.java	source
 backend/src/main/java/com/rom/cellarbridge/exceptioncenter/ExceptionClosedV1.java	source
+backend/src/main/java/com/rom/cellarbridge/exceptioncenter/ExceptionInvestigationQuery.java	source
 backend/src/main/java/com/rom/cellarbridge/exceptioncenter/ExceptionOpenedV1.java	source
 backend/src/main/java/com/rom/cellarbridge/exceptioncenter/ExceptionSeverity.java	source
 backend/src/main/java/com/rom/cellarbridge/exceptioncenter/ExceptionStatus.java	source
@@ -85,6 +86,7 @@ backend/src/main/java/com/rom/cellarbridge/exceptioncenter/internal/web/Exceptio
 backend/src/main/java/com/rom/cellarbridge/exceptioncenter/internal/web/ExceptionCaseExceptionHandler.java	source
 backend/src/main/java/com/rom/cellarbridge/exceptioncenter/package-info.java	source
 backend/src/main/java/com/rom/cellarbridge/fulfillment/FulfillmentCompletedV1.java	source
+backend/src/main/java/com/rom/cellarbridge/fulfillment/FulfillmentInvestigationQuery.java	source
 backend/src/main/java/com/rom/cellarbridge/fulfillment/FulfillmentPlanCreatedV1.java	source
 backend/src/main/java/com/rom/cellarbridge/fulfillment/FulfillmentRecoveryOperations.java	source
 backend/src/main/java/com/rom/cellarbridge/fulfillment/FulfillmentStatus.java	source
@@ -140,6 +142,7 @@ backend/src/main/java/com/rom/cellarbridge/inventory/AvailabilityClass.java	sour
 backend/src/main/java/com/rom/cellarbridge/inventory/InventoryRecoveryOperations.java	source
 backend/src/main/java/com/rom/cellarbridge/inventory/InventoryReservationConfirmedV1.java	source
 backend/src/main/java/com/rom/cellarbridge/inventory/InventoryReservationFailedV1.java	source
+backend/src/main/java/com/rom/cellarbridge/inventory/InventoryReservationInvestigationQuery.java	source
 backend/src/main/java/com/rom/cellarbridge/inventory/InventoryReservationRequestHashV1.java	source
 backend/src/main/java/com/rom/cellarbridge/inventory/InventorySupplyQuery.java	source
 backend/src/main/java/com/rom/cellarbridge/inventory/QuantityUnit.java	source
@@ -241,6 +244,7 @@ backend/src/main/java/com/rom/cellarbridge/platform/mcp/McpWarning.java	source
 backend/src/main/java/com/rom/cellarbridge/platform/mcp/package-info.java	source
 backend/src/main/java/com/rom/cellarbridge/platform/package-info.java	source
 backend/src/main/java/com/rom/cellarbridge/quotation/QuotationAcceptedV1.java	source
+backend/src/main/java/com/rom/cellarbridge/quotation/QuotationInvestigationQuery.java	source
 backend/src/main/java/com/rom/cellarbridge/quotation/QuotationSnapshotHashV1.java	source
 backend/src/main/java/com/rom/cellarbridge/quotation/QuotationStatus.java	source
 backend/src/main/java/com/rom/cellarbridge/quotation/QuotationSupplyDecisionStatus.java	source
@@ -267,6 +271,7 @@ backend/src/main/java/com/rom/cellarbridge/settlement/PaymentMethod.java	source
 backend/src/main/java/com/rom/cellarbridge/settlement/PaymentRecordedV1.java	source
 backend/src/main/java/com/rom/cellarbridge/settlement/PaymentReversedV1.java	source
 backend/src/main/java/com/rom/cellarbridge/settlement/ReceivableCreatedV1.java	source
+backend/src/main/java/com/rom/cellarbridge/settlement/ReceivableInvestigationQuery.java	source
 backend/src/main/java/com/rom/cellarbridge/settlement/ReceivableOverdueV1.java	source
 backend/src/main/java/com/rom/cellarbridge/settlement/ReceivablePaidV1.java	source
 backend/src/main/java/com/rom/cellarbridge/settlement/ReceivableStatus.java	source
@@ -284,6 +289,7 @@ backend/src/main/java/com/rom/cellarbridge/settlement/internal/web/SettlementCon
 backend/src/main/java/com/rom/cellarbridge/settlement/internal/web/SettlementExceptionHandler.java	source
 backend/src/main/java/com/rom/cellarbridge/settlement/package-info.java	source
 backend/src/main/java/com/rom/cellarbridge/tradeorder/TradeOrderCreatedV1.java	source
+backend/src/main/java/com/rom/cellarbridge/tradeorder/TradeOrderInvestigationQuery.java	source
 backend/src/main/java/com/rom/cellarbridge/tradeorder/TradeOrderStatus.java	source
 backend/src/main/java/com/rom/cellarbridge/tradeorder/TradeOrderSupplyDecisionStatus.java	source
 backend/src/main/java/com/rom/cellarbridge/tradeorder/internal/application/FulfillmentCompletedEventHandler.java	source
@@ -567,6 +573,7 @@ docs/03-architecture/adr/ADR-023-inventory-reservation-operations.md	doc
 docs/03-architecture/adr/ADR-024-audit-entry-immutability-trigger.md	doc
 docs/03-architecture/adr/ADR-025-open-telemetry-observability-profile.md	doc
 docs/03-architecture/adr/ADR-026-authenticated-read-only-mcp-interface.md	doc
+docs/03-architecture/adr/ADR-027-source-owned-business-investigation-facades.md	doc
 docs/04-contracts/00-api-guidelines.md	doc
 docs/04-contracts/01-error-catalog.md	doc
 docs/04-contracts/02-idempotency.md	doc
@@ -578,6 +585,7 @@ docs/04-contracts/07-audit-model.md	doc
 docs/04-contracts/08-reporting-read-models.md	doc
 docs/04-contracts/09-data-classification-and-retention.md	doc
 docs/04-contracts/10-mcp-capability-contract.md	doc
+docs/04-contracts/11-business-investigation-contract.md	doc
 docs/05-delivery/00-implementation-roadmap.md	doc
 docs/05-delivery/01-work-breakdown-and-dependencies.md	doc
 docs/05-delivery/02-definition-of-done.md	doc

@@ -4,6 +4,7 @@ import com.rom.cellarbridge.exceptioncenter.ExceptionCategory;
 import com.rom.cellarbridge.exceptioncenter.ExceptionSeverity;
 import com.rom.cellarbridge.exceptioncenter.ExceptionStatus;
 import com.rom.cellarbridge.exceptioncenter.RecoveryAction;
+import com.rom.cellarbridge.exceptioncenter.internal.application.ExceptionCaseService.InvestigationStore;
 import com.rom.cellarbridge.exceptioncenter.internal.application.ExceptionCaseStore;
 import com.rom.cellarbridge.identityaccess.TenantId;
 import java.sql.ResultSet;
@@ -21,7 +22,7 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public class JdbcExceptionCaseStore implements ExceptionCaseStore {
+public class JdbcExceptionCaseStore implements ExceptionCaseStore, InvestigationStore {
 
   private static final DateTimeFormatter NUMBER_PERIOD =
       DateTimeFormatter.ofPattern("yyyyMM").withZone(ZoneOffset.UTC);
@@ -151,6 +152,24 @@ public class JdbcExceptionCaseStore implements ExceptionCaseStore {
                 .addValue("caseId", caseId),
             (resultSet, row) -> exceptionCase(resultSet));
     return rows.stream().findFirst();
+  }
+
+  @Override
+  public List<CaseRecord> findBySource(
+      TenantId tenantId, String sourceType, UUID sourceId, boolean technicalOnly, int limit) {
+    String sql =
+        SELECT_CASE
+            + " WHERE tenant_id = :tenantId AND source_type = :sourceType AND source_id = :sourceId";
+    if (technicalOnly) sql += " AND category = 'EVENT_DELIVERY_FAILED'";
+    sql += " ORDER BY opened_at DESC, id DESC LIMIT :limit";
+    return jdbc.query(
+        sql,
+        new MapSqlParameterSource()
+            .addValue("tenantId", tenantId.value())
+            .addValue("sourceType", sourceType)
+            .addValue("sourceId", sourceId)
+            .addValue("limit", limit),
+        (resultSet, row) -> exceptionCase(resultSet));
   }
 
   private Optional<CaseRecord> activeByDedup(TenantId tenantId, String dedupKey) {

@@ -24,8 +24,13 @@ public interface SettlementStore {
   Optional<ReceivableRecord> findByTrigger(
       TenantId tenantId, String triggerType, UUID triggerId, boolean lock);
 
+  Optional<ReceivableRecord> findByTrigger(
+      TenantId tenantId, String triggerType, UUID triggerId, UUID partnerScope);
+
   Optional<ReceivableRecord> find(
       TenantId tenantId, UUID receivableId, UUID partnerScope, boolean lock);
+
+  List<ReceivableRecord> findByOrder(TenantId tenantId, UUID orderId, UUID partnerScope, int limit);
 
   boolean insertReceivable(ReceivableRecord receivable);
 

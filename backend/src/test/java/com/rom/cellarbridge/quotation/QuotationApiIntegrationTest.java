@@ -3,10 +3,16 @@ package com.rom.cellarbridge.quotation;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.rom.cellarbridge.identityaccess.PermissionCode;
+import com.rom.cellarbridge.identityaccess.TenantContext;
+import com.rom.cellarbridge.identityaccess.TenantContextHolder;
 import com.rom.cellarbridge.identityaccess.TenantId;
+import com.rom.cellarbridge.platform.EventDelivery;
 import com.rom.cellarbridge.quotation.internal.application.QuotationRepository;
 import com.rom.cellarbridge.quotation.internal.domain.QuotationDomainException;
 import com.rom.cellarbridge.test.PostgresIntegrationTestSupport;
+import com.rom.cellarbridge.tradeorder.TradeOrderInvestigationQuery;
+import com.rom.cellarbridge.tradeorder.internal.application.QuotationAcceptedEventHandler;
 import com.rom.cellarbridge.tradeplanning.TradePlanningException;
 import com.rom.cellarbridge.tradeplanning.TradePlanningService;
 import java.net.URI;
@@ -16,7 +22,9 @@ import java.net.http.HttpResponse;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.Test;
@@ -28,10 +36,13 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.oauth2.jwt.BadJwtException;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -46,6 +57,10 @@ class QuotationApiIntegrationTest extends PostgresIntegrationTestSupport {
   private static final String HARBOR_MANAGER = "quotation-harbor-manager-token";
   private static final String PARTNER = "53000000-0000-4000-8000-000000000001";
   private static final String SKU = "34000000-0000-4000-8000-000000000001";
+  private static final TenantId TENANT =
+      TenantId.of(UUID.fromString("10000000-0000-4000-8000-000000000001"));
+  private static final TenantId OTHER_TENANT =
+      TenantId.of(UUID.fromString("20000000-0000-4000-8000-000000000001"));
 
   private final HttpClient httpClient = HttpClient.newHttpClient();
 
@@ -59,6 +74,11 @@ class QuotationApiIntegrationTest extends PostgresIntegrationTestSupport {
   @Autowired private TradePlanningService tradePlanningService;
 
   @Autowired private QuotationRepository quotationRepository;
+  @Autowired private QuotationInvestigationQuery investigationQuery;
+  @Autowired private TradeOrderInvestigationQuery orderInvestigationQuery;
+  @Autowired private QuotationAcceptedEventHandler acceptanceHandler;
+  @Autowired private TenantContextHolder contexts;
+  @Autowired private PlatformTransactionManager transactions;
 
   @Test
   void createsEvaluatesApprovesIssuesAndReturnsCustomerSafeSnapshot() throws Exception {
@@ -103,6 +123,7 @@ class QuotationApiIntegrationTest extends PostgresIntegrationTestSupport {
     assertThat(created.body().path("lines").path(0).path("sku").path("skuCode").asText())
         .isEqualTo("CB-MTV-2019-750X6");
     String quotationId = created.body().path("id").asText();
+    UUID quoteId = UUID.fromString(quotationId);
     assertThat(created.body().path("allowedActions").toString()).doesNotContain("SUBMIT");
     ApiResponse undecidedSubmit =
         request(
@@ -218,6 +239,43 @@ class QuotationApiIntegrationTest extends PostgresIntegrationTestSupport {
     assertThat(selfApproval.status()).isEqualTo(403);
     assertThat(selfApproval.body().path("code").asText()).isEqualTo("ACCESS_DENIED");
 
+    UUID firstRevisionId =
+        jdbc.queryForObject(
+            "SELECT current_revision_id FROM quotation.quotation WHERE id = ?::uuid",
+            UUID.class,
+            quotationId);
+    String quotationPath = "/api/v1/quotations/" + quotationId;
+    request(
+        "POST",
+        quotationPath + "/approval",
+        NORTH_MANAGER,
+        "\"2\"",
+        "{\"decision\":\"REQUEST_CHANGES\",\"reason\":\"Revise the commercial terms\"}");
+    request("PUT", quotationPath, NORTH_SALES, "\"3\"", request);
+    request(
+        "POST",
+        quotationPath + "/route-evaluations",
+        NORTH_MANAGER,
+        "\"4\"",
+        "{\"requestedRouteCode\":\"NB_BONDED_B2B\",\"overrideReason\":\"Use bonded delivery\"}");
+    assertThat(
+            request("POST", quotationPath + "/submission", NORTH_SALES, "\"5\"", null)
+                .body()
+                .path("version")
+                .asLong())
+        .isEqualTo(6);
+    inContext(
+        managerContext(),
+        () -> {
+          var historical = investigationQuery.find(quoteId, firstRevisionId).orElseThrow();
+          assertThat(historical.revisionId()).isEqualTo(firstRevisionId);
+          assertThat(historical.revisionNumber()).isOne();
+          assertThat(investigationQuery.find(quoteId, null).orElseThrow())
+              .returns(2, value -> value.revisionNumber())
+              .doesNotReturn(firstRevisionId, value -> value.revisionId());
+          assertThat(investigationQuery.find(quoteId, UUID.randomUUID())).isEmpty();
+        });
+
     ApiResponse managerView = get("/api/v1/quotations/" + quotationId, NORTH_MANAGER);
     assertThat(managerView.status()).isEqualTo(200);
     assertThat(managerView.body().path("estimatedMarginRate").asText()).isNotBlank();
@@ -247,12 +305,12 @@ class QuotationApiIntegrationTest extends PostgresIntegrationTestSupport {
             "SELECT count(*) FROM quotation.approval_decision WHERE quotation_id = ?::uuid",
             Integer.class,
             quotationId);
-    assertThat(decisionCount).isEqualTo(1);
+    assertThat(decisionCount).isEqualTo(2);
 
     Integer evaluationsBeforeIssue =
         jdbc.queryForObject("SELECT count(*) FROM trade_planning.evaluation", Integer.class);
     ApiResponse issued =
-        request("POST", "/api/v1/quotations/" + quotationId + "/issue", NORTH_SALES, "\"3\"", null);
+        request("POST", "/api/v1/quotations/" + quotationId + "/issue", NORTH_SALES, "\"7\"", null);
     assertThat(issued.status()).withFailMessage(issued.raw()).isEqualTo(200);
     assertThat(issued.body().path("status").asText()).isEqualTo("SENT");
     assertThat(jdbc.queryForObject("SELECT count(*) FROM trade_planning.evaluation", Integer.class))
@@ -276,6 +334,121 @@ class QuotationApiIntegrationTest extends PostgresIntegrationTestSupport {
             "supplyType");
     assertThat(publicView.headers().firstValue("cache-control").orElse("")).contains("no-store");
 
+    ApiResponse accepted =
+        request(
+            "POST",
+            "/api/v1" + portalUrl + "/acceptance",
+            null,
+            null,
+            """
+            {"acceptedTermsVersion":"%s","buyerReference":"PO-SOURCE-FACADE"}
+            """
+                .formatted(publicView.body().path("termsVersion").asText()));
+    assertThat(accepted.status()).withFailMessage(accepted.raw()).isEqualTo(201);
+    deliverQuotationAcceptance(quoteId);
+    UUID orderId =
+        jdbc.queryForObject(
+            "SELECT id FROM trade_order.trade_order WHERE tenant_id = ?::uuid AND source_quotation_id = ?::uuid",
+            UUID.class,
+            "10000000-0000-4000-8000-000000000001",
+            quotationId);
+    inContext(
+        managerContext(),
+        () -> {
+          assertThat(investigationQuery.find(quoteId, null)).isPresent();
+          assertThat(orderInvestigationQuery.findById(orderId)).isPresent();
+          assertThat(orderInvestigationQuery.findBySourceQuotation(quoteId))
+              .hasValueSatisfying(
+                  order -> assertThat(order.sourceQuotation().revisionNumber()).isEqualTo(2));
+          assertThat(investigationQuery.find(UUID.randomUUID(), null)).isEmpty();
+          assertThat(orderInvestigationQuery.findBySourceQuotation(UUID.randomUUID())).isEmpty();
+          assertThat(orderInvestigationQuery.findById(UUID.randomUUID())).isEmpty();
+        });
+    inContext(
+        sourceContext(
+            UUID.fromString("11200000-0000-4000-8000-000000000001"),
+            null,
+            "sales-representative",
+            PermissionCode.QUOTATION_READ,
+            PermissionCode.ORDER_READ),
+        () -> {
+          assertThat(investigationQuery.find(quoteId, null)).isPresent();
+          assertThat(orderInvestigationQuery.findById(orderId)).isPresent();
+          assertThat(orderInvestigationQuery.findBySourceQuotation(quoteId)).isPresent();
+        });
+    inContext(
+        sourceContext(
+            UUID.randomUUID(),
+            null,
+            "sales-representative",
+            PermissionCode.QUOTATION_READ,
+            PermissionCode.ORDER_READ),
+        () -> {
+          assertThat(investigationQuery.find(quoteId, null)).isEmpty();
+          assertThat(orderInvestigationQuery.findById(orderId)).isEmpty();
+          assertThat(orderInvestigationQuery.findBySourceQuotation(quoteId)).isEmpty();
+        });
+    inContext(
+        sourceContext(
+            UUID.randomUUID(),
+            UUID.fromString(PARTNER),
+            "buyer",
+            PermissionCode.QUOTATION_READ,
+            PermissionCode.ORDER_READ),
+        () -> {
+          assertThat(investigationQuery.find(quoteId, null).orElseThrow().routeDecision()).isNull();
+          var order = orderInvestigationQuery.findById(orderId).orElseThrow();
+          assertThat(order.sourceQuotation()).isNotNull();
+          assertThat(order.routeCode()).isNull();
+          assertThat(order.reservationStatus()).isNull();
+          assertThat(order.fulfillmentStatus()).isNull();
+          assertThat(orderInvestigationQuery.findBySourceQuotation(quoteId)).isPresent();
+        });
+    for (TenantContext hidden :
+        List.of(
+            sourceContext(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                "buyer",
+                PermissionCode.QUOTATION_READ,
+                PermissionCode.ORDER_READ),
+            sourceContext(
+                OTHER_TENANT,
+                UUID.randomUUID(),
+                null,
+                "sales-manager",
+                PermissionCode.QUOTATION_READ,
+                PermissionCode.QUOTATION_APPROVE,
+                PermissionCode.ORDER_READ))) {
+      inContext(
+          hidden,
+          () -> {
+            assertThat(investigationQuery.find(quoteId, null)).isEmpty();
+            assertThat(orderInvestigationQuery.findById(orderId)).isEmpty();
+            assertThat(orderInvestigationQuery.findBySourceQuotation(quoteId)).isEmpty();
+          });
+    }
+    inContext(
+        sourceContext(UUID.randomUUID(), null, "finance-specialist", PermissionCode.ORDER_READ),
+        () -> assertThat(orderInvestigationQuery.findById(orderId).orElseThrow().total()).isNull());
+    inContext(
+        sourceContext(UUID.randomUUID(), null, "warehouse-operator", PermissionCode.ORDER_READ),
+        () -> assertThat(orderInvestigationQuery.findById(orderId)).isEmpty());
+    inContext(
+        managerContext(),
+        () -> {
+          assertThat(investigationQuery.find(quoteId, null)).isPresent();
+          assertThat(orderInvestigationQuery.findById(orderId)).isPresent();
+        });
+    inContext(
+        sourceContext(
+            UUID.fromString("11200000-0000-4000-8000-000000000004"), null, "sales-manager"),
+        () -> {
+          assertThatThrownBy(() -> investigationQuery.find(quoteId, null))
+              .isInstanceOf(AccessDeniedException.class);
+          assertThatThrownBy(() -> orderInvestigationQuery.findById(orderId))
+              .isInstanceOf(AccessDeniedException.class);
+        });
     ApiResponse crossTenant = get("/api/v1/quotations/" + quotationId, HARBOR_MANAGER);
     assertThat(crossTenant.status()).isEqualTo(404);
     assertThat(crossTenant.raw()).doesNotContain("Aurora Market Services");
@@ -336,6 +509,33 @@ class QuotationApiIntegrationTest extends PostgresIntegrationTestSupport {
     assertThat(line.path("allocationMode").asText()).isEqualTo("FIXED_POOL");
     assertThat(line.path("supplyPoolId").asText()).isEqualTo(poolId);
     assertThat(line.path("supplyType").asText()).isEqualTo("DOMESTIC_ON_HAND");
+    try (var ignored = contexts.open(managerContext())) {
+      var source =
+          investigationQuery
+              .find(UUID.fromString(created.body().path("id").asText()), null)
+              .orElseThrow();
+      assertThat(source.routeDecision()).isNotNull();
+      assertThat(source.exactSupplyEvidence()).isNull();
+      assertThat(orderInvestigationQuery.findById(UUID.randomUUID())).isEmpty();
+    }
+    try (var ignored = contexts.open(managerContext(PermissionCode.INVENTORY_READ_EXACT))) {
+      assertThat(
+              investigationQuery
+                  .find(UUID.fromString(created.body().path("id").asText()), null)
+                  .orElseThrow()
+                  .exactSupplyEvidence())
+          .isNull();
+    }
+    try (var ignored =
+        contexts.open(
+            managerContext(PermissionCode.INVENTORY_READ, PermissionCode.INVENTORY_READ_EXACT))) {
+      assertThat(
+              investigationQuery
+                  .find(UUID.fromString(created.body().path("id").asText()), null)
+                  .orElseThrow()
+                  .exactSupplyEvidence())
+          .isNotNull();
+    }
   }
 
   @Test
@@ -606,7 +806,7 @@ class QuotationApiIntegrationTest extends PostgresIntegrationTestSupport {
           "POST",
           "/api/v1/quotations/" + quotationId + "/approval",
           NORTH_MANAGER,
-          "\"2\"",
+          "\"6\"",
           "{\"decision\":\"APPROVE\",\"reason\":\"Approved within demo policy\"}");
     } catch (Exception exception) {
       throw new IllegalStateException(exception);
@@ -685,6 +885,7 @@ class QuotationApiIntegrationTest extends PostgresIntegrationTestSupport {
     }
     if (body != null) {
       request.header("Content-Type", "application/json");
+      if (token == null) request.header("Idempotency-Key", "quotation-source-facade-acceptance");
     }
     request.method(
         method,
@@ -702,7 +903,80 @@ class QuotationApiIntegrationTest extends PostgresIntegrationTestSupport {
         response.headers());
   }
 
+  private void deliverQuotationAcceptance(UUID quotationId) {
+    EventDelivery event =
+        jdbc.queryForObject(
+            """
+            SELECT event_id, tenant_id, event_type, event_version, occurred_at, producer,
+                   subject_type, subject_id, subject_number, correlation_id, causation_id,
+                   payload #>> '{payload}' AS business_payload
+              FROM platform_event.event_publication
+             WHERE event_type = 'cellarbridge.quotation.accepted.v1' AND subject_id = ?::uuid
+            """,
+            (row, number) ->
+                new EventDelivery(
+                    row.getObject("event_id", UUID.class),
+                    row.getObject("tenant_id", UUID.class),
+                    row.getString("event_type"),
+                    row.getInt("event_version"),
+                    row.getTimestamp("occurred_at").toInstant(),
+                    row.getString("producer"),
+                    new EventDelivery.Subject(
+                        row.getString("subject_type"),
+                        row.getObject("subject_id", UUID.class),
+                        row.getString("subject_number")),
+                    row.getObject("correlation_id", UUID.class),
+                    row.getObject("causation_id", UUID.class),
+                    row.getString("business_payload")),
+            quotationId);
+    new TransactionTemplate(transactions)
+        .executeWithoutResult(status -> acceptanceHandler.handle(event));
+  }
+
+  private void inContext(TenantContext context, Runnable assertions) {
+    try (var ignored = contexts.open(context)) {
+      assertions.run();
+    }
+  }
+
   record ApiResponse(int status, JsonNode body, String raw, java.net.http.HttpHeaders headers) {}
+
+  private static TenantContext managerContext(PermissionCode... additional) {
+    Set<PermissionCode> permissions =
+        new HashSet<>(
+            Set.of(
+                PermissionCode.QUOTATION_READ,
+                PermissionCode.QUOTATION_APPROVE,
+                PermissionCode.ORDER_READ));
+    permissions.addAll(List.of(additional));
+    return sourceContext(
+        TENANT,
+        UUID.fromString("11200000-0000-4000-8000-000000000004"),
+        null,
+        "sales-manager",
+        permissions.toArray(PermissionCode[]::new));
+  }
+
+  private static TenantContext sourceContext(
+      TenantId tenantId, UUID userId, UUID partnerId, String role, PermissionCode... permissions) {
+    return new TenantContext(
+        userId,
+        role,
+        tenantId,
+        "North Cellars",
+        "ACTIVE",
+        partnerId,
+        Set.of(role),
+        Set.of(role),
+        Set.of(permissions),
+        role,
+        "north");
+  }
+
+  private static TenantContext sourceContext(
+      UUID userId, UUID partnerId, String role, PermissionCode... permissions) {
+    return sourceContext(TENANT, userId, partnerId, role, permissions);
+  }
 
   @TestConfiguration(proxyBeanMethods = false)
   static class TestTokenConfiguration {

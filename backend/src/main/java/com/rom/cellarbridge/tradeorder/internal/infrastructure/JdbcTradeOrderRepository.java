@@ -134,11 +134,27 @@ public class JdbcTradeOrderRepository implements TradeOrderRepository {
 
   @Override
   public Optional<TradeOrder> findBySourceQuotation(TenantId tenantId, UUID sourceQuotationId) {
-    return queryOne(
-        SELECT_ORDER + " WHERE tenant_id = :tenantId AND source_quotation_id = :sourceQuotationId",
+    return findBySourceQuotation(tenantId, sourceQuotationId, null, null);
+  }
+
+  @Override
+  public Optional<TradeOrder> findBySourceQuotation(
+      TenantId tenantId, UUID sourceQuotationId, UUID partnerScope, UUID ownerScope) {
+    String sql =
+        SELECT_ORDER + " WHERE tenant_id = :tenantId AND source_quotation_id = :sourceQuotationId";
+    MapSqlParameterSource parameters =
         new MapSqlParameterSource()
             .addValue("tenantId", tenantId.value())
-            .addValue("sourceQuotationId", sourceQuotationId));
+            .addValue("sourceQuotationId", sourceQuotationId);
+    if (partnerScope != null) {
+      sql += " AND partner_id = :partnerId";
+      parameters.addValue("partnerId", partnerScope);
+    }
+    if (ownerScope != null) {
+      sql += " AND source_owner_id = :ownerId";
+      parameters.addValue("ownerId", ownerScope);
+    }
+    return queryOne(sql, parameters);
   }
 
   @Override
@@ -397,7 +413,8 @@ public class JdbcTradeOrderRepository implements TradeOrderRepository {
   }
 
   @Override
-  public List<TimelineEntry> timeline(TenantId tenantId, UUID orderId, boolean customerOnly) {
+  public List<TimelineEntry> timeline(
+      TenantId tenantId, UUID orderId, boolean customerOnly, int limit) {
     String sql =
         """
         SELECT id, occurred_at, code, status, message, visibility
@@ -407,12 +424,13 @@ public class JdbcTradeOrderRepository implements TradeOrderRepository {
     if (customerOnly) {
       sql += " AND visibility = 'CUSTOMER'";
     }
-    sql += " ORDER BY occurred_at, id";
+    sql += " ORDER BY occurred_at, id LIMIT :limit";
     return jdbc.query(
         sql,
         new MapSqlParameterSource()
             .addValue("tenantId", tenantId.value())
-            .addValue("orderId", orderId),
+            .addValue("orderId", orderId)
+            .addValue("limit", limit),
         (resultSet, rowNumber) ->
             new TimelineEntry(
                 resultSet.getObject("id", UUID.class),

@@ -2,6 +2,7 @@ package com.rom.cellarbridge.exceptioncenter.internal.application;
 
 import com.rom.cellarbridge.exceptioncenter.ExceptionCategory;
 import com.rom.cellarbridge.exceptioncenter.ExceptionClosedV1;
+import com.rom.cellarbridge.exceptioncenter.ExceptionInvestigationQuery;
 import com.rom.cellarbridge.exceptioncenter.ExceptionOpenedV1;
 import com.rom.cellarbridge.exceptioncenter.ExceptionSeverity;
 import com.rom.cellarbridge.exceptioncenter.ExceptionStatus;
@@ -48,7 +49,7 @@ import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
 
 @Service
-public class ExceptionCaseService {
+public class ExceptionCaseService implements ExceptionInvestigationQuery {
 
   private static final Pattern IDEMPOTENCY_KEY = Pattern.compile("[A-Za-z0-9._~-]{20,200}");
   private static final int MAX_RECOVERY_ATTEMPTS = 3;
@@ -57,6 +58,7 @@ public class ExceptionCaseService {
   private final TenantContextHolder contextHolder;
   private final AuthorizationService authorization;
   private final ExceptionCaseStore store;
+  private final InvestigationStore investigationStore;
   private final FulfillmentRecoveryOperations fulfillment;
   private final InventoryRecoveryOperations inventory;
   private final EventPublicationOperations publications;
@@ -69,6 +71,7 @@ public class ExceptionCaseService {
       TenantContextHolder contextHolder,
       AuthorizationService authorization,
       ExceptionCaseStore store,
+      InvestigationStore investigationStore,
       FulfillmentRecoveryOperations fulfillment,
       InventoryRecoveryOperations inventory,
       EventPublicationOperations publications,
@@ -79,6 +82,7 @@ public class ExceptionCaseService {
     this.contextHolder = contextHolder;
     this.authorization = authorization;
     this.store = store;
+    this.investigationStore = investigationStore;
     this.fulfillment = fulfillment;
     this.inventory = inventory;
     this.publications = publications;
@@ -136,6 +140,35 @@ public class ExceptionCaseService {
     CaseRecord value = find(context.tenantId(), caseId, false);
     requireTechnicalScope(context, value);
     return detail(value);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public InvestigationCase investigateCase(UUID caseId) {
+    TenantContext context = readableContext();
+    CaseRecord value = find(context.tenantId(), caseId, false);
+    requireTechnicalScope(context, value);
+    return investigation(value);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public InvestigationCases investigateBySource(
+      ExceptionSourceType sourceType, UUID sourceId, int limit) {
+    TenantContext context = readableContext();
+    if (sourceType == null || sourceId == null || limit < 1 || limit > 20) {
+      throw validation("Source type, source id and a limit between 1 and 20 are required");
+    }
+    List<CaseRecord> rows =
+        investigationStore.findBySource(
+            context.tenantId(),
+            sourceType.name(),
+            sourceId,
+            context.hasRoleCode("system-operator"),
+            limit + 1);
+    boolean hasMore = rows.size() > limit;
+    if (hasMore) rows = rows.subList(0, limit);
+    return new InvestigationCases(rows.stream().map(this::investigation).toList(), hasMore);
   }
 
   @Transactional
@@ -802,6 +835,50 @@ public class ExceptionCaseService {
 
   private String safeInput(RecoveryAction action, Map<String, Object> parameters) {
     return json(Map.of("action", action.name()));
+  }
+
+  private InvestigationCase investigation(CaseRecord value) {
+    ExceptionSourceType sourceType;
+    try {
+      sourceType = ExceptionSourceType.valueOf(value.sourceType());
+    } catch (IllegalArgumentException exception) {
+      throw new IllegalStateException("Stored exception source type is unsupported", exception);
+    }
+    ExceptionSourceType expected =
+        switch (value.category()) {
+          case FULFILLMENT_STEP_FAILED, FULFILLMENT_STEP_OVERDUE ->
+              ExceptionSourceType.FULFILLMENT_STEP;
+          case INVENTORY_SHORTAGE -> ExceptionSourceType.INVENTORY_RESERVATION;
+          case EVENT_DELIVERY_FAILED -> ExceptionSourceType.EVENT_PUBLICATION;
+        };
+    if (sourceType != expected) {
+      throw new IllegalStateException("Stored exception category does not match its source type");
+    }
+    return new InvestigationCase(
+        value.id(),
+        value.category(),
+        value.severity(),
+        value.status(),
+        new ExceptionSource(sourceType, value.sourceId(), untrusted(value.sourceNumber())),
+        value.assigneeId(),
+        untrusted(value.summary()),
+        value.openedAt(),
+        value.dueAt(),
+        value.updatedAt(),
+        value.version());
+  }
+
+  private static UntrustedText untrusted(String value) {
+    if (value == null) return null;
+    int count = value.codePointCount(0, value.length());
+    boolean truncated = count > 2_000;
+    String visible = truncated ? value.substring(0, value.offsetByCodePoints(0, 2_000)) : value;
+    return new UntrustedText(DataClassification.UNTRUSTED_BUSINESS_DATA, visible, truncated);
+  }
+
+  public interface InvestigationStore {
+    List<CaseRecord> findBySource(
+        TenantId tenantId, String sourceType, UUID sourceId, boolean technicalOnly, int limit);
   }
 
   private Map<String, Object> object(String value) {
