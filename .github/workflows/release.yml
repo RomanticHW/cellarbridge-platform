@@ -75,13 +75,13 @@ jobs:
           git merge-base --is-ancestor "${GITHUB_SHA}" origin/main
           test "${GITHUB_REF_NAME}" = v1.0.0
       - name: Download machine evidence
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           pattern: '*-reports'
           path: target/downloaded/security
           merge-multiple: true
       - name: Download browser evidence
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: release-browser-evidence
           path: target/downloaded/browser
