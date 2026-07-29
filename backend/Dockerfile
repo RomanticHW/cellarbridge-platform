@@ -1,4 +1,4 @@
-FROM eclipse-temurin:21.0.11_10-jdk-alpine-3.23 AS build
+FROM eclipse-temurin:24-jdk-alpine-3.22 AS build
 WORKDIR /workspace
 COPY .mvn .mvn
 COPY mvnw pom.xml ./
