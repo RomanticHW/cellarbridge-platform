@@ -12,7 +12,7 @@
   <name>CellarBridge Keycloak Resource Binding</name>
 
   <properties>
-    <keycloak.version>26.7.0</keycloak.version>
+    <keycloak.version>26.7.1</keycloak.version>
   </properties>
 
   <dependencies>
