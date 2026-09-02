@@ -63,7 +63,7 @@ jobs:
             ./scripts/verify_container_security.sh
 
       - name: Generate backend CycloneDX SBOM
-        uses: anchore/sbom-action@v0.24.0
+        uses: anchore/sbom-action@v0.24.2
         with:
           image: cellarbridge/backend:ci
           format: cyclonedx-json
@@ -71,7 +71,7 @@ jobs:
           upload-artifact: false
 
       - name: Generate frontend CycloneDX SBOM
-        uses: anchore/sbom-action@v0.24.0
+        uses: anchore/sbom-action@v0.24.2
         with:
           image: cellarbridge/frontend:ci
           format: cyclonedx-json
@@ -79,7 +79,7 @@ jobs:
           upload-artifact: false
 
       - name: Generate Keycloak CycloneDX SBOM
-        uses: anchore/sbom-action@v0.24.0
+        uses: anchore/sbom-action@v0.24.2
         with:
           image: cellarbridge/keycloak:ci
           format: cyclonedx-json
